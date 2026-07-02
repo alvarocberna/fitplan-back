@@ -1,48 +1,42 @@
 import { Injectable } from '@nestjs/common';
-import { CreateConsultaAllDtoImpl } from './dto/create-consulta.dto';
-import { UpdateConsultaAllDtoImpl } from './dto/update-consulta.dto';
-//domain
-import { CreateConsultaUseCase, UpdateConsultaUseCase } from 'src/domain';
-//infrastructure
-import { ConsultaRepositoryService, MedicionesRepositoryService, BasicasRepositoryService, PlieguesRepositoryService, PerimetrosRepositoryService, DiametrosRepositoryService, ResultadosMedRepositoryService} from 'src/infrastructure';
+import { ConsultaCompletaDto } from '../../domain/dtos/consulta-completa.dto';
+import { PlanNutricionalDto } from '../../domain/dtos/plan-nutricional.dto';
+import { calcularEdad } from '../../domain/services/utils/edad.service';
+import { OpenaiService } from '../openai/openai.service';
+import { buildUserPrompt, NUTRICIONISTA_SYSTEM_PROMPT } from './consulta.prompts';
+
+type PlanNutricionalGenerado = Omit<PlanNutricionalDto, 'informacion_personal'>;
 
 @Injectable()
 export class ConsultaService {
+  constructor(private readonly openaiService: OpenaiService) {}
 
-  constructor(
-    private readonly consultaRepository: ConsultaRepositoryService,
-    private readonly medicionesRepository: MedicionesRepositoryService,
-    private readonly basicasRepository: BasicasRepositoryService,
-    private readonly plieguesRepository: PlieguesRepositoryService,
-    private readonly perimetrosRepository: PerimetrosRepositoryService,
-    private readonly diametrosRepository: DiametrosRepositoryService,
-    private readonly resultadosMedRepository: ResultadosMedRepositoryService,
-  ){}
+  async procesar(body: ConsultaCompletaDto): Promise<PlanNutricionalDto> {
+    const planGenerado = await this.openaiService.chatJson<PlanNutricionalGenerado>(
+      NUTRICIONISTA_SYSTEM_PROMPT,
+      [{ role: 'user', content: buildUserPrompt(body) }],
+    );
 
-  createConsulta(id_prof: string, createConsultaFullDto: CreateConsultaAllDtoImpl) {
-    new CreateConsultaUseCase(this.consultaRepository, this.medicionesRepository, this.basicasRepository, this.plieguesRepository, this.perimetrosRepository, this.diametrosRepository, this.resultadosMedRepository).execute(id_prof, createConsultaFullDto);
-    return Promise.resolve(); 
+    return {
+      informacion_personal: this.construirInformacionPersonal(body),
+      ...planGenerado,
+    };
   }
 
-  getConsultasAndNestedEntities(id_profesional: string, id_paciente: string){
-    return this.consultaRepository.getConsultasAndNestedEntities(id_profesional, id_paciente);
-  }
+  private construirInformacionPersonal(
+    body: ConsultaCompletaDto,
+  ): PlanNutricionalDto['informacion_personal'] {
+    const info = body.informacionPersonal;
 
-  getConsultasAndNestedEntitiesById(id_profesional: string, id_paciente: string, id_consulta: string){
-    return this.consultaRepository.getConsultasAndNestedEntitiesById(id_profesional, id_paciente, id_consulta);
-  }
+    const nombre = [info?.nombre_primero, info?.nombre_segundo].filter(Boolean).join(' ');
+    const apellido = [info?.apellido_paterno, info?.apellido_materno].filter(Boolean).join(' ');
+    const edad = info?.fecha_nacimiento ? String(calcularEdad(info.fecha_nacimiento)) : '';
 
-  getConsultasByIdAndDate(id_profesional: string, id_paciente: string, fecha_hasta: string){
-    return this.consultaRepository.getConsultasByIdAndDate(id_profesional, id_paciente, fecha_hasta);
+    return {
+      nombre,
+      apellido,
+      edad,
+      fecha: new Date().toISOString().split('T')[0],
+    };
   }
-
-  updateConsulta(id_prof: string, updateConsultaAllDtoImpl: UpdateConsultaAllDtoImpl) {
-    new UpdateConsultaUseCase(this.consultaRepository, this.medicionesRepository, this.basicasRepository, this.plieguesRepository, this.perimetrosRepository, this.diametrosRepository, this.resultadosMedRepository).execute(id_prof, updateConsultaAllDtoImpl);
-    return Promise.resolve(); 
-  }
-
-  deleteConsulta(id_prof: string, id_paciente: string, id_consulta: string) {
-    return this.consultaRepository.deleteConsulta(id_prof, id_paciente, id_consulta);
-  }
-  
 }

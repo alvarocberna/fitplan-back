@@ -1,18 +1,13 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-var cookieParser = require('cookie-parser')
 import { ConfigService } from '@nestjs/config';
 import {HttpExceptionFilter} from './presentation/filters/http-exception.filter';
 
 
 async function bootstrap() {
-  //creamos el server
   const app = await NestFactory.create(AppModule);
-  //para llamar env var
   const configService = app.get(ConfigService);
-  //habilitamos el parseo de cookis para recibir cookies del front
-  app.use(cookieParser());
   // Habilitar CORS
   app.enableCors({
     origin: configService.get<string>('URL_FRONTEND'), 

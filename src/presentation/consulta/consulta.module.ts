@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
+import { OpenaiModule } from '../openai/openai.module';
 import { ConsultaService } from './consulta.service';
 import { ConsultaController } from './consulta.controller';
-//infrastructure
-import { ConsultaRepositoryModule, MedicionesRepositoryModule, BasicasRepositoryModule, PlieguesRepositoryModule, PerimetrosRepositoryModule, DiametrosRepositoryModule, ResultadosMedRepositoryModule} from 'src/infrastructure';
 
 @Module({
-  imports: [ConsultaRepositoryModule, MedicionesRepositoryModule, BasicasRepositoryModule, PlieguesRepositoryModule, PerimetrosRepositoryModule, DiametrosRepositoryModule, ResultadosMedRepositoryModule],
+  imports: [OpenaiModule],
   controllers: [ConsultaController],
   providers: [ConsultaService],
-  exports: [ConsultaService]
 })
 export class ConsultaModule {}
