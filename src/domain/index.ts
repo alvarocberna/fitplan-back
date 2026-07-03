@@ -22,3 +22,4 @@ export * from './services/formulas/imm.service';
 export * from './services/formulas/perimetros-corregidos.service';
 //utils
 export * from './services/utils/edad.service';
+export * from './services/formulas/requerimientos.service';

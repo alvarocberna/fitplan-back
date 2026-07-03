@@ -57,6 +57,7 @@ export class AnamnesisService {
       (anamnesis.alimentaria?.r24h?.length ?? 0) > 0 &&
       anamnesis.alimentaria?.estrategia_deportiva != null &&
       //estilo de vida
+      anamnesis.estilo_vida?.nivel_actividad_fisica != null &&
       (anamnesis.estilo_vida?.deporte?.length ?? 0) > 0 &&
       (anamnesis.estilo_vida?.sesion_entrenamiento?.length ?? 0) > 0;
 
@@ -236,6 +237,11 @@ export class AnamnesisService {
       - Pregunta inicial: Inicia realizando una pregunta abierta que aborde temas como hábitos saludables y deporte, como 
       por ejemplo "¿Eres una persona físicamente activa? ¿Sueles consumir alcohol o fumar? ¿realizas algún deporte?"
       - Si el usuario si realiza deporte, ahondar en sus sesiones de entrenamiento.
+      - IMPORTANTE: Para el campo 'nivel_actividad_fisica' debes determinar si es sedentario, moderado o activo. Para determinar esto
+        considera las actividades que representan actividad física en el día como caminar, subir escaleras, entre otros. No consideres
+        la realización de algún deporte como un factor incluyente en el nivel de actividad física. Por ejemplo, una persona que trabaja
+        sentada todo el día y en la noche va al gimnasio o a realizar otro deporte, se clasifica como sedentaria. Otro ejemplo: una persona
+        que se desplaza caminando a todas partes pero no hace ningún deporte, se considera como moderada.
       - Preguntas guía (usa estas frases o variaciones naturales):
         * "¿Qué deporte o deportes practicas actualmente?"
         * "Cuéntame sobre tus sesiones de entrenamiento: ¿cuántos días entrenas a la semana, cuánto dura cada sesión y qué tipo de entrenamiento realizas?"
