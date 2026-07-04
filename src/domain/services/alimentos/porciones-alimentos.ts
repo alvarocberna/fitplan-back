@@ -1,8 +1,8 @@
 
-const PORCIONES_GRUPOS_ALIMENTOS = [
+export const PORCIONES_GRUPOS_ALIMENTOS = [
     {
         grupo: 'Cereales',
-        subcategoria: 'Null',
+        subcategoria: null,
         aporte_por_porcion: {energia: 140, proteina: 3, carbohidrato: 30, lipido: 1},
         alimentos: [
             { alimento: 'Arroz cocido', porcion: '3/4 taza', gramaje: 100 },
@@ -31,7 +31,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },
     {
         grupo: 'Verduras',
-        subcategorias: 'Consumo general',
+        subcategoria: 'Consumo general',
         aporte_por_porcion: {energia: 30, proteina: 2, carbohidrato: 5, lipido: 0},
         alimentos: [
             { alimento: 'Acelga cocida', porcion: '1/2 taza', gramaje: 110 },
@@ -54,7 +54,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },
         {
         grupo: 'Verduras',
-        subcategorias: 'Libre consumo',
+        subcategoria: 'Libre consumo',
         aporte_por_porcion: {energia: 10, proteina: 0, carbohidrato: 2.5, lipido: 0},
         alimentos: [
             { alimento: 'Achicoria', porcion: '1 taza', gramaje: 50 },
@@ -74,7 +74,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },
         {
         grupo: 'Frutas',
-        subcategorias: 'Null',
+        subcategoria: null,
         aporte_por_porcion: {energia: 65, proteina: 1, carbohidrato: 15, lipido: 0},
         alimentos: [
             { alimento: 'Manzana', porcion: '1 unidad chica', gramaje: 100 },
@@ -104,8 +104,8 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
         ]
     },
         {
-        grupo: 'Proteina',
-        subcategorias: 'Alta en grasa',
+        grupo: 'Proteinas',
+        subcategoria: 'Alta en grasa',
         aporte_por_porcion: {energia: 120, proteina: 11, carbohidrato: 1, lipido: 8},
         alimentos: [
             { alimento: 'Atún en aceite', porcion: '1/3 taza', gramaje: 50 },
@@ -120,8 +120,8 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
         ]
     },
         {
-        grupo: 'Proteina',
-        subcategorias: 'Baja en grasa',
+        grupo: 'Proteinas',
+        subcategoria: 'Baja en grasa',
         aporte_por_porcion: {energia: 65, proteina: 11, carbohidrato: 1, lipido: 2},
         alimentos: [
             { alimento: 'Asiento picana', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
@@ -152,7 +152,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },
         {
         grupo: 'Lácteos',
-        subcategorias: 'Bajo en grasas',
+        subcategoria: 'Bajo en grasas',
         aporte_por_porcion: {energia: 70, proteina: 7, carbohidrato: 10, lipido: 0},
         alimentos: [
             { alimento: 'Leche fluida descremada', porcion: '1 taza', gramaje: 200 },
@@ -162,7 +162,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },
         {
         grupo: 'Lácteos',
-        subcategorias: 'Medios en grasas',
+        subcategoria: 'Medios en grasas',
         aporte_por_porcion: {energia: 85, proteina: 5, carbohidrato: 9, lipido: 3},
         alimentos: [
             { alimento: 'Leche en polvo 18% grasa', porcion: '2 cucharadas colmadas o 3 cucharadas rasas', gramaje: 20 },
@@ -174,7 +174,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },
         {
         grupo: 'Lácteos',
-        subcategorias: 'Altos en grasas',
+        subcategoria: 'Altos en grasas',
         aporte_por_porcion: {energia: 110, proteina: 5, carbohidrato: 9, lipido: 6},
         alimentos: [
             { alimento: 'Leche cruda de vaca', porcion: '1 taza', gramaje: 200 },
@@ -193,7 +193,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },
         {
         grupo: 'Ricos en lípidos',
-        subcategorias: 'Null',
+        subcategoria: null,
         aporte_por_porcion: {energia: 175, proteina: 5, carbohidrato: 5, lipido: 15},
         alimentos: [
             { alimento: 'Almendras', porcion: '26 unidades', gramaje: 25 },
@@ -210,7 +210,7 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
     },  
         {
         grupo: 'Aceites y grasas',
-        subcategorias: 'Null',
+        subcategoria: null,
         aporte_por_porcion: {energia: 180, proteina: 0, carbohidrato: 0, lipido: 20},
         alimentos: [
             { alimento: 'Aceite de maravilla', porcion: '4 cucharaditas', gramaje: 20 },
@@ -231,8 +231,8 @@ const PORCIONES_GRUPOS_ALIMENTOS = [
         ]
     },
         {
-        grupo: 'Azucar',
-        subcategorias: 'Null',
+        grupo: 'Azucares',
+        subcategoria: null,
         aporte_por_porcion: {energia: 20, proteina: 0, carbohidrato: 5, lipido: 0},
         alimentos: [
             { alimento: 'Azúcar', porcion: '1 cucharadita', gramaje: 5 },

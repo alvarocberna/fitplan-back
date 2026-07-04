@@ -1,5 +1,6 @@
 import { ConsultaCompletaDto } from '../../domain/dtos/consulta-completa.dto';
 import { Requerimientos } from '../../domain/services/formulas/requerimientos.service';
+import { PORCIONES_GRUPOS_ALIMENTOS } from '../../domain/services/alimentos/porciones-alimentos';
 
 export const NUTRICIONISTA_SYSTEM_PROMPT = `Eres un nutricionista experto en nutrición deportiva.
 Tu tarea es analizar la información de una consulta (anamnesis y evaluación física de un paciente)
@@ -19,26 +20,35 @@ EXACTAMENTE la siguiente estructura:
   },
   "tiempos_de_comida": [
     {
-      "tiempo": string, // "desayuno" | "almuerzo" | "once" | "cena" | "colacion"
-      "hora": string | null,
-      "calorias": number,
-      "proteina": number,
-      "carbohidrato": number,
-      "lipido": number,
-      "cereales": string | null,
-      "verdura_libre_consumo": string | null,
-      "verdura_consumo_general": string | null,
-      "fruta": string | null,
-      "proteina_alta_en_grasa": string | null,
-      "proteina_baja_en_grasa": string | null,
-      "lacteo_alto_en_grasa": string | null,
-      "lacteo_medio_en_grasa": string | null,
-      "lacteo_bajo_en_grasa": string | null,
-      "rico_en_lipidos": string | null,
-      "aceite": string | null,
-      "azucar": string | null,
-      "ejemplos": string[], // 3 ejemplos de comida para este tiempo
-      "comentarios": string[]
+        description: {
+            tiempo: string // desayuno | almuerzo | once | cena | colacion
+            hora: string | null //ej 10am
+        },
+        aporte: {
+            calorias: number 
+            proteina: number 
+            carbohidrato: number 
+            lipido: number
+        },
+        alimentos: {
+            // Cada campo indica la cantidad de porciones del grupo de alimentos correspondiente
+            // (ver sección "Grupos de porciones de alimentos"), ej "1 porción", "2 porciones", "1/2 porción".
+            // null si el grupo no se usa en este tiempo de comida.
+            cereales: string | null
+            verduras_libre_consumo: string | null
+            verduras_consumo_general: string | null
+            frutas: string | null
+            proteinas_alta_en_grasa: string | null
+            proteinas_baja_en_grasa: string | null
+            lacteos_alto_en_grasa: string | null
+            lacteos_medio_en_grasa: string | null
+            lacteos_bajo_en_grasa: string | null
+            ricos_en_lipidos: string | null
+            aceites: string | null
+            azucares: string | null
+        }
+        ejemplos: string[] // 3 ejemplos de combinaciones de alimentos específicos (con su porción) que cumplan "alimentos"
+        comentarios: string[] 
     }
   ],
   "suplementos": [
@@ -73,16 +83,67 @@ a los requerimientos nutricionales ya calculados para este paciente y son la bas
 obligatoria del plan.
 `;
 
+// Mapea cada campo del objeto "alimentos" de un tiempo de comida al grupo/subcategoría
+// de PORCIONES_GRUPOS_ALIMENTOS que le corresponde.
+const CAMPO_ALIMENTOS_A_GRUPO: Record<string, { grupo: string; subcategoria: string | null }> = {
+  cereales: { grupo: 'Cereales', subcategoria: null },
+  verduras_consumo_general: { grupo: 'Verduras', subcategoria: 'Consumo general' },
+  verduras_libre_consumo: { grupo: 'Verduras', subcategoria: 'Libre consumo' },
+  frutas: { grupo: 'Frutas', subcategoria: null },
+  proteinas_alta_en_grasa: { grupo: 'Proteinas', subcategoria: 'Alta en grasa' },
+  proteinas_baja_en_grasa: { grupo: 'Proteinas', subcategoria: 'Baja en grasa' },
+  lacteos_bajo_en_grasa: { grupo: 'Lácteos', subcategoria: 'Bajo en grasas' },
+  lacteos_medio_en_grasa: { grupo: 'Lácteos', subcategoria: 'Medios en grasas' },
+  lacteos_alto_en_grasa: { grupo: 'Lácteos', subcategoria: 'Altos en grasas' },
+  ricos_en_lipidos: { grupo: 'Ricos en lípidos', subcategoria: null },
+  aceites: { grupo: 'Aceites y grasas', subcategoria: null },
+  azucares: { grupo: 'Azucares', subcategoria: null },
+};
+
+// Arma, para cada campo del objeto "alimentos", el aporte por porción del grupo
+// correspondiente y algunos alimentos de ejemplo con su porción, para que el modelo
+// pueda calcular cuántas porciones de cada grupo corresponden y con qué alimentos
+// concretos ilustrar los ejemplos.
+function buildGruposAlimentosInfo() {
+  return Object.fromEntries(
+    Object.entries(CAMPO_ALIMENTOS_A_GRUPO).map(([campo, { grupo, subcategoria }]) => {
+      const grupoData = PORCIONES_GRUPOS_ALIMENTOS.find(
+        (g) => g.grupo === grupo && g.subcategoria === subcategoria,
+      );
+      return [
+        campo,
+        {
+          grupo,
+          subcategoria,
+          aporte_por_porcion: grupoData?.aporte_por_porcion ?? null,
+          alimentos_de_ejemplo: grupoData?.alimentos ?? [],
+        },
+      ];
+    }),
+  );
+}
+
 // TODO: reemplazar por las reglas definitivas que determinan cuántos tiempos de
-// comida generar (desayuno, almuerzo, colación, once, cena, etc), cómo distribuir
-// calorías/macronutrientes entre ellos, y cómo determinar los intercambios de
-// alimentos (cereales, verduras, frutas, proteínas, lácteos, grasas, azúcares) en
-// cada uno.
+// comida generar (desayuno, almuerzo, colación, once, cena, etc) y cómo distribuir
+// calorías/macronutrientes entre ellos.
 const TIEMPOS_DE_COMIDA_PROMPT = `
 ### Tiempos de comida
-Determina los tiempos de comida del plan y su contenido.
-Por ahora, genera un número de tiempos de comida razonable en base al r24h
-entregado por el paciente, junto con 3 ejemplos y comentarios relevantes para cada uno.
+Determina los tiempos de comida del plan.
+Por ahora, genera un número de tiempos de comida razonable en base al r24h entregado por el paciente,
+y distribuye entre ellos las calorías/macronutrientes de la prescripción.
+
+Para el campo "alimentos" de cada tiempo de comida:
+- NO indiques alimentos específicos (ej "1 pan", "media palta"). En su lugar, indica la CANTIDAD DE
+  PORCIONES del grupo de alimentos correspondiente a cada campo, ej "1 porción", "2 porciones", "1/2 porción".
+- Usa la sección "Grupos de porciones de alimentos" para saber el aporte nutricional (energía, proteína,
+  carbohidrato, lípido) de una porción de cada grupo/subcategoría.
+- Calcula el número de porciones de cada grupo de forma que la suma de sus aportes se aproxime al "aporte"
+  (calorías, proteína, carbohidrato, lípido) definido para ese tiempo de comida.
+- Deja en null los campos de grupos que no se usen en ese tiempo de comida.
+
+Para el campo "ejemplos": da 3 ejemplos concretos de combinaciones de alimentos (usando los alimentos
+listados en "alimentos_de_ejemplo" de cada grupo, junto con su porción/gramaje) que en conjunto cumplan
+exactamente las cantidades de porciones indicadas en "alimentos".
 `;
 
 // TODO: reemplazar por las reglas definitivas para recomendar (o no) suplementos
@@ -157,6 +218,12 @@ ${TIEMPOS_DE_COMIDA_PROMPT}
 ${SUPLEMENTOS_PROMPT}
 
 ${RECOMENDACIONES_DEPORTIVAS_PROMPT}
+
+### Grupos de porciones de alimentos
+Para cada campo del objeto "alimentos" de un tiempo de comida, esta es la información del grupo/subcategoría
+que le corresponde: el aporte nutricional de una porción ("aporte_por_porcion") y alimentos de ejemplo con
+su porción y gramaje ("alimentos_de_ejemplo"), a usar solo en la sección "ejemplos".
+${JSON.stringify(buildGruposAlimentosInfo(), null, 2)}
 
 ### Requerimientos nutricionales (base obligatoria de la prescripción)
 ${JSON.stringify(requerimientos, null, 2)}

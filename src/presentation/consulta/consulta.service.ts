@@ -30,32 +30,32 @@ export class ConsultaService {
   //recibe la info de consulta y devuelve un objeto con el plan nutricional
   async procesar(body: ConsultaCompletaDto): Promise<PlanNutricionalDto> {
 
-    //Paso 1 - extraer info del promp: NAF y objetivo
+    // se extrae informacion del promp: NAF y objetivo
     const { nivel_actividad_fisica, objetivo } = await this.extraerInfoPromp(body);
-    //Paso 2 - extraer info del body
+    //se extrae informacion del body
     const peso:number = body.mediciones?.peso!;
     const talla:number = body.mediciones?.talla!;
     const sexo:string = body.informacionPersonal?.genero?.charAt(0).toUpperCase()!;
     const fechaNacimiento = body.informacionPersonal?.fecha_nacimiento!;
     const edad = calcularEdad(fechaNacimiento);
-    //Paso 3 - calcular requerimientos
+    // calculo de requerimientos nutricionales
     const requerimientos = calculoRequerimientos({
       peso: peso, talla: talla, sexo: sexo, edad: edad, nivel_actividad_fisica: nivel_actividad_fisica, objetivo: objetivo
     })
-
-    //llama el service de opanai y le entrega el promp con instrucciones + la data de la consulta
+    //el service de opanai recibe un promp con instrucciones para generar el plan + la información de este
     const planGenerado = await this.openaiService.chatJson<PlanNutricionalGenerado>(
       NUTRICIONISTA_SYSTEM_PROMPT, //promp con instrucciones
       [{ role: 'user', content: buildUserPrompt(body, requerimientos) }], //data consulta + requerimientos
     );
 
-    //retorna un objeto que sigue la estructura de PlanNutricionalDto
+    //return
     return {
       informacion_personal: this.construirInformacionPersonal(body),
       ...planGenerado,
       prescripcion: { ...planGenerado.prescripcion, objetivo },
     };
   }
+
 
   //extrae, formatea y construye un objeto con informacion personal
   private construirInformacionPersonal(
@@ -75,6 +75,7 @@ export class ConsultaService {
     };
   }
 
+  
   //extrae nivel_actividad_fisica y objetivo del body con ayuda de openai, para ser usados
   //en el cálculo del GET y en la prescripción del plan
   private async extraerInfoPromp(body: ConsultaCompletaDto): Promise<InfoPromp> {

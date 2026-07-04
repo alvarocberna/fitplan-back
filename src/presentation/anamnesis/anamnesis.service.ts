@@ -1,51 +1,80 @@
+//NEST
 import { Injectable } from '@nestjs/common';
+//PRESENTATION - ANAMNESIS
 import { AnamnesisChat_RequestDtoImpl, AnamnesisChat_ResponseDtoImpl } from './dto/anamnesis-chat.dto';
+//PRESENTATION - CONSULTA
 import { AnamnesisDtoImpl } from '../consulta/dto/consulta-completa.dto';
 import { normalizeAnamnesisPayload } from '../consulta/dto/anamnesis-normalizer';
+//PRESENTATION - OPENAI
 import { OpenaiService } from '../openai/openai.service';
+//DOMAIN
 import { AnamnesisChat_ResponseDto, AnamnesisDto } from '../../domain';
 
-// ── Tracked fields for the 60 % completeness threshold ──────────────────────
-const TRACKED_FIELDS = 15;
 
 @Injectable()
 export class AnamnesisService {
   constructor(private readonly openaiService: OpenaiService) {}
 
-  //método que procesa el req y devuelve un res procesado por el service de openai
+  //método principal - recibe mensajes del user y devuelve una respuesta
   async chat(body: AnamnesisChat_RequestDtoImpl): Promise<AnamnesisChat_ResponseDtoImpl> {
 
-    //promp con instrucciones
+    /*
+      systemPrompt genera un promp que le dice a openai como actuar 
+      intrucciones del promp:
+      *eres un nutricionista experto en nutricion deportiva
+      *el content del primer message siempre responderá a un mensaje generico 
+      *en base al content entrante, recopila informacion de objetivos, anamnesis clinica, alimentaria, evs
+      *devuelve un output de tipo AnamnesisDto, que debes completar con la con la información que 
+       ya existe (body.anamnesis) y la informacion nueva (información recopilada del content entrante).
+      *isComplete será true cuando se completen todos los campos obligatorios (definidos en el promp)
+      *que hacer si los campos obligatorios no estan completos o si se completan antes de tiempo
+    */
     const systemPrompt = this.buildSystemPrompt(body.anamnesis ?? null);
 
-    //generamos el Response con el service de openai en base al mensaje del user y el promp con instrucciones
-    const llmResponse = await this.openaiService.chatJson<AnamnesisChat_ResponseDto>(
-      systemPrompt, //entregamos el promp con instrucciones al método charJson del openai service
-      body.messages, //entregamos el mensaje del usuario al método chatJson del openai service
+    // response de openai en base al promp de instrucciones + el mensaje del user
+    let llmResponse = await this.openaiService.chatJson<AnamnesisChat_ResponseDto>(
+      systemPrompt, 
+      body.messages,
     );
 
-    // Repara desvíos de forma del LLM (campos anidados, tipos incorrectos, claves
+    // si el reply del responde de openai está vacío, reintentamos una vez antes de recurrir 
+    // a un mensaje de resguardo, para no propagar un mensaje vacío al historial de la conversación
+    if (!llmResponse.reply?.trim()) {
+      llmResponse = await this.openaiService.chatJson<AnamnesisChat_ResponseDto>(
+        systemPrompt, 
+        body.messages
+      );
+    }
+
+    // repara desvíos de forma del LLM (campos anidados, tipos incorrectos, claves
     // desconocidas) antes de usar el objeto internamente o devolverlo al cliente.
     const normalizedAnamnesis = normalizeAnamnesisPayload(llmResponse.anamnesis);
 
-    // Server-side guard: LLM isComplete must also pass the minimum rules
+    // server-side guard: si el campo isComplete de la respuesta de openai es true
+    // y los campos obligatorios están completos, isComplete del responde cambia a true
     const isComplete = llmResponse.isComplete && this.meetsCompletionRules(normalizedAnamnesis);
 
     return {
-      reply: llmResponse.reply,
+      reply: llmResponse.reply?.trim() ? llmResponse.reply : this.fallbackReply(),
       anamnesis: normalizedAnamnesis as unknown as AnamnesisDtoImpl,
       isComplete,
     };
   }
 
+  // Mensaje de resguardo si el LLM insiste en devolver "reply" vacío tras el reintento.
+  private fallbackReply(): string {
+    return 'Disculpa, ¿podrías contarme un poco más sobre eso?';
+  }
+
+
   // ── Completeness helpers ───────────────────────────────────────────────────
 
-  //metodo que valida cumplimiento de campos obligatorios y porcentaje de cumplimiento
+  //metodo que valida cumplimiento de campos obligatorios
   private meetsCompletionRules(anamnesis: AnamnesisDto | null): boolean {
     if (!anamnesis) return false;
 
     //campos obligatorios requerdiso sin excepcion
-    const requiredPresent =
+    return (
       //objetuvos
       !!anamnesis.objetivos?.objetivo_principal &&
       //clinica
@@ -59,45 +88,10 @@ export class AnamnesisService {
       //estilo de vida
       anamnesis.estilo_vida?.nivel_actividad_fisica != null &&
       (anamnesis.estilo_vida?.deporte?.length ?? 0) > 0 &&
-      (anamnesis.estilo_vida?.sesion_entrenamiento?.length ?? 0) > 0;
-
-    if (!requiredPresent) return false;
-
-    //exige que al menmos 60% de los campos rastreados estén completos
-    return this.filledCount(anamnesis) / TRACKED_FIELDS >= 0.6;
+      (anamnesis.estilo_vida?.sesion_entrenamiento?.length ?? 0) > 0
+    );
   }
 
-  //método que cuenta si los campos rastreados están completos o no
-  private filledCount(anamnesis: AnamnesisDto): number {
-    const fields: unknown[] = [
-      anamnesis.objetivos?.objetivo_principal,
-      anamnesis.objetivos?.objetivo_secundario,
-      anamnesis.clinica?.patologia,
-      anamnesis.clinica?.antecedentes_morbidos_familiares,
-      anamnesis.clinica?.alergias,
-      anamnesis.clinica?.intolerancias,
-      anamnesis.clinica?.farmacos,
-      anamnesis.clinica?.antecedentes_gastrointestinales,
-      anamnesis.clinica?.deposiciones,
-      anamnesis.clinica?.cirugias,
-      anamnesis.alimentaria?.r24h,
-      anamnesis.alimentaria?.estrategia_deportiva?.suplemento,
-      anamnesis.alimentaria?.estrategia_deportiva?.hidratacion,
-      anamnesis.alimentaria?.estrategia_deportiva?.comida_pre_actividad,
-      anamnesis.alimentaria?.estrategia_deportiva?.comida_post_actividad,
-      anamnesis.estilo_vida?.deporte,
-      anamnesis.estilo_vida?.sesion_entrenamiento,
-      anamnesis.estilo_vida?.nivel_actividad_fisica,
-      anamnesis.estilo_vida?.alcohol,
-      anamnesis.estilo_vida?.tabaco,
-    ];
-
-    return fields.filter((f) => {
-      if (f == null) return false;
-      if (Array.isArray(f)) return f.length > 0;
-      return true;
-    }).length;
-  }
 
   // ── System prompt ──────────────────────────────────────────────────────────
 
@@ -249,22 +243,40 @@ export class AnamnesisService {
         * "¿Fumas o usas tabaco de algún tipo?"
 
     ## REGLAS DE COMPLETITUD (isComplete)
-    Debes calcular internamente el porcentaje de campos completados usando estos 20 campos como referencia:
-      objetivos.objetivo_principal, objetivos.objetivo_secundario, clinica.patologia, clinica.antecedentes_morbidos_familiares,
-      clinica.alergias, clinica.intolerancias, clinica.farmacos, clinica.antecedentes_gastrointestinales, clinica.deposiciones,
-      clinica.cirugias, alimentaria.r24h, alimentaria.estrategia_deportiva.suplemento, alimentaria.estrategia_deportiva.hidratacion,
-      alimentaria.estrategia_deportiva.comida_pre_actividad, alimentaria.estrategia_deportiva.comida_post_actividad, estilo_vida.deporte,
-      estilo_vida.sesion_entrenamiento, estilo_vida.nivel_actividad_fisica, estilo_vida.alcohol, estilo_vida.tabaco,
+    Establece "isComplete": true SOLO cuando TODOS estos campos obligatorios tengan valor (no null,
+    aunque sea "ninguna"):
+      1. objetivos.objetivo_principal
+      2. clinica.patologia
+      3. clinica.alergias
+      4. clinica.intolerancias
+      5. clinica.farmacos
+      6. alimentaria.r24h (al menos un tiempo de comida)
+      7. alimentaria.estrategia_deportiva
+      8. estilo_vida.nivel_actividad_fisica
+      9. estilo_vida.deporte (al menos un elemento)
+      10. estilo_vida.sesion_entrenamiento (al menos un elemento)
 
-    Establece "isComplete": true SOLO cuando se cumplan TODAS estas condiciones:
-      1. objetivos.objetivo_principal tiene valor (no null)
-      2. clinica.patologia tiene valor (aunque sea "ninguna")
-      3. estilo_vida.deporte tiene al menos un elemento
-      4. estilo_vida.sesion_entrenamiento tiene al menos un elemento
-      5. Al menos 12 de los 20 campos de referencia tienen valor (≥ 60 %)
-      6. Se han recorrido las 4 secciones de la anamnesis
+    Mientras falte alguno de estos campos obligatorios, "isComplete" debe ser false. Los demás campos
+    del esquema (antecedentes_morbidos_familiares, antecedentes_gastrointestinales, deposiciones,
+    cirugias, objetivo_secundario, alcohol, tabaco, etc) son opcionales y NO son requisito para
+    "isComplete": true.
 
-    Mientras no se cumplan esas condiciones, "isComplete" debe ser false.
+    ## QUÉ HACER SI EL CHAT LLEGA A SU FIN SIN TENER LOS CAMPOS OBLIGATORIOS
+    Si ya recorriste las 4 secciones de la anamnesis (objetivos, anamnesis clínica, anamnesis
+    alimentaria y estilo de vida) y notas, según el "ESTADO ACTUAL DE LA ANAMNESIS", que todavía falta
+    alguno de los campos obligatorios listados arriba, NO des por terminada la conversación ni envíes
+    mensajes genéricos o de cierre sin propósito. En su lugar, en "reply" pregunta de forma directa y
+    específica por cada uno de los campos obligatorios que aún falten (puedes agruparlos si tiene
+    sentido), hasta obtener una respuesta para todos ellos. Solo entrega "isComplete": true una vez
+    que el paciente haya respondido a esas preguntas y los campos obligatorios queden con valor.
+
+    ## QUÉ HACER CUANDO LA ANAMNESIS QUEDA COMPLETA
+    Si con la última respuesta del usuario ya se cumplen todos los campos obligatorios de
+    "REGLAS DE COMPLETITUD" (es decir, vas a entregar "isComplete": true), "reply" NUNCA puede
+    quedar vacío. En ese caso, genera en "reply" un mensaje breve de cierre agradeciendo al
+    paciente por la información entregada y explicando que continuarán con la evaluación física.
+    "reply" es un campo obligatorio en TODOS los turnos, sin excepción, incluso cuando ya no
+    quedan preguntas pendientes.
 
     ## ESTADO ACTUAL DE LA ANAMNESIS
     El siguiente es el estado de la anamnesis hasta el momento. Úsalo para saber qué campos ya tienes y cuáles faltan:
@@ -287,6 +299,7 @@ export class AnamnesisService {
     - Para r24h, representa cada comida como un objeto con los campos de alimentos; usa null en los que no apliquen`;
   }
 
+  //metodo que devuelve un estado inicial de la anamnesis
   private emptyAnamnesis(): AnamnesisDto {
     return {
       objetivos: { objetivo_principal: null, objetivo_secundario: null },

@@ -1,13 +1,3 @@
-//entities
-export * from './entities/usuario.entity';
-export * from './entities/consulta.entity';
-export * from './entities/mediciones.entity';
-export * from './entities/basicas.entity';
-export * from './entities/pliegues.entity';
-export * from './entities/perimetros.entity';
-export * from './entities/diametros.entity';
-export * from './entities/relacion-pac-pro.entity';
-export * from './entities/resultados-med.entity';
 //dtos
 export * from './dtos/anamnesis-chat.dto';
 export * from './dtos/consulta-completa.dto';
