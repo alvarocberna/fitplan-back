@@ -7,6 +7,7 @@ import {
   ComidaDtoImpl,
   EstrategiaDeportivaDtoImpl,
   EstiloVidaSaludableDtoImpl,
+  SesionDeportivaDtoImpl,
 } from './consulta-completa.dto';
 
 // Repara variaciones de forma que el LLM suele producir (campos anidados en vez de planos,
@@ -53,6 +54,16 @@ function toStringArrayOrNull(value: unknown): string[] | null {
   const arr = Array.isArray(value) ? value : [value];
   const result = arr.map(toStringOrNull).filter((v): v is string => !!v);
   return result.length ? result : null;
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 // Repara el caso donde el modelo anida los campos de una comida bajo el nombre de esa
@@ -128,6 +139,29 @@ function normalizeAlimentaria(raw: unknown): AnamnesisAlimentariaDtoImpl | null 
   });
 }
 
+// Repara el caso donde el modelo anida los campos de una sesión deportiva bajo un
+// nombre envolvente, análogo a normalizeComida.
+function normalizeSesionDeportiva(raw: unknown): SesionDeportivaDtoImpl | null {
+  if (!isPlainObject(raw)) return null;
+  return plainToInstance(SesionDeportivaDtoImpl, {
+    descripcion: toStringOrNull(raw.descripcion),
+    disciplina: toStringOrNull(raw.disciplina),
+    duracion: toNumberOrNull(raw.duracion),
+    intensidad: toStringOrNull(raw.intensidad),
+    tipo_evento: toStringOrNull(raw.tipo_evento),
+    dias: toStringOrNull(raw.dias),
+    horario: toStringOrNull(raw.horario),
+  });
+}
+
+function normalizeSesionesDeportivas(raw: unknown): SesionDeportivaDtoImpl[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const result = raw
+    .map(normalizeSesionDeportiva)
+    .filter((s): s is SesionDeportivaDtoImpl => s !== null);
+  return result.length ? result : null;
+}
+
 function normalizeEstiloVida(raw: unknown): EstiloVidaSaludableDtoImpl | null {
   if (!isPlainObject(raw)) return null;
   return plainToInstance(EstiloVidaSaludableDtoImpl, {
@@ -135,7 +169,7 @@ function normalizeEstiloVida(raw: unknown): EstiloVidaSaludableDtoImpl | null {
     tabaco: toStringOrNull(raw.tabaco),
     nivel_actividad_fisica: toStringOrNull(raw.nivel_actividad_fisica),
     deporte: toStringArrayOrNull(raw.deporte),
-    sesion_entrenamiento: toStringArrayOrNull(raw.sesion_entrenamiento),
+    sesion_deportiva: normalizeSesionesDeportivas(raw.sesion_deportiva),
   });
 }
 

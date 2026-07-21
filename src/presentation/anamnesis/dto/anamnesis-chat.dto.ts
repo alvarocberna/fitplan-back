@@ -1,6 +1,6 @@
 import { IsString, IsNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, ValidateNested } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { ChatMessageDto, AnamnesisChat_RequestDto, AnamnesisChat_ResponseDto } from '../../../domain';
+import { ChatMessageDto, InputChatDto, OutputChatDto } from '../../../domain';
 import type { ChatRole } from '../../../domain';
 import { AnamnesisDtoImpl } from '../../consulta/dto/consulta-completa.dto';
 import { normalizeAnamnesisPayload } from '../../consulta/dto/anamnesis-normalizer';
@@ -14,7 +14,7 @@ export class ChatMessageDtoImpl implements ChatMessageDto {
   content!: string;
 }
 
-export class AnamnesisChat_RequestDtoImpl implements AnamnesisChat_RequestDto {
+export class InputChatDtoImpl implements InputChatDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ChatMessageDtoImpl)
@@ -29,7 +29,7 @@ export class AnamnesisChat_RequestDtoImpl implements AnamnesisChat_RequestDto {
   anamnesis!: AnamnesisDtoImpl;
 }
 
-export class AnamnesisChat_ResponseDtoImpl implements AnamnesisChat_ResponseDto {
+export class OutputChatDtoImpl implements OutputChatDto {
   @IsString()
   @IsNotEmpty()
   reply!: string;

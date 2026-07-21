@@ -1,6 +1,10 @@
-import { ConsultaCompletaDto } from '../../domain/dtos/consulta-completa.dto';
+//DOMAIN
+import { ConsultaCompletaDto, EstiloVidaSaludableDto } from '../../domain/dtos/consulta-completa.dto';
 import { Requerimientos } from '../../domain/services/formulas/requerimientos.service';
 import { PORCIONES_GRUPOS_ALIMENTOS } from '../../domain/services/alimentos/porciones-alimentos';
+import { SupplementsPrescription } from '../../domain/services/formulas/suplementos.service';
+import { SESIONES_DEPORTIVAS, recomendacionSesionDeportiva } from '../../domain/services/formulas/sesion-deportiva.service';
+
 
 export const NUTRICIONISTA_SYSTEM_PROMPT = `Eres un nutricionista experto en nutrición deportiva.
 Tu tarea es analizar la información de una consulta (anamnesis y evaluación física de un paciente)
@@ -53,17 +57,21 @@ EXACTAMENTE la siguiente estructura:
   ],
   "suplementos": [
     {
-      "suplemento": string | null,
-      "recomendacion": string | null
+      supplement: string,
+      requirement: number,
+      dosageIndication: string,
+      intakeIndication: string,
+      effects: string[],
+      considerations: string[],
     }
   ],
   "recomendaciones_deportivas": [
     {
-      "sesion": string | null,
-      "estrategia": string | null,
-      "pre_actividad": string | null,
-      "durante_actividad": string | null,
-      "post_actividad": string | null
+      "sesion": string,
+      "estrategia": string,
+      "pre_actividad": string,
+      "durante_actividad": string,
+      "post_actividad": string
     }
   ]
 }
@@ -71,7 +79,7 @@ EXACTAMENTE la siguiente estructura:
 No incluyas el campo "informacion_personal": ese campo se completa aparte, fuera de tu respuesta.
 No incluyas ningún texto fuera del objeto JSON.`;
 
-// TODO: reemplazar por las reglas definitivas para calcular el régimen del paciente.
+
 const PRESCRIPCION_PROMPT = `
 ### Prescripción
 Determina el régimen del paciente en base a tu criterio como nutricionista deportivo,
@@ -149,23 +157,140 @@ exactamente las cantidades de porciones indicadas en "alimentos".
 // TODO: reemplazar por las reglas definitivas para recomendar (o no) suplementos
 // deportivos según el objetivo, tipo de entrenamiento y los suplementos ya
 // declarados por el paciente en la estrategia deportiva.
-const SUPLEMENTOS_PROMPT = `
+function buildSuplementosPrompt(supplementsPrescription: SupplementsPrescription): string {
+  return `
 ### Suplementos
-Determina qué suplementos recomendar y sus indicaciones de uso.
-Por ahora, entrega recomendaciones generales en base a la estrategia_deportiva y
-los objetivos declarados por el paciente.
-`;
 
-// TODO: reemplazar por las reglas definitivas para construir las recomendaciones
-// antes, durante y después de cada sesión de entrenamiento, según el tipo,
-// frecuencia y duración de las sesiones reportadas.
-const RECOMENDACIONES_DEPORTIVAS_PROMPT = `
-### Recomendaciones deportivas
-Determina las recomendaciones deportivas asociadas a las sesiones de entrenamiento
-del paciente.
-Por ahora, entrega recomendaciones generales en base a la sesion_entrenamiento y la
-estrategia_deportiva declaradas.
+Debes decidir qué suplementos del objeto "supplementsPrescription" (entregado más abajo, en la sección
+"Suplementos disponibles") incluir en el campo 'suplementos' del objeto JSON definido como output.
+
+El campo 'deporte' de la consulta (dentro de anamnesis.estilo_vida.deporte) es una LISTA de disciplinas
+deportivas practicadas por el paciente. Evalúa CADA disciplina de la lista, por separado, contra los
+criterios de inclusión de cada suplemento: si al menos una disciplina de la lista cumple el criterio de
+un suplemento, ese suplemento debe incluirse. Pueden calificar varios suplementos a la vez (si distintas
+disciplinas de la lista cumplen criterios de distintos suplementos), o ninguno.
+
+NO calcules ni estimes los valores de dosificación: usa EXACTAMENTE los objetos entregados en
+"Suplementos disponibles" (campos requirement, dosageIndication, intakeIndication, effects,
+considerations), ya que corresponden a valores ya calculados para este paciente.
+
+Si el campo 'deporte' es null, está vacío, o ninguna disciplina de la lista cumple ningún criterio de
+inclusión, el campo 'suplementos' del output debe ser una lista vacía [].
+
+CRITERIOS
+-Creatina - criterios de inclusión:
+  --Esfuerzos máximos individuales de alta intensidad y corta duración (<30s) como pruebas de velocidad
+   (100 y 200 metros planos) o entrenamientos de fuerza (levantamiento de pesas en el gimnasio o halterofilia).
+  --Ejercicios de resistencia (como maratón) que involucren sprints de alta intensidad durante o al final de
+    una rutina de entrenamiento o competencia.
+  --Deportes que involucran rafagas repetidas de esfuerzos de alta intensidad, como deportes de equipo como futbol,
+    basquetball, rugby, hockey, o deportes individuales como tenis.
+  --Para favorecer la recuperación en periodos de pérdida muscular por desuso, como en casos de lesiones o inmovilización.
+-Cafeina - criterios de inclusión:
+  --Deportes de resistencia sobre 60 minutos, como ciclismo o running.
+  --Deportes breves y sostenidos de alta intensidad como remo (1-60 minutos)
+  --Deportes de equipo intermitentes, como futbol, hockey, rugby, basquetball.
+  --Esfuerzos únicos que involucran fuerza o potencia, como halterofilia o levantamiento de pesas.
+-Nitrato - criterios de inclusión:
+  --Ejercicios prolongados de resistenciaa de 4-30min, como running o ciclismo.
+  --Deportes intermitentes de alta intensidad y corta duración, como deportes de equipo como futbol, rugby, hockey.
+  --En exposición a condiciones de hipoxia, como entrenamiento en altitud.
+-Bicarbonato - criterios de inclusión:
+  --Eventos de alta intensidad de 1-7min, donde la acumulación de ácido comienza a causar fatiga, como remo, natación y 
+    carreras de mediana distancia como 800 y 1500 metros en atletismo.
+  --Deportes de combate, equipo o raqueta que implican esfuerzos repetitivos de alta intensidad.
+  --Deportes de resistencia donde la etapa final implica un amento de la intensidad o remate.
+
+Por ejemplo: Si la lista 'deporte' contiene '100 metros planos', se debe incluir la información del
+suplemento creatina, ya que '100 metros planos' coincide con uno de los criterios de aceptación de
+creatina, que dice 'Esfuerzos máximos individuales de alta intensidad y corta duración (<30s) como
+pruebas de velocidad'. Los 100 metros planos son una prueba de velocidad de alta intensidad, por lo
+que este criterio cumple a la perfección. En ese caso, debes incluir el objeto 'creatina' que viene
+en "Suplementos disponibles", dentro del campo 'suplementos' del output definido que será devuelto.
+
+Por cada suplemento que cumpla los criterios de aceptación, incluye su objeto supplementPrescription dentro
+de la lista de la propiedad 'suplementos' del JSON estructurado que cumple con la estructura de PlanNutricionalDto.
+
+### Suplementos disponibles
+${JSON.stringify(supplementsPrescription, null, 2)}
 `;
+}
+
+// El catálogo completo de códigos de sesión deportiva (SESIONES_DEPORTIVAS).
+const CATALOGO_SESIONES_DEPORTIVAS = [
+  ...SESIONES_DEPORTIVAS.entrenamiento,
+  ...SESIONES_DEPORTIVAS.competencia,
+];
+
+// El chat de anamnesis (ver anamnesis.service.ts) usa este objeto sentinela para dejar constancia de
+// que el paciente no practica ningún deporte, en vez de dejar sesion_deportiva en null.
+function esSesionSentinelaSinDeporte(sesion: NonNullable<EstiloVidaSaludableDto['sesion_deportiva']>[number]): boolean {
+  return sesion.tipo_evento === 'no aplica';
+}
+
+// Para cada sesión deportiva declarada por el paciente, precalcula -EN CÓDIGO, no en el LLM- la
+// recomendación que le correspondería a CADA código del catálogo, usando la duración real de esa
+// sesión. recomendacionSesionDeportiva() es una función determinística (tabla de indicaciones +
+// cálculo de gramos de carbohidrato por hora); el modelo no puede "ejecutarla" a través de un prompt
+// de JSON mode plano (sin function/tool calling), así que el cálculo se hace acá y solo se le entrega
+// el resultado ya resuelto, igual que se hace con "Suplementos disponibles" más arriba.
+function buildSesionesDeportivasInfo(sesionesDeportivas: EstiloVidaSaludableDto['sesion_deportiva']) {
+  const sesionesReales = (sesionesDeportivas ?? []).filter((s) => !esSesionSentinelaSinDeporte(s));
+  if (sesionesReales.length === 0) return [];
+
+  return sesionesReales.map((sesion) => ({
+    sesion_declarada_por_paciente: sesion,
+    opciones_de_codigo: CATALOGO_SESIONES_DEPORTIVAS.map((catalogo) => ({
+      codigo: catalogo.codigo,
+      tipo: catalogo.tipo,
+      descripcion: catalogo.descripcion,
+      disciplina: catalogo.disciplina,
+      duracion: catalogo.duracion,
+      intensidad: catalogo.intensidad,
+      recomendacion_para_esta_sesion: recomendacionSesionDeportiva(catalogo.codigo, sesion.duracion ?? 0),
+    })),
+  }));
+}
+
+function buildRecomendacionesDeportivasPrompt(sesionesDeportivas: EstiloVidaSaludableDto['sesion_deportiva']): string {
+  const sesionesReales = (sesionesDeportivas ?? []).filter((s) => !esSesionSentinelaSinDeporte(s));
+  if (sesionesReales.length === 0) {
+    return `
+### Recomendaciones deportivas
+El paciente no tiene sesiones deportivas registradas (anamnesis.estilo_vida.sesion_deportiva vacío, null,
+o marcado como "sin sesiones deportivas"). En ese caso, "recomendaciones_deportivas" del output debe ser
+una lista vacía [].
+`;
+  }
+
+  return `
+### Recomendaciones deportivas
+
+Debes generar un objeto de "recomendaciones_deportivas" por cada sesión deportiva del paciente. Más abajo,
+en "Sesiones deportivas y opciones de código", se entrega para CADA sesión declarada por el paciente
+("sesion_declarada_por_paciente") la lista completa de códigos del catálogo SESIONES_DEPORTIVAS
+("opciones_de_codigo"), y para cada código ya viene calculada la recomendación que le correspondería a esa
+sesión (campo "recomendacion_para_esta_sesion", con los valores exactos de sesion, estrategia,
+pre_actividad, durante_actividad y post_actividad).
+
+Para cada sesión del paciente:
+1. Compara "sesion_declarada_por_paciente" contra la descripción de cada elemento de "opciones_de_codigo"
+   (campos tipo, descripcion, disciplina, duracion, intensidad), y elige el código que mejor se adecúe,
+   basándote principalmente en si es entrenamiento o competencia, la duración y la disciplina.
+2. Copia EXACTAMENTE los valores de "recomendacion_para_esta_sesion" del código elegido a los campos
+   "estrategia", "pre_actividad", "durante_actividad" y "post_actividad" del objeto de salida. NO calcules,
+   inventes ni modifiques estos valores: ya fueron calculados y son la base obligatoria de la recomendación.
+3. Completa el campo "sesion" con una breve descripción de la sesión del paciente, ej "entrenamiento de
+   pesas" o "entrenamiento de hockey - acondicionamiento".
+
+Para cada objeto de "recomendaciones_deportivas" generado, los campos "sesion", "estrategia",
+"pre_actividad", "durante_actividad" y "post_actividad" son OBLIGATORIOS: deben completarse siempre,
+sin dejar ninguno vacío ni en null.
+
+### Sesiones deportivas y opciones de código
+${JSON.stringify(buildSesionesDeportivasInfo(sesionesDeportivas), null, 2)}
+`;
+}
 
 export const EXTRAER_INFO_SYSTEM_PROMPT = `Eres un asistente experto en nutrición deportiva encargado de clasificar
 información de una consulta.
@@ -207,7 +332,7 @@ ${JSON.stringify(
 )}`;
 }
 
-export function buildUserPrompt(consulta: ConsultaCompletaDto, requerimientos: Requerimientos): string {
+export function buildUserPrompt(consulta: ConsultaCompletaDto, requerimientos: Requerimientos, supplementsPrescription: SupplementsPrescription): string {
   return `A continuación se entrega la información de la consulta de un paciente. Genera el plan
 nutricional siguiendo estas instrucciones para cada sección:
 
@@ -215,9 +340,9 @@ ${PRESCRIPCION_PROMPT}
 
 ${TIEMPOS_DE_COMIDA_PROMPT}
 
-${SUPLEMENTOS_PROMPT}
+${buildSuplementosPrompt(supplementsPrescription)}
 
-${RECOMENDACIONES_DEPORTIVAS_PROMPT}
+${buildRecomendacionesDeportivasPrompt(consulta.anamnesis?.estilo_vida?.sesion_deportiva ?? null)}
 
 ### Grupos de porciones de alimentos
 Para cada campo del objeto "alimentos" de un tiempo de comida, esta es la información del grupo/subcategoría

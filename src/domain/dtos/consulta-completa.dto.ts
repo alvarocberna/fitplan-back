@@ -1,5 +1,4 @@
 
-//Información Personal
 export interface InformacionPersonalDto {
     rut: number | null
     dv_rut: string | null
@@ -9,11 +8,9 @@ export interface InformacionPersonalDto {
     apellido_materno: string | null
     genero: string | null
     correo: string | null
-    // celular: number | null
     fecha_nacimiento: Date | null
 }
 
-//Anamnesis
 export interface ObjetivosDto{
     objetivo_principal: string | null
     objetivo_secundario: string[] | null
@@ -65,7 +62,16 @@ export interface EstiloVidaSaludableDto {
     tabaco: string | null
     nivel_actividad_fisica: string | null
     deporte: string[] | null
-    sesion_entrenamiento: string[] | null
+    // sesion_entrenamiento: string[] | null,
+    sesion_deportiva: {
+        descripcion: string | null,
+        disciplina: string | null,
+        duracion: number | null,
+        intensidad: string | null,
+        tipo_evento: string | null, //entrenamiento o competencia
+        dias: string | null,
+        horario: string | null,
+    }[] | null
 }
 
 export interface AnamnesisDto {
@@ -75,43 +81,13 @@ export interface AnamnesisDto {
     estilo_vida: EstiloVidaSaludableDto | null
 }
 
-//Evaluación fisica
 export interface MedicionesDto {
-    // básicas
     peso: number | null
     talla: number | null
-    // talla_sentado: number | null
-    // envergadura: number | null
-    // pliegues
-    // tricep: number | null
-    // subescapular: number | null
-    // bicep: number | null
-    // cresta_iliaca: number | null
-    // supraespinal: number | null
-    // abdominal: number | null
-    // muslo: number | null
-    // pierna_pli: number | null
-    // perímetros
-    // brazo_relajado: number | null
-    // brazo_flexionado: number | null
-    // cintura: number | null
-    // cadera: number | null
-    // muslo_medio: number | null
-    // pierna_per: number | null
-    // diámetros óseos
-    // humero: number | null
-    // biestiloideo: number | null
-    // femur: number | null
 }
 
-//Consulta Completa
 export interface ConsultaCompletaDto {
-    informacionPersonal: InformacionPersonalDto | null
+    informacion_personal: InformacionPersonalDto | null
     anamnesis: AnamnesisDto | null
     mediciones: MedicionesDto | null
-}
-
-//Plan nutricional
-export interface PlanNutricional {
-    aun_en_desarrollo: string | null,
 }

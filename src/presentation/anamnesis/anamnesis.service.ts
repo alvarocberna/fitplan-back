@@ -1,14 +1,14 @@
 //NEST
 import { Injectable } from '@nestjs/common';
 //PRESENTATION - ANAMNESIS
-import { AnamnesisChat_RequestDtoImpl, AnamnesisChat_ResponseDtoImpl } from './dto/anamnesis-chat.dto';
+import { InputChatDtoImpl, OutputChatDtoImpl } from './dto/anamnesis-chat.dto';
 //PRESENTATION - CONSULTA
 import { AnamnesisDtoImpl } from '../consulta/dto/consulta-completa.dto';
 import { normalizeAnamnesisPayload } from '../consulta/dto/anamnesis-normalizer';
 //PRESENTATION - OPENAI
 import { OpenaiService } from '../openai/openai.service';
 //DOMAIN
-import { AnamnesisChat_ResponseDto, AnamnesisDto } from '../../domain';
+import { OutputChatDto, AnamnesisDto } from '../../domain';
 
 
 @Injectable()
@@ -16,7 +16,7 @@ export class AnamnesisService {
   constructor(private readonly openaiService: OpenaiService) {}
 
   //método principal - recibe mensajes del user y devuelve una respuesta
-  async chat(body: AnamnesisChat_RequestDtoImpl): Promise<AnamnesisChat_ResponseDtoImpl> {
+  async chat(body: InputChatDtoImpl): Promise<OutputChatDtoImpl> {
 
     /*
       systemPrompt genera un promp que le dice a openai como actuar 
@@ -32,7 +32,7 @@ export class AnamnesisService {
     const systemPrompt = this.buildSystemPrompt(body.anamnesis ?? null);
 
     // response de openai en base al promp de instrucciones + el mensaje del user
-    let llmResponse = await this.openaiService.chatJson<AnamnesisChat_ResponseDto>(
+    let llmResponse = await this.openaiService.chatJson<OutputChatDto>(
       systemPrompt, 
       body.messages,
     );
@@ -40,7 +40,7 @@ export class AnamnesisService {
     // si el reply del responde de openai está vacío, reintentamos una vez antes de recurrir 
     // a un mensaje de resguardo, para no propagar un mensaje vacío al historial de la conversación
     if (!llmResponse.reply?.trim()) {
-      llmResponse = await this.openaiService.chatJson<AnamnesisChat_ResponseDto>(
+      llmResponse = await this.openaiService.chatJson<OutputChatDto>(
         systemPrompt, 
         body.messages
       );
@@ -88,7 +88,25 @@ export class AnamnesisService {
       //estilo de vida
       anamnesis.estilo_vida?.nivel_actividad_fisica != null &&
       (anamnesis.estilo_vida?.deporte?.length ?? 0) > 0 &&
-      (anamnesis.estilo_vida?.sesion_entrenamiento?.length ?? 0) > 0
+      this.sesionesDeportivasCompletas(anamnesis.estilo_vida?.sesion_deportiva ?? null)
+    );
+  }
+
+  // valida que exista al menos una sesion_deportiva y que CADA una tenga sus 7 campos
+  // completos (no basta con que el array no esté vacío)
+  private sesionesDeportivasCompletas(
+    sesiones: NonNullable<AnamnesisDto['estilo_vida']>['sesion_deportiva'],
+  ): boolean {
+    if (!sesiones || sesiones.length === 0) return false;
+    return sesiones.every(
+      (s) =>
+        s.descripcion != null &&
+        s.disciplina != null &&
+        s.duracion != null &&
+        s.intensidad != null &&
+        s.tipo_evento != null &&
+        s.dias != null &&
+        s.horario != null,
     );
   }
 
@@ -163,9 +181,23 @@ export class AnamnesisService {
       "estilo_vida": {
         "alcohol": string | null,
         "tabaco": string | null,
-        "nivel_actividad_fisica": string | null
-        "deporte": string[] | null,
-        "sesion_entrenamiento": string[] | null
+        "nivel_actividad_fisica": string | null,
+        "deporte": string[] | null, // NUNCA null una vez abordada la sección; si el paciente no practica ningún deporte, usa ["ninguno"]
+        "sesion_deportiva": [
+          /* null solo mientras aún no se aborda la sección "estilo de vida"; una vez abordada, NUNCA debe
+             quedar null: incluye un objeto por cada sesión deportiva distinta, o -si el paciente no practica
+             ningún deporte- un único objeto sentinela indicando esa situación (ver más abajo). Sus 7 campos
+             son SIEMPRE obligatorios, nunca null. */
+          {
+            "descripcion": string, // ej "sesión de gimnasio de mediana intensidad de 60 minutos"
+            "disciplina": string, // ej "hockey césped"
+            "duracion": number, // duración de la sesión en minutos, ej 60
+            "intensidad": string, // SOLO uno de: "baja" | "moderada-baja" | "moderada" | "moderada-alta" | "alta" | "muy alta"
+            "tipo_evento": string, // SOLO uno de: "entrenamiento" | "competencia"
+            "dias": string, // ej "lunes", "lunes, miércoles y viernes", "3 veces por semana cada 1 o 2 días"
+            "horario": string // ej "10am", "mañana", "17pm", "tarde", "tarde noche"
+          }
+        ] | null
       }
     }
 
@@ -224,21 +256,54 @@ export class AnamnesisService {
         bajo una clave con su nombre.
         Correcto:   { "tiempo_de_comida": "desayuno", "carbohidrato": "...", "fruta": null, ... }
         Incorrecto: { "desayuno": { "tiempo_de_comida": "desayuno", "carbohidrato": "...", ... } }
+      - IMPORTANTE: 'estrategia_deportiva' NUNCA puede quedar en null una vez abordada esta sección, incluso si
+        el paciente no usa suplementos ni sigue ninguna estrategia especial antes/durante/después de entrenar.
+        En ese caso, igual crea el objeto con cada campo en null (o "ninguno" si el paciente lo mencionó
+        explícitamente) en vez de omitir el objeto completo.
 
 
     4. ESTILO DE VIDA SALUDABLE
       - Transición: "¡Excelente! Ahora ahondaremos en tus hábitos, actividad física y deportes que realizas"
       - Pregunta inicial: Inicia realizando una pregunta abierta que aborde temas como hábitos saludables y deporte, como 
       por ejemplo "¿Eres una persona físicamente activa? ¿Sueles consumir alcohol o fumar? ¿realizas algún deporte?"
-      - Si el usuario si realiza deporte, ahondar en sus sesiones de entrenamiento.
+      - Si el usuario si realiza deporte, ahondar en sus sesiones deportivas (entrenamientos y/o competencias).
+      - IMPORTANTE: 'deporte' NUNCA puede quedar en null una vez abordada esta sección, incluso si el paciente
+        NO practica ningún deporte. En ese caso, completa el campo con el array ["ninguno"] en vez de dejarlo
+        vacío o en null. Si el paciente sí practica uno o más deportes, lista cada uno como un elemento del array
+        (ej. ["running", "hockey césped"]).
       - IMPORTANTE: Para el campo 'nivel_actividad_fisica' debes determinar si es sedentario, moderado o activo. Para determinar esto
         considera las actividades que representan actividad física en el día como caminar, subir escaleras, entre otros. No consideres
         la realización de algún deporte como un factor incluyente en el nivel de actividad física. Por ejemplo, una persona que trabaja
         sentada todo el día y en la noche va al gimnasio o a realizar otro deporte, se clasifica como sedentaria. Otro ejemplo: una persona
         que se desplaza caminando a todas partes pero no hace ningún deporte, se considera como moderada.
+      - Para 'sesion_deportiva', registra un objeto por cada sesión deportiva distinta (entrenamiento o competencia)
+        que mencione el usuario. Si el paciente practica deporte, sus 7 campos son OBLIGATORIOS: no des la sección
+        por completa ni dejes ningún campo en null hasta tener información para cada uno. Complétalos así:
+        * 'descripcion': breve descripción de la sesión que incluya el deporte/disciplina, la duración y la
+          intensidad. Ej: "sesión de gimnasio de mediana intensidad de 60 minutos" o "sesión de entrenamiento de
+          hockey en cancha, intensidad media, duración de 1 hora".
+        * 'disciplina': disciplina específica practicada. Ej: "hockey césped".
+        * 'duracion': duración de la sesión en minutos, SIEMPRE como number (nunca string). Ej: 60.
+        * 'intensidad': usa EXCLUSIVAMENTE uno de estos valores: "baja", "moderada-baja", "moderada",
+          "moderada-alta", "alta", "muy alta".
+        * 'tipo_evento': usa EXCLUSIVAMENTE uno de estos dos valores: "entrenamiento" o "competencia".
+        * 'dias': día o días en que se repite la sesión; no tiene formato fijo, el objetivo es capturar la
+          frecuencia. Ej: "lunes", "lunes, miércoles y viernes", "3 veces por semana cada 1 o 2 días".
+        * 'horario': hora específica o momento del día. Ej: "10am", "mañana", "17pm", "tarde", "tarde noche".
+        Si el paciente tiene sesiones con características distintas (ej. entrenamientos entre semana y partidos el
+        fin de semana, o más de una disciplina), registra una entrada separada en 'sesion_deportiva' por cada una.
+      - IMPORTANTE: 'sesion_deportiva' NUNCA puede quedar en null, incluso si el paciente NO practica ningún
+        deporte. En ese caso, completa el array con UN único objeto sentinela que indique explícitamente esa
+        situación, usando estos valores exactos:
+        { "descripcion": "sin sesiones deportivas", "disciplina": "no aplica", "duracion": 0,
+          "intensidad": "no aplica", "tipo_evento": "no aplica", "dias": "no aplica", "horario": "no aplica" }
       - Preguntas guía (usa estas frases o variaciones naturales):
         * "¿Qué deporte o deportes practicas actualmente?"
-        * "Cuéntame sobre tus sesiones de entrenamiento: ¿cuántos días entrenas a la semana, cuánto dura cada sesión y qué tipo de entrenamiento realizas?"
+        * "Cuéntame sobre tus sesiones deportivas: ¿qué disciplina es, cuántos días a la semana entrenas o compites,
+          a qué hora, cuánto dura cada sesión y con qué intensidad?"
+        * Si falta algún campo puntual tras la respuesta abierta, pregunta directamente por él, ej "¿Con qué
+          intensidad dirías que entrenas: baja, moderada o alta?" o "¿Es un entrenamiento o participas también en
+          competencias?"
         * "¿Consumes alcohol con frecuencia? Si es así, ¿aproximadamente cuánto y con qué regularidad?"
         * "¿Fumas o usas tabaco de algún tipo?"
 
@@ -253,8 +318,12 @@ export class AnamnesisService {
       6. alimentaria.r24h (al menos un tiempo de comida)
       7. alimentaria.estrategia_deportiva
       8. estilo_vida.nivel_actividad_fisica
-      9. estilo_vida.deporte (al menos un elemento)
-      10. estilo_vida.sesion_entrenamiento (al menos un elemento)
+      9. estilo_vida.deporte: al menos un elemento. Si el paciente no practica deporte, usa ["ninguno"] en vez
+          de dejar el array vacío o en null.
+      10. estilo_vida.sesion_deportiva: al menos un elemento, y CADA elemento con sus 7 campos completos
+          (descripcion, disciplina, duracion, intensidad, tipo_evento, dias, horario) — ninguno puede quedar en
+          null. Si el paciente no practica deporte, usa el objeto sentinela descrito en la sección 4
+          (ESTILO DE VIDA SALUDABLE) en vez de dejar el array vacío o en null.
 
     Mientras falte alguno de estos campos obligatorios, "isComplete" debe ser false. Los demás campos
     del esquema (antecedentes_morbidos_familiares, antecedentes_gastrointestinales, deposiciones,
@@ -314,7 +383,7 @@ export class AnamnesisService {
         cirugias: null,
       },
       alimentaria: { r24h: null, estrategia_deportiva: null },
-      estilo_vida: { alcohol: null, tabaco: null, nivel_actividad_fisica: null, deporte: null, sesion_entrenamiento: null },
+      estilo_vida: { alcohol: null, tabaco: null, nivel_actividad_fisica: null, deporte: null, sesion_deportiva: null },
     };
   }
 }

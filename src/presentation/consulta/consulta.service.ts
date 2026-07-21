@@ -5,6 +5,7 @@ import { ConsultaCompletaDto } from '../../domain/dtos/consulta-completa.dto';
 import { PlanNutricionalDto } from '../../domain/dtos/plan-nutricional.dto';
 import { calcularEdad } from '../../domain/services/utils/edad.service';
 import { calculoRequerimientos } from '../../domain/services/formulas/requerimientos.service';
+import { calculoSuplementos } from '../../domain/services/formulas/suplementos.service';
 //OPENAI
 import { OpenaiService } from '../openai/openai.service';
 //PRESENTATION - CONSULTA
@@ -35,17 +36,19 @@ export class ConsultaService {
     //se extrae informacion del body
     const peso:number = body.mediciones?.peso!;
     const talla:number = body.mediciones?.talla!;
-    const sexo:string = body.informacionPersonal?.genero?.charAt(0).toUpperCase()!;
-    const fechaNacimiento = body.informacionPersonal?.fecha_nacimiento!;
+    const sexo:string = body.informacion_personal?.genero?.charAt(0).toUpperCase()!;
+    const fechaNacimiento = body.informacion_personal?.fecha_nacimiento!;
     const edad = calcularEdad(fechaNacimiento);
     // calculo de requerimientos nutricionales
     const requerimientos = calculoRequerimientos({
       peso: peso, talla: talla, sexo: sexo, edad: edad, nivel_actividad_fisica: nivel_actividad_fisica, objetivo: objetivo
     })
+    // calculo de prescripción de suplementos
+    const supplementsPrescription = calculoSuplementos(peso)
     //el service de opanai recibe un promp con instrucciones para generar el plan + la información de este
     const planGenerado = await this.openaiService.chatJson<PlanNutricionalGenerado>(
       NUTRICIONISTA_SYSTEM_PROMPT, //promp con instrucciones
-      [{ role: 'user', content: buildUserPrompt(body, requerimientos) }], //data consulta + requerimientos
+      [{ role: 'user', content: buildUserPrompt(body, requerimientos, supplementsPrescription) }], //data consulta + requerimientos
     );
 
     //return
@@ -61,7 +64,7 @@ export class ConsultaService {
   private construirInformacionPersonal(
     body: ConsultaCompletaDto,
   ): PlanNutricionalDto['informacion_personal'] {
-    const info = body.informacionPersonal;
+    const info = body.informacion_personal;
 
     const nombre = [info?.nombre_primero, info?.nombre_segundo].filter(Boolean).join(' ');
     const apellido = [info?.apellido_paterno, info?.apellido_materno].filter(Boolean).join(' ');

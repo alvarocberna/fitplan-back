@@ -193,6 +193,36 @@ export class AnamnesisAlimentariaDtoImpl implements AnamnesisAlimentariaDto {
   estrategia_deportiva!: EstrategiaDeportivaDtoImpl;
 }
 
+export class SesionDeportivaDtoImpl {
+  @IsString()
+  @IsOptional()
+  descripcion!: string | null;
+
+  @IsString()
+  @IsOptional()
+  disciplina!: string | null;
+
+  @IsNumber()
+  @IsOptional()
+  duracion!: number | null;
+
+  @IsString()
+  @IsOptional()
+  intensidad!: string | null;
+
+  @IsString()
+  @IsOptional()
+  tipo_evento!: string | null;
+
+  @IsString()
+  @IsOptional()
+  dias!: string | null;
+
+  @IsString()
+  @IsOptional()
+  horario!: string | null;
+}
+
 export class EstiloVidaSaludableDtoImpl implements EstiloVidaSaludableDto {
   @IsString()
   @IsOptional()
@@ -211,10 +241,10 @@ export class EstiloVidaSaludableDtoImpl implements EstiloVidaSaludableDto {
   @IsOptional()
   deporte!: string[] | null;
 
-  @IsArray()
-  @IsString({ each: true })
+  @ValidateNested({ each: true })
+  @Type(() => SesionDeportivaDtoImpl)
   @IsOptional()
-  sesion_entrenamiento!: string[] | null;
+  sesion_deportiva!: SesionDeportivaDtoImpl[] | null;
 }
 
 export class AnamnesisDtoImpl implements AnamnesisDto {
@@ -307,7 +337,7 @@ export class MedicionesDtoImpl implements MedicionesDto {
 export class ConsultaCompletaDtoImpl implements ConsultaCompletaDto {
   @ValidateNested()
   @Type(() => InformacionPersonalDtoImpl)
-  informacionPersonal!: InformacionPersonalDtoImpl | null;
+  informacion_personal!: InformacionPersonalDtoImpl | null;
 
   @ValidateNested()
   @Type(() => AnamnesisDtoImpl)
