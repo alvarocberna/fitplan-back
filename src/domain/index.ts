@@ -2,6 +2,7 @@
 export * from './dtos/anamnesis-chat.dto';
 export * from './dtos/consulta-completa.dto';
 export * from './dtos/plan-nutricional.dto';
+export * from './dtos/orden.dto';
 //formulas
 export * from './services/formulas/imc.service';
 export * from './services/formulas/suma-pliegues.service';

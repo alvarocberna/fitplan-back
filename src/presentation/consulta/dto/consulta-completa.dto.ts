@@ -11,6 +11,7 @@ import {
   Comida,
   EstrategiaDeportiva,
   ObjetivosDto,
+  GrupoPreferenciasAlimentarias,
 } from '../../../domain';
 
 export class InformacionPersonalDtoImpl implements InformacionPersonalDto {
@@ -181,11 +182,41 @@ export class EstrategiaDeportivaDtoImpl implements EstrategiaDeportiva {
   comida_post_actividad!: string | null;
 }
 
+export class GrupoPreferenciasAlimentariasDtoImpl implements GrupoPreferenciasAlimentarias {
+  @IsString()
+  grupo!: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  consumoFrecuente!: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  consumoOcasional!: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  consumoRaro!: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  alimentosEvitados!: string[];
+}
+
 export class AnamnesisAlimentariaDtoImpl implements AnamnesisAlimentariaDto {
   @ValidateNested({ each: true })
   @Type(() => ComidaDtoImpl)
   @IsOptional()
   r24h!: ComidaDtoImpl[] | null;
+
+  @ValidateNested({ each: true })
+  @Type(() => GrupoPreferenciasAlimentariasDtoImpl)
+  @IsOptional()
+  grupo_preferencias_alimentarias!: GrupoPreferenciasAlimentariasDtoImpl[] | null;
 
   @ValidateNested()
   @Type(() => EstrategiaDeportivaDtoImpl)

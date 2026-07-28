@@ -1,4 +1,4 @@
-import { EvaClasificacion } from 'generated/prisma';
+import { EvaClasificacion } from './clasificaciones.enum';
 import {Suma6p, Suma6pType} from './suma-pliegues.service';
 
 type FaulknerType = {

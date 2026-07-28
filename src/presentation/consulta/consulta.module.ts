@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { OpenaiModule } from '../openai/openai.module';
 import { ConsultaService } from './consulta.service';
 import { ConsultaController } from './consulta.controller';
+import { OpenaiModule } from '../openai/openai.module';
 
 @Module({
   imports: [OpenaiModule],

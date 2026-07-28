@@ -1,5 +1,4 @@
-//prisma
-import { EvaClasificacion } from 'generated/prisma';
+import { EvaClasificacion } from './clasificaciones.enum';
 
 type ImmType = {
     peso: number

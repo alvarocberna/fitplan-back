@@ -5,6 +5,7 @@ import {
   AnamnesisClinicaDtoImpl,
   AnamnesisAlimentariaDtoImpl,
   ComidaDtoImpl,
+  GrupoPreferenciasAlimentariasDtoImpl,
   EstrategiaDeportivaDtoImpl,
   EstiloVidaSaludableDtoImpl,
   SesionDeportivaDtoImpl,
@@ -120,6 +121,25 @@ function normalizeClinica(raw: unknown): AnamnesisClinicaDtoImpl | null {
   });
 }
 
+function normalizeGrupoPreferenciaAlimentaria(raw: unknown): GrupoPreferenciasAlimentariasDtoImpl | null {
+  if (!isPlainObject(raw)) return null;
+  return plainToInstance(GrupoPreferenciasAlimentariasDtoImpl, {
+    grupo: toStringOrNull(raw.grupo) ?? '',
+    consumoFrecuente: toStringArrayOrNull(raw.consumoFrecuente) ?? [],
+    consumoOcasional: toStringArrayOrNull(raw.consumoOcasional) ?? [],
+    consumoRaro: toStringArrayOrNull(raw.consumoRaro) ?? [],
+    alimentosEvitados: toStringArrayOrNull(raw.alimentosEvitados) ?? [],
+  });
+}
+
+function normalizeGrupoPreferenciasAlimentarias(raw: unknown): GrupoPreferenciasAlimentariasDtoImpl[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const result = raw
+    .map(normalizeGrupoPreferenciaAlimentaria)
+    .filter((g): g is GrupoPreferenciasAlimentariasDtoImpl => g !== null);
+  return result.length ? result : null;
+}
+
 function normalizeEstrategiaDeportiva(raw: unknown): EstrategiaDeportivaDtoImpl | null {
   if (!isPlainObject(raw)) return null;
   return plainToInstance(EstrategiaDeportivaDtoImpl, {
@@ -135,6 +155,7 @@ function normalizeAlimentaria(raw: unknown): AnamnesisAlimentariaDtoImpl | null 
   if (!isPlainObject(raw)) return null;
   return plainToInstance(AnamnesisAlimentariaDtoImpl, {
     r24h: normalizeR24h(raw.r24h),
+    grupo_preferencias_alimentarias: normalizeGrupoPreferenciasAlimentarias(raw.grupo_preferencias_alimentarias),
     estrategia_deportiva: normalizeEstrategiaDeportiva(raw.estrategia_deportiva),
   });
 }

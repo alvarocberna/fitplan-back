@@ -1,4 +1,4 @@
-import { IMCClasificacion } from 'generated/prisma';
+import { IMCClasificacion } from './clasificaciones.enum';
 
 type ImcType = {
     peso: number

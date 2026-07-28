@@ -29,6 +29,7 @@ export interface AnamnesisClinicaDto {
 
 export interface AnamnesisAlimentariaDto {
     r24h: Comida[] | null,
+    grupo_preferencias_alimentarias: GrupoPreferenciasAlimentarias[] | null,
     estrategia_deportiva: EstrategiaDeportiva | null,
 }
 
@@ -47,6 +48,14 @@ export interface Comida {
     aceite: string | null
     azucar: string | null
     alcohol: string | null
+}
+
+export interface GrupoPreferenciasAlimentarias {
+  grupo: string;
+  consumoFrecuente: string[];
+  consumoOcasional: string[];
+  consumoRaro: string[];
+  alimentosEvitados: string[];
 }
 
 export interface EstrategiaDeportiva {

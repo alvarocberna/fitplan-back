@@ -1,0 +1,30 @@
+// Prisma schema — SQLite (modo WAL activado en runtime, ver PrismaService).
+// Nota: el schema anterior (Postgres, con Usuario/Consulta/Anamnesis/...) no estaba
+// conectado a ningún módulo real de la app (no había PrismaModule/PrismaService en src),
+// por lo que se reemplaza por el mínimo necesario para la orden de cobro.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite no soporta enums nativos en Prisma, por eso estado_pago / estado_generacion
+// se modelan como String y se tipan a nivel de aplicación (ver src/domain/dtos/orden.dto.ts).
+
+model Orden {
+  id                String   @id @default(uuid())
+  correo            String
+  payload_json      String? // ConsultaCompletaDto completo (informacion_personal + anamnesis + mediciones)
+  estado_pago       String   @default("pendiente") // 'pendiente' | 'pagado'
+  estado_generacion String   @default("no_iniciado") // 'no_iniciado' | 'generando' | 'completado' | 'error'
+  plan_json         String? // PlanNutricionalDto resultante, null hasta que se genera
+  intentos          Int      @default(0)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  @@map("orden")
+}

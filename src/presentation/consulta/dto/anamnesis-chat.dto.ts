@@ -2,8 +2,8 @@ import { IsString, IsNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, ValidateNes
 import { Type, Transform } from 'class-transformer';
 import { ChatMessageDto, InputChatDto, OutputChatDto } from '../../../domain';
 import type { ChatRole } from '../../../domain';
-import { AnamnesisDtoImpl } from '../../consulta/dto/consulta-completa.dto';
-import { normalizeAnamnesisPayload } from '../../consulta/dto/anamnesis-normalizer';
+import { AnamnesisDtoImpl } from './consulta-completa.dto';
+import { normalizeAnamnesisPayload } from './anamnesis-normalizer';
 
 export class ChatMessageDtoImpl implements ChatMessageDto {
   @IsIn(['user', 'assistant'] satisfies ChatRole[])
@@ -33,6 +33,10 @@ export class OutputChatDtoImpl implements OutputChatDto {
   @IsString()
   @IsNotEmpty()
   reply!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  titleReply!: string;
 
   @ValidateNested()
   @Type(() => AnamnesisDtoImpl)
