@@ -105,13 +105,11 @@ export class GeneracionPlanService {
       somatotipo: somatotipo,
     })
 
-    //2. Definición tiempos de comida
+    //2. Adecuación de porciones
 
-    //3. Eliminación de algunos grupos de alimentos
+    //3. Generación de ejemplos
 
-    //4. Adecuación: Proteina -> Carbos -> Lipidos -> Evaluar -> Reajustar
-
-    // calculo de prescripción de suplementos
+    //4. prescripcion de recomendaciones deportivas (por ahora solo suplementos)
     const supplementsPrescription = calculoSuplementos(peso)
 
     //generación de plan: promp + info consulta + requerimientos + prescripcion-suplementos
