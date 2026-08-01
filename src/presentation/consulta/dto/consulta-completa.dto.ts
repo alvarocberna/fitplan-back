@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsInt, IsOptional, IsEmail, IsNotEmpty, IsDateString, ValidateNested, IsArray } from 'class-validator';
+import { IsString, IsNumber, IsInt, IsOptional, IsEmail, IsNotEmpty, IsDateString, ValidateNested, IsArray, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   ConsultaCompletaDto,
@@ -39,9 +39,14 @@ export class InformacionPersonalDtoImpl implements InformacionPersonalDto {
   @IsOptional()
   apellido_materno!: string | null;
 
+  
   @IsString()
   @IsNotEmpty()
   genero!: string | null;
+
+  @IsBoolean()
+  @IsNotEmpty()
+  deportista!: boolean | null;
 
   @IsEmail()
   @IsOptional()
@@ -306,6 +311,10 @@ export class MedicionesDtoImpl implements MedicionesDto {
 
   @IsNumber()
   talla!: number | null;
+
+  @IsString()
+  @IsOptional()
+  somatotipo!: string | null;
 
   // @IsNumber()
   // talla_sentado!: number | null;

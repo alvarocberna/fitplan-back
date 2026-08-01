@@ -1,15 +1,18 @@
+//nest
 import { Injectable, Logger } from '@nestjs/common';
-import { OrdenesService } from '../ordenes/ordenes.service';
-import { EmailService } from '../notificaciones/email.service';
-//DOMAIN
+//domain
 import { ConsultaCompletaDto } from '../../domain/dtos/consulta-completa.dto';
 import { PlanNutricionalDto } from '../../domain/dtos/plan-nutricional.dto';
 import { calcularEdad } from '../../domain/services/utils/edad.service';
 import { calculoRequerimientos } from '../../domain/services/formulas/requerimientos.service';
 import { calculoSuplementos } from '../../domain/services/formulas/suplementos.service';
-//OPENAI
+//openai
 import { OpenaiService } from '../openai/openai.service';
-//PRESENTATION - GENERACION-PLAN
+//presentation - modulo ordenes
+import { OrdenesService } from '../ordenes/ordenes.service';
+//presentatation - modulo notificaciones
+import { EmailService } from '../notificaciones/email.service';
+//presentation - modulo generacion-plan (actual)
 import {
   buildExtraerInfoPrompUserMessage,
   buildUserPrompt,
@@ -40,6 +43,7 @@ export class GeneracionPlanService {
   //se dispara (sin await, "fire and forget") desde el webhook de pago una vez confirmado el cobro.
   //cualquier error queda contenido acá adentro: nunca debe tirar una unhandled rejection.
   async generarPlan(ordenId: string): Promise<void> {
+
     //guard de estado: si la orden ya está 'generando' (otro disparo concurrente) o 'completado',
     //no hace nada. Solo entra si estaba 'no_iniciado' o 'error' (reintento de un fallo previo).
     const puedeGenerar = await this.ordenesService.intentarIniciarGeneracion(ordenId);
@@ -83,18 +87,36 @@ export class GeneracionPlanService {
     //se extrae informacion del body
     const peso: number = body.mediciones?.peso!;
     const talla: number = body.mediciones?.talla!;
+    const somatotipo: string = body.mediciones?.somatotipo!;
     const sexo: string = body.informacion_personal?.genero?.charAt(0).toUpperCase()!;
     const fechaNacimiento = body.informacion_personal?.fecha_nacimiento!;
     const edad = calcularEdad(fechaNacimiento);
-    // calculo de requerimientos nutricionales
+    const deportista = body.informacion_personal?.deportista!;
+
+    //1. calculo de requerimientos nutricionales
     const requerimientos = calculoRequerimientos({
-      peso: peso, talla: talla, sexo: sexo, edad: edad, nivel_actividad_fisica: nivel_actividad_fisica, objetivo: objetivo
+      peso: peso, 
+      talla: talla, 
+      sexo: sexo, 
+      edad: edad, 
+      nivel_actividad_fisica: nivel_actividad_fisica, 
+      objetivo: objetivo,
+      deportista: deportista,
+      somatotipo: somatotipo,
     })
+
+    //2. Definición tiempos de comida
+
+    //3. Eliminación de algunos grupos de alimentos
+
+    //4. Adecuación: Proteina -> Carbos -> Lipidos -> Evaluar -> Reajustar
+
     // calculo de prescripción de suplementos
     const supplementsPrescription = calculoSuplementos(peso)
-    //el service de opanai recibe un promp con instrucciones para generar el plan + la información de este
+
+    //generación de plan: promp + info consulta + requerimientos + prescripcion-suplementos
     const planGenerado = await this.openaiService.chatJson<PlanNutricionalGenerado>(
-      NUTRICIONISTA_SYSTEM_PROMPT, //promp con instrucciones
+      NUTRICIONISTA_SYSTEM_PROMPT, 
       [{ role: 'user', content: buildUserPrompt(body, requerimientos, supplementsPrescription) }], //data consulta + requerimientos
     );
 

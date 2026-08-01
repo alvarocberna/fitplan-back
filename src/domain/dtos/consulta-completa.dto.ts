@@ -7,6 +7,7 @@ export interface InformacionPersonalDto {
     apellido_paterno: string | null
     apellido_materno: string | null
     genero: string | null
+    deportista: boolean | null    
     correo: string | null
     fecha_nacimiento: Date | null
 }
@@ -93,6 +94,7 @@ export interface AnamnesisDto {
 export interface MedicionesDto {
     peso: number | null
     talla: number | null
+    somatotipo: string | null
 }
 
 export interface ConsultaCompletaDto {
