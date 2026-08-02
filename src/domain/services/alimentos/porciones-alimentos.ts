@@ -124,6 +124,9 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
         subcategoria: 'Baja en grasa',
         aporte_por_porcion: {energia: 65, proteina: 11, carbohidrato: 1, lipido: 2},
         alimentos: [
+            { alimento: 'Carne', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
+            { alimento: 'Pollo', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
+            { alimento: 'Huevo', porcion: '1 unidad', gramaje: 50 },
             { alimento: 'Asiento picana', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
             { alimento: 'Filete', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
             { alimento: 'Lomo liso', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
@@ -137,7 +140,6 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
             { alimento: 'Pollo pierna', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
             { alimento: 'Pavo pierna', porcion: 'trozo de 6x6x1 cm', gramaje: 50 },
             { alimento: 'Jamón de pavo', porcion: '1 tajada', gramaje: 50 },
-            { alimento: 'Huevo', porcion: '1 unidad', gramaje: 50 },
             { alimento: 'Huevo de codorniz', porcion: '2 unidades', gramaje: 25 },
             { alimento: 'Atún en agua', porcion: '1/3 taza o 1/2 lata', gramaje: 60 },
             { alimento: 'Jurel', porcion: 'trozo de 10x6x1 cm', gramaje: 80 },
@@ -150,7 +152,7 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
             { alimento: 'Loco', porcion: '1 unidad chica', gramaje: 60 },
         ]
     },
-        {
+    {
         grupo: 'Lácteos',
         subcategoria: 'Bajo en grasas',
         aporte_por_porcion: {energia: 70, proteina: 7, carbohidrato: 10, lipido: 0},
@@ -160,7 +162,7 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
             { alimento: 'Leche en polvo descremada', porcion: '2 cucharadas colmadas o 3 cucharadas rasas', gramaje: 20 },
         ]
     },
-        {
+    {
         grupo: 'Lácteos',
         subcategoria: 'Medios en grasas',
         aporte_por_porcion: {energia: 85, proteina: 5, carbohidrato: 9, lipido: 3},
@@ -172,7 +174,7 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
             { alimento: 'Quesillo', porcion: 'rodela de 3 cm', gramaje: 60 },
         ]
     },
-        {
+    {
         grupo: 'Lácteos',
         subcategoria: 'Altos en grasas',
         aporte_por_porcion: {energia: 110, proteina: 5, carbohidrato: 9, lipido: 6},
@@ -191,7 +193,28 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
             { alimento: 'Queso crema', porcion: '3 cucharadas', gramaje: 18 },
         ]
     },
-        {
+    {
+        grupo: 'Lácteos',
+        subcategoria: 'Alto en proteina',
+        aporte_por_porcion: {energia: 102, proteina: 11.1, carbohidrato: 10.1, lipido: 1.1},
+        alimentos:  [
+            { alimento: 'Leche Protein Chocolate Loncoleche', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Leche Protein Loncoleche', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Leche Protein con Cacao Soprole', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Leche Protein Soprole', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Leche Cultivada Protein Soprole', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Leche Cultivada Protein Frutilla Soprole', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Leche Cultivada Protein Chirimoya Loncoleche', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Leche Cultivada Protein Berries Loncoleche', porcion: '1 taza', gramaje: 200 },
+            { alimento: 'Yogurt Protein Goodness Nestlé', porcion: '1 unidad', gramaje: 120 },
+            { alimento: 'Yogurt Protein Goodness Frutilla Nestlé', porcion: '1 unidad', gramaje: 120 },
+            { alimento: 'Yogurt Protein Soprole', porcion: '1 unidad', gramaje: 120 },
+            { alimento: 'Yogurt Protein Vainilla Soprole', porcion: '1 unidad', gramaje: 120 },
+            { alimento: 'Yogurt Protein Loncoleche', porcion: '1 unidad', gramaje: 120 },
+            { alimento: 'Yogurt Protein Vainilla Loncoleche', porcion: '1 unidad', gramaje: 120 }
+        ]
+    },
+    {
         grupo: 'Ricos en lípidos',
         subcategoria: null,
         aporte_por_porcion: {energia: 175, proteina: 5, carbohidrato: 5, lipido: 15},
@@ -243,6 +266,14 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
             { alimento: 'Manjar', porcion: '1 cucharadita', gramaje: 10 },
             { alimento: 'Jalea en polvo', porcion: '1 porción regular', gramaje: 5 },
             { alimento: 'Jugo en polvo', porcion: '1 cucharadita', gramaje: 5 },
+        ]
+    },
+    {
+        grupo: 'Suplementos',
+        subcategoria: 'proteina',
+        aporte_por_porcion: {energia: 120, proteina: 25, carbohidrato: 2, lipido: 1},
+        alimentos: [
+            { alimento: 'Whey protein', porcion: '1 scoop', gramaje: 30 },
         ]
     },
 ]

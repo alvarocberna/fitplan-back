@@ -93,7 +93,7 @@ export class GeneracionPlanService {
     const edad = calcularEdad(fechaNacimiento);
     const deportista = body.informacion_personal?.deportista!;
 
-    //1. calculo de requerimientos nutricionales
+    //Cálculo de requerimientos nutricionales (PASO 1 DOC) 
     const requerimientos = calculoRequerimientos({
       peso: peso, 
       talla: talla, 
@@ -105,15 +105,12 @@ export class GeneracionPlanService {
       somatotipo: somatotipo,
     })
 
-    //2. Adecuación de porciones
-
-    //3. Generación de ejemplos
-
-    //4. prescripcion de recomendaciones deportivas (por ahora solo suplementos)
+    //Suplementos deportivos (PASO 5)
     const supplementsPrescription = calculoSuplementos(peso)
 
-    //generación de plan: promp + info consulta + requerimientos + prescripcion-suplementos
-    const planGenerado = await this.openaiService.chatJson<PlanNutricionalGenerado>(
+    //generación de plan (PASO 2, 3, 4 y 6 DOC)
+    //promp + info consulta + requerimientos + prescripcion-suplementos
+    const planNutricional = await this.openaiService.chatJson<PlanNutricionalGenerado>(
       NUTRICIONISTA_SYSTEM_PROMPT, 
       [{ role: 'user', content: buildUserPrompt(body, requerimientos, supplementsPrescription) }], //data consulta + requerimientos
     );
@@ -121,8 +118,8 @@ export class GeneracionPlanService {
     //return
     return {
       informacion_personal: this.construirInformacionPersonal(body),
-      ...planGenerado,
-      prescripcion: { ...planGenerado.prescripcion, objetivo },
+      ...planNutricional,
+      prescripcion: { ...planNutricional.prescripcion, objetivo },
     };
   }
 

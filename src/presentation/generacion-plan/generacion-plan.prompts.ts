@@ -5,6 +5,16 @@ import { PORCIONES_GRUPOS_ALIMENTOS } from '../../domain/services/alimentos/porc
 import { SupplementsPrescription } from '../../domain/services/formulas/suplementos.service';
 import { SESIONES_DEPORTIVAS, recomendacionSesionDeportiva } from '../../domain/services/formulas/sesion-deportiva.service';
 
+/*
+INDICE
+Promp global - NUTRICIONISTA_SYSTEM_PROMPT
+Promp prescripcion (paso 2 doc) - PRESCRIPCION_PROMPT
+Codigo generacion campo alimentos (paso 3 doc)
+Promp generacion campo alimentos (paso 3 y 4 doc) - TIEMPOS_DE_COMIDA_PROMPT
+Promp con instrucciones de prescripción de suplementos (paso 5 doc)
+Promp con instrucciones de prescripción de indicaciones deportivas (paso 6 doc)
+Promp para extraer info - EXTRAER_INFO_SYSTEM_PROMPT
+*/
 
 export const NUTRICIONISTA_SYSTEM_PROMPT = `Eres un nutricionista experto en nutrición deportiva.
 Tu tarea es analizar la información de una consulta (anamnesis y evaluación física de un paciente)
@@ -80,6 +90,7 @@ No incluyas el campo "informacion_personal": ese campo se completa aparte, fuera
 No incluyas ningún texto fuera del objeto JSON.`;
 
 
+//PASO 2 DOC
 const PRESCRIPCION_PROMPT = `
 ### Prescripción
 Determina el régimen del paciente en base a tu criterio como nutricionista deportivo,
@@ -90,6 +101,8 @@ usa EXACTAMENTE los valores entregados en la sección "Requerimientos nutriciona
 a los requerimientos nutricionales ya calculados para este paciente y son la base
 obligatoria del plan.
 `;
+
+//Generación campo alimentos con grupos de aliemtos x tiempo de comida (paso 3 doc)
 
 // Mapea cada campo del objeto "alimentos" de un tiempo de comida al grupo/subcategoría
 // de PORCIONES_GRUPOS_ALIMENTOS que le corresponde.
@@ -131,9 +144,6 @@ function buildGruposAlimentosInfo() {
   );
 }
 
-// TODO: reemplazar por las reglas definitivas que determinan cuántos tiempos de
-// comida generar (desayuno, almuerzo, colación, once, cena, etc) y cómo distribuir
-// calorías/macronutrientes entre ellos.
 const TIEMPOS_DE_COMIDA_PROMPT = `
 ### Tiempos de comida
 Determina los tiempos de comida del plan.
@@ -154,9 +164,7 @@ listados en "alimentos_de_ejemplo" de cada grupo, junto con su porción/gramaje)
 exactamente las cantidades de porciones indicadas en "alimentos".
 `;
 
-// TODO: reemplazar por las reglas definitivas para recomendar (o no) suplementos
-// deportivos según el objetivo, tipo de entrenamiento y los suplementos ya
-// declarados por el paciente en la estrategia deportiva.
+//suplementos (paso 5 doc)
 function buildSuplementosPrompt(supplementsPrescription: SupplementsPrescription): string {
   return `
 ### Suplementos
@@ -215,6 +223,8 @@ de la lista de la propiedad 'suplementos' del JSON estructurado que cumple con l
 ${JSON.stringify(supplementsPrescription, null, 2)}
 `;
 }
+
+//recomendaciones deportivas (paso 6 doc)
 
 // El catálogo completo de códigos de sesión deportiva (SESIONES_DEPORTIVAS).
 const CATALOGO_SESIONES_DEPORTIVAS = [
@@ -292,6 +302,7 @@ ${JSON.stringify(buildSesionesDeportivasInfo(sesionesDeportivas), null, 2)}
 `;
 }
 
+//promp extración info 
 export const EXTRAER_INFO_SYSTEM_PROMPT = `Eres un asistente experto en nutrición deportiva encargado de clasificar
 información de una consulta.
 
