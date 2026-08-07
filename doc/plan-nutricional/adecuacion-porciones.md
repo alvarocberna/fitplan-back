@@ -208,8 +208,13 @@ del objeto PlanNutricionalDto, generado por el método 'procesar' del archivo `g
 
 # Pasos para generar el campo 'aporte' (codigo)
   - Se debe sumar la energía, proteina, carbohidratos y lipidos de cada grupo de alimento o simplemente 'alimento'
-    de cada tiempo de comida, en base a los valores de 'aporte_por_porcion' establecidos en `PORCIONES_GRUPOS_ALIMENTOS` 
+    de su tiempo de comida, en base a los valores de 'aporte_por_porcion' establecidos en `PORCIONES_GRUPOS_ALIMENTOS` 
     definido en el archivo `src/domain/services/alimentos/porciones-alimentos.ts`.
+  - Por ejemplo, en base a la lógica definida en el paso 3 'Adecuación de grupos de alimentos', se determina
+    que el desayuno incluye 2 porciones de cereales, 2 porciones de proteina y 1 porción de frutas. Considerando
+    que el aporte de calorias, proteina, carbohidrato y lipidos es de 140 cal, 3gr, 30gr, 1gr (cereales), 65 cal,
+    11, 1 y 2 (proteina BG) y 65, 1, 15 y 0 (fruta), entonces el aporte de ese tiempo de comida sería 475 cal, 29gr 
+    de proteina, 77gr de carbohidrato y 6gr de lipidos.
 
 # Como determinar el campo 'descripcion' (IA)
   - Este paso se ejecuta después de los ya mencionados, pues es necesario reajustar los tiempos de comida existentes,
