@@ -1,4 +1,7 @@
 
+# Eliminar
+Eliminar domain/services/objects. Esos objetos solo se usan para hacer pruebas en el código. Igualmente eliminar 
+todos los objetos y logs que estén asociados a estos objetos.
 
 # Formulas
 Las formulas para TMB son incluso más exactas que las que uso yo, con 3 decimales de exactitud en los valores
@@ -25,3 +28,12 @@ magros, o periodos de definición en fisicoculturistas.
 Falta añadir un cálculo que cubra la situación de un atleta los días previos a una competencia, caso en el 
 cual se debería entregar un aporte de HdeC mayor a lo normal. Además de otros casos como periodos 
 pre competitivos o competitivos. Queda pendiente.
+
+# Convención de nombre
+Hay nombres de DTOs, como Comida, que deberían llamarse 'ComidaDto' por un tema de consistencia... 
+corregir en algún momento. Ahora no lo hago porque estoy viendo otras cosas.
+
+# Types
+Hay valores importantisimos como 'definicion', 'mantencion', 'volumen' que deberían estar definidos como
+un Type o algo, ya que al escribir código uno se puede confundir, y en lugar de 'definicion' escribir 
+'definir', romiendo el codigo.

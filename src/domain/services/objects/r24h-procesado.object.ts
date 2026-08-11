@@ -1,0 +1,72 @@
+//Objetos creados para probar funciones
+
+export const r24hProcesado1 = [
+    {
+        "tiempo_de_comida": "desayuno",
+        "carbohidrato": true,
+        "verdura_libre_consumo": null,
+        "verdura_consumo_general": null,
+        "fruta": true,
+        "proteina_alta_en_grasa": null,
+        "proteina_baja_en_grasa": true,
+        "lacteo_alto_en_grasa": null,
+        "lacteo_medio_en_grasa": null,
+        "lacteo_bajo_en_grasa": null,
+        "lacteo_alto_en_proteina": null,
+        "rico_en_lipidos": true,
+        "aceite": null,
+        "azucar": null,
+        "alcohol": null
+    },
+    {
+        "tiempo_de_comida": "almuerzo",
+        "carbohidrato": true,
+        "verdura_libre_consumo": true,
+        "verdura_consumo_general": null,
+        "fruta": null,
+        "proteina_alta_en_grasa": null,
+        "proteina_baja_en_grasa": true,
+        "lacteo_alto_en_grasa": null,
+        "lacteo_medio_en_grasa": null,
+        "lacteo_bajo_en_grasa": null,
+        "lacteo_alto_en_proteina": null,
+        "rico_en_lipidos": null,
+        "aceite": null,
+        "azucar": null,
+        "alcohol": null
+    },
+        {
+        "tiempo_de_comida": "colacion",
+        "carbohidrato": null,
+        "verdura_libre_consumo": null,
+        "verdura_consumo_general": null,
+        "fruta": null,
+        "proteina_alta_en_grasa": null,
+        "proteina_baja_en_grasa": null,
+        "lacteo_alto_en_grasa": null,
+        "lacteo_medio_en_grasa": null,
+        "lacteo_bajo_en_grasa": null,
+        "lacteo_alto_en_proteina": null,
+        "rico_en_lipidos": null,
+        "aceite": null,
+        "azucar": null,
+        "alcohol": null
+    },
+    {
+        "tiempo_de_comida": "once",
+        "carbohidrato": true,
+        "verdura_libre_consumo": null,
+        "verdura_consumo_general": null,
+        "fruta": true,
+        "proteina_alta_en_grasa": null,
+        "proteina_baja_en_grasa": true,
+        "lacteo_alto_en_grasa": null,
+        "lacteo_medio_en_grasa": null,
+        "lacteo_bajo_en_grasa": null,
+        "lacteo_alto_en_proteina": null,
+        "rico_en_lipidos": true,
+        "aceite": null,
+        "azucar": null,
+        "alcohol": null
+    }
+]

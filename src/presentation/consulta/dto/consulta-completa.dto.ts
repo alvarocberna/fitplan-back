@@ -148,6 +148,10 @@ export class ComidaDtoImpl implements Comida {
 
   @IsString()
   @IsOptional()
+  lacteo_alto_en_proteina!: string | null;
+
+  @IsString()
+  @IsOptional()
   rico_en_lipidos!: string | null;
 
   @IsString()

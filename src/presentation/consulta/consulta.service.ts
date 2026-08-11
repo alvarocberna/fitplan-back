@@ -173,7 +173,7 @@ export class ConsultaService {
           {
             "tiempo_de_comida": string, // "desayuno" | "almuerzo" | "once" | "cena" | "colación"
             "carbohidrato": string | null,
-            "verdura_libre_consumo": string | null,
+            "verdura_libre_consumo": string | null, 
             "verdura_consumo_general": string | null,
             "fruta": string | null,
             "proteina_alta_en_grasa": string | null,
@@ -181,7 +181,8 @@ export class ConsultaService {
             "lacteo_alto_en_grasa": string | null,
             "lacteo_medio_en_grasa": string | null,
             "lacteo_bajo_en_grasa": string | null,
-            "rico_en_lipidos": string | null,
+            "lacteo_alto_en_proteina": string | null,
+            "rico_en_lipidos": string | null, 
             "aceite": string | null,
             "azucar": string | null,
             "alcohol": string | null
@@ -282,6 +283,7 @@ export class ConsultaService {
         con con un enunciado que indique qué alimentos suele comer el usuario durante ese tiempo de comida. Completa los campos con
         enunciados como el siguiente (ejemplo para carbohidratos en el tiempo de comida del desayuno): "Consume una cantidad moderada de
         carbohidratos durante el desayuno, como lo son pan 1 unidad, avena 1 taza, granola 1 taza, tortillas 1 unidad, cereal de desayuno 1 taza".
+        -- Importante: La palta se clasifica dentro del grupo 'rico_en_lipidos'. Por ningun motivo va en los grupos de verduras.
         Ejemplo para proteina en el desayuno: "Consume una cantidad moderada de proteina en el desayuno, como huevo 2 unidades, jamón 1 tajada, }
         quesillo 2 tajadas".
         -- Todas las instancias de comida deben incluir el campo 'tiempo_de_comida'.

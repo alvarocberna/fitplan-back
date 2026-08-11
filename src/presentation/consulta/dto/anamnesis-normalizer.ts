@@ -26,6 +26,7 @@ const COMIDA_KEYS = [
   'lacteo_alto_en_grasa',
   'lacteo_medio_en_grasa',
   'lacteo_bajo_en_grasa',
+  'lacteo_alto_en_proteina',
   'rico_en_lipidos',
   'aceite',
   'azucar',

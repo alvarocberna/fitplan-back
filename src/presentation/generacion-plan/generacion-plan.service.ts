@@ -5,7 +5,9 @@ import { ConsultaCompletaDto } from '../../domain/dtos/consulta-completa.dto';
 import { PlanNutricionalDto } from '../../domain/dtos/plan-nutricional.dto';
 import { calcularEdad } from '../../domain/services/utils/edad.service';
 import { calculoRequerimientos } from '../../domain/services/formulas/requerimientos.service';
-import { calculoSuplementos } from '../../domain/services/formulas/suplementos.service';
+import { calculoSuplementos, SupplementPrescription } from '../../domain/services/formulas/suplementos.service';
+import { determinarTiemposDeComida } from '../../domain/services/alimentos/tiempos-comida.service';
+import { definirGruposAlimentos, calcularAlimentosYAporte, calcularAporteTotalPlan, calcularAdecuacionTotal } from '../../domain/services/alimentos/adecuacion-porciones.service';
 //openai
 import { OpenaiService } from '../openai/openai.service';
 //presentation - modulo ordenes
@@ -20,15 +22,29 @@ import {
   NUTRICIONISTA_SYSTEM_PROMPT,
 } from './generacion-plan.prompts';
 
+
 const MAX_INTENTOS = 4;
 const BACKOFF_BASE_MS = 1000;
 
-type PlanNutricionalGenerado = Omit<PlanNutricionalDto, 'informacion_personal'>;
+type PlanNutricionalGenerado = {
+  prescripcion: {
+    regimen: string;
+    objetivo: string;
+  };
+  tiempos_de_comida: {
+    hora: string | null;
+    ejemplos: string[];
+    comentarios: string[];
+  }[];
+  suplementos: SupplementPrescription[];
+  recomendaciones_deportivas: PlanNutricionalDto['recomendaciones_deportivas'];
+};
 
 type InfoPromp = {
   nivel_actividad_fisica: number;
   objetivo: string;
 };
+
 
 @Injectable()
 export class GeneracionPlanService {
@@ -82,7 +98,7 @@ export class GeneracionPlanService {
 
   //recibe la info de consulta y devuelve un objeto con el plan nutricional
   private async procesar(body: ConsultaCompletaDto): Promise<PlanNutricionalDto> {
-    // se extrae informacion del promp: NAF y objetivo
+    //se extrae informacion del promp: NAF y objetivo
     const { nivel_actividad_fisica, objetivo } = await this.extraerInfoPromp(body);
     //se extrae informacion del body
     const peso: number = body.mediciones?.peso!;
@@ -93,7 +109,7 @@ export class GeneracionPlanService {
     const edad = calcularEdad(fechaNacimiento);
     const deportista = body.informacion_personal?.deportista!;
 
-    //Cálculo de requerimientos nutricionales (PASO 1 DOC) 
+    //cálculo de requerimientos nutricionales (PASO 1 DOC) 
     const requerimientos = calculoRequerimientos({
       peso: peso, 
       talla: talla, 
@@ -105,21 +121,58 @@ export class GeneracionPlanService {
       somatotipo: somatotipo,
     })
 
-    //Suplementos deportivos (PASO 5)
+    //calculo suplementos deportivos (PASO 5 DOC)
+    //se calculan, pero aún no se prrescriben
     const supplementsPrescription = calculoSuplementos(peso)
 
-    //generación de plan (PASO 2, 3, 4 y 6 DOC)
-    //promp + info consulta + requerimientos + prescripcion-suplementos
-    const planNutricional = await this.openaiService.chatJson<PlanNutricionalGenerado>(
-      NUTRICIONISTA_SYSTEM_PROMPT, 
-      [{ role: 'user', content: buildUserPrompt(body, requerimientos, supplementsPrescription) }], //data consulta + requerimientos
+    //definir tiempos de comida - PASO 1 DOC
+    const tiemposFinales = determinarTiemposDeComida(body.anamnesis?.alimentaria?.r24h ?? null, objetivo); 
+    //definir grupos de alimentos base x tiempo - PASO 2 DOC
+    const tiemposGrupos = definirGruposAlimentos(tiemposFinales);
+    //adecuación de porciones de alimentos - PASO 3 DOC
+    const resultadoAdecuacion = calcularAlimentosYAporte(tiemposGrupos, requerimientos);
+    const { adecuacion_porciones: tiemposCalculados, adecuacion_suplementos, aporte_suplementos } = resultadoAdecuacion;
+    //aporte total del plan (tiempos de comida + suplemento whey protein), en absoluto y relativo (%) vs requerimientos
+    const aporte_total = calcularAporteTotalPlan(resultadoAdecuacion);
+    const adecuacion = calcularAdecuacionTotal(aporte_total, requerimientos);
+
+    //generación de plan (PASO 2, 4 y 6 DOC + hora/ejemplos/comentarios del PASO 3)
+    //promp + info consulta + requerimientos + tiempos ya calculados + prescripcion-suplementos + adecuacion_suplementos
+    const generado = await this.openaiService.chatJson<PlanNutricionalGenerado>(
+      NUTRICIONISTA_SYSTEM_PROMPT,
+      [{ role: 'user', content: buildUserPrompt(body, requerimientos, objetivo, supplementsPrescription, tiemposCalculados, adecuacion_suplementos, aporte_suplementos) }],
     );
+
+    //merge: "alimentos" y "aporte" vienen del cálculo por código; "hora", "ejemplos" y
+    //"comentarios" vienen de la IA, alineados por índice con tiemposCalculados.
+    const tiempos_de_comida = tiemposCalculados.map((calculado, indice) => {
+      const generadoTiempo = generado.tiempos_de_comida[indice];
+
+      console.log('plan procesado')
+      return {
+        description: { tiempo: calculado.tiempo, hora: generadoTiempo?.hora ?? null },
+        aporte: calculado.aporte,
+        alimentos: calculado.alimentos,
+        ejemplos: generadoTiempo?.ejemplos ?? [],
+        comentarios: generadoTiempo?.comentarios ?? [],
+      };
+    });
 
     //return
     return {
       informacion_personal: this.construirInformacionPersonal(body),
-      ...planNutricional,
-      prescripcion: { ...planNutricional.prescripcion, objetivo },
+      prescripcion: {
+        regimen: generado.prescripcion.regimen,
+        objetivo: generado.prescripcion.objetivo,
+        calorias: requerimientos.energia,
+        proteina: requerimientos.proteina,
+        carbohidrato: requerimientos.carbohidrato,
+        lipido: requerimientos.lipido,
+      },
+      aporte_plan: { adecuacion, aporte_total },
+      tiempos_de_comida,
+      suplementos: generado.suplementos,
+      recomendaciones_deportivas: generado.recomendaciones_deportivas,
     };
   }
 

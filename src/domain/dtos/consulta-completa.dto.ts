@@ -45,6 +45,7 @@ export interface Comida {
     lacteo_alto_en_grasa: string | null
     lacteo_medio_en_grasa: string | null
     lacteo_bajo_en_grasa: string | null 
+    lacteo_alto_en_proteina: string | null
     rico_en_lipidos: string | null
     aceite: string | null
     azucar: string | null

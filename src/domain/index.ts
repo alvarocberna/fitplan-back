@@ -15,3 +15,6 @@ export * from './services/formulas/suplementos.service'
 //utils
 export * from './services/utils/edad.service';
 export * from './services/formulas/requerimientos.service';
+
+//objects
+export * from './services/objects/r24h.object';

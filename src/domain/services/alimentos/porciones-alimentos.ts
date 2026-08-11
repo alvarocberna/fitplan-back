@@ -277,3 +277,35 @@ export const PORCIONES_GRUPOS_ALIMENTOS = [
         ]
     },
 ]
+
+// Mapea cada campo del objeto "alimentos" de un tiempo de comida (ver PlanNutricionalDto) al
+// grupo/subcategoria de PORCIONES_GRUPOS_ALIMENTOS que le corresponde. Usado tanto por el cálculo
+// de porciones (adecuacion-porciones.service.ts) como por el promp que genera los "ejemplos" de
+// alimentos concretos (generacion-plan.prompts.ts).
+export const CAMPO_ALIMENTOS_A_GRUPO: Record<string, { grupo: string; subcategoria: string | null }> = {
+    cereales: { grupo: 'Cereales', subcategoria: null },
+    verduras_consumo_general: { grupo: 'Verduras', subcategoria: 'Consumo general' },
+    verduras_libre_consumo: { grupo: 'Verduras', subcategoria: 'Libre consumo' },
+    frutas: { grupo: 'Frutas', subcategoria: null },
+    proteinas_alta_en_grasa: { grupo: 'Proteinas', subcategoria: 'Alta en grasa' },
+    proteinas_baja_en_grasa: { grupo: 'Proteinas', subcategoria: 'Baja en grasa' },
+    lacteos_bajo_en_grasa: { grupo: 'Lácteos', subcategoria: 'Bajo en grasas' },
+    lacteos_medio_en_grasa: { grupo: 'Lácteos', subcategoria: 'Medios en grasas' },
+    lacteos_alto_en_grasa: { grupo: 'Lácteos', subcategoria: 'Altos en grasas' },
+    lacteos_alto_en_proteina: { grupo: 'Lácteos', subcategoria: 'Alto en proteina' },
+    ricos_en_lipidos: { grupo: 'Ricos en lípidos', subcategoria: null },
+    aceites: { grupo: 'Aceites y grasas', subcategoria: null },
+    azucares: { grupo: 'Azucares', subcategoria: null },
+};
+
+// Busca un grupo/subcategoria en PORCIONES_GRUPOS_ALIMENTOS. Lanza si no existe: significaría un
+// error de programación (grupo/subcategoria mal escrito), no un caso de datos de usuario a manejar.
+export function buscarGrupoAlimentos(grupo: string, subcategoria: string | null) {
+    const encontrado = PORCIONES_GRUPOS_ALIMENTOS.find(
+        (g) => g.grupo === grupo && g.subcategoria === subcategoria,
+    );
+    if (!encontrado) {
+        throw new Error(`Grupo de alimentos no encontrado: ${grupo}/${subcategoria}`);
+    }
+    return encontrado;
+}

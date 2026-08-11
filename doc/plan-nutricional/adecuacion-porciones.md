@@ -19,7 +19,7 @@ del objeto PlanNutricionalDto, generado por el método 'procesar' del archivo `g
 ## 0 - Pre requisitos
     - Tener los requerimientos de energía, proteina, carbohidratos y lípidos ya calculados.
 
-## 1 - Se definen los tiempos de comida (IA y Codigo)
+## 1 - Se definen los tiempos de comida (codigo)
     - Los tiempos de comida definidos por el usuario no necesariamente corresponden a los tiempos de comida que se definirán en el
       plan. Si los tiempos de comida sin insuficientes (1, 2 o 3 tiempos de comida al día) se deben añadir más tiempos, con el 
       fin de distribuir los alimentos de forma balanceada y no sobrecargar ningun tiempo.
@@ -57,24 +57,201 @@ del objeto PlanNutricionalDto, generado por el método 'procesar' del archivo `g
         - Si de las 4 comidas existentes, solo hay 3 principales y una secundaria (desayuno, colacion, almuerzo, cena), se debe
           añadir otra colación entre dos comidas principales con intervalo de tiempo mayor, siempre y cuando no tengan una colación
           entre ellas previamente.
-
-## 2 - Se eliminan alimentos de los tiempos de comida (IA)
-    - Se deben eliminar del objeto 'alimentos' los grupos de alimentos 'no saludables' o que no aportan valor real en 
+    - Ejemplo input (objetivo: definicion): 
+      ```
+      const r24h = [
+        {
+          "tiempo_de_comida": "desayuno",
+          "carbohidrato": "1 pan",
+          "verdura_libre_consumo": null,
+          "verdura_consumo_general": null,
+          "fruta": "1 manzana",
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": "2 huevos",
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": "media palta",
+          "aceite": "margarina",
+          "azucar": "mermelada",
+          "alcohol": null
+        },
+        {
+          "tiempo_de_comida": "almuerzo",
+          "carbohidrato": "200gr de arroz o fideo",
+          "verdura_libre_consumo": "ensalada",
+          "verdura_consumo_general": null,
+          "fruta": null,
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": "150gr de pollo o carne",
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": null,
+          "aceite": null,
+          "azucar": null,
+          "alcohol": null
+        },
+        {
+          "tiempo_de_comida": "once",
+          "carbohidrato": "1 pan",
+          "verdura_libre_consumo": null,
+          "verdura_consumo_general": null,
+          "fruta": "1 manzana",
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": "2 huevos",
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": "media palta",
+          "aceite": null,
+          "azucar": null,
+          "alcohol": null
+        }
+      ]
+      ```
+    - Ejemplo output:
+      ```
+      const r24h = [
+        {
+          "tiempo_de_comida": "desayuno",
+          "carbohidrato": "1 pan",
+          "verdura_libre_consumo": null,
+          "verdura_consumo_general": null,
+          "fruta": "1 manzana",
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": "2 huevos",
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": "media palta",
+          "aceite": "margarina",
+          "azucar": "mermelada",
+          "alcohol": null
+        },
+        {
+          "tiempo_de_comida": "almuerzo",
+          "carbohidrato": "200gr de arroz o fideo",
+          "verdura_libre_consumo": "ensalada",
+          "verdura_consumo_general": null,
+          "fruta": null,
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": "150gr de pollo o carne",
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": null,
+          "aceite": null,
+          "azucar": null,
+          "alcohol": null
+        },
+        {
+          "tiempo_de_comida": "colación",
+          "carbohidrato": null,
+          "verdura_libre_consumo": null,
+          "verdura_consumo_general": null,
+          "fruta": null,
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": null,
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": null,
+          "aceite": null,
+          "azucar": null,
+          "alcohol": null
+        },
+        {
+          "tiempo_de_comida": "once",
+          "carbohidrato": "1 pan",
+          "verdura_libre_consumo": null,
+          "verdura_consumo_general": null,
+          "fruta": "1 manzana",
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": "2 huevos",
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": "media palta",
+          "aceite": null,
+          "azucar": null,
+          "alcohol": null
+        }
+      ]
+      ```
+      
+## 2 - Se definen los alimentos (grupos de alimentos) de los tiempos de comida 
+    - Se deben eliminar (cambiar a null) los alimentos que son poco saludables, o que no aportan valor real en 
       cada tiempo de comida, como por ejemplo:
     - Desayuno y Once: azucares (mermelada, membrillo) y aceites (margarina, mantequilla).
     - Almuerzo y Cena: azucares (chocolates, galletas, o postres como helado, flanes, etc)
     - Colacion: azucares (mermelada, membrillo), aceites (margarina, mantequilla)
+    - Ejemplo input: 
+      ```
+      const r24h = [
+        {
+          "tiempo_de_comida": "desayuno",
+          "carbohidrato": "1 pan",
+          "verdura_libre_consumo": null,
+          "verdura_consumo_general": null,
+          "fruta": "1 manzana",
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": "2 huevos",
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": null,
+          "aceite": "margarina",
+          "azucar": "mermelada",
+          "alcohol": null
+        },
+      ]
+      ```
+    - Ejemplo output:
+      ```
+      const r24h = [
+        {
+          "tiempo_de_comida": "desayuno",
+          "carbohidrato": true,
+          "verdura_libre_consumo": null,
+          "verdura_consumo_general": null,
+          "fruta": true,
+          "proteina_alta_en_grasa": null,
+          "proteina_baja_en_grasa": true,
+          "lacteo_alto_en_grasa": null,
+          "lacteo_medio_en_grasa": null,
+          "lacteo_bajo_en_grasa": null,
+          "lacteo_alto_en_proteina": null,
+          "rico_en_lipidos": null,
+          "aceite": null, //venía en el input, pero por ser considerado poco saludable se eliminó
+          "azucar": null, //venía en el input, pero por ser considerado poco saludable se eliminó
+          "alcohol": null
+        },
+      ]
+    ```
 
 ## 3 - Adecuación de grupos de alimentos (codigo)
+    - El objetivo de este paso es tomar el objeto r24h modificado en los pasos anteriores, y tomarlo de base
+      para sumar o restar porciones en cada grupo de alimento, con el fin de que el aporte nutricional de esos
+      alimentos (aporte nutricional de cada alimento basado en PORCIONES_GRUPOS_ALIMENTOS) coincida en un 95-105% 
+      con los requerimientos de calorías, proteina, carbohidrato y lipidos calculados.
 
-### 3.1 - Adecuación de proteina
+### 3.1 - Adecuación de proteina (codigo e IA)
     - Primero: La función calculoRequerimientos ha establecido el requerimiento de proteina. En base a este requerimiento
-      se calcula el requerimientoCorregidoProteina, el cual corresponde al 90% del requerimiento de proteina calculado. La razón
+      se calcula el requerimientoCorregidoProteina, el cual corresponde al 85% del requerimiento de proteina calculado. La razón
       de esto es que cuando se calculen los otros grupos de alimentos se añadirá más proteina.
-      - Ejemplo: Si el requerimiento es 120gr, se calculan 108gr, siendo 108 el requerimientoCorregidoProteina. 
+      - Ejemplo: Si el requerimiento es 120gr, se calculan 102gr, siendo 102 el requerimientoCorregidoProteina. 
     - Segundo: Calculo de porciones: 
         - Se debe ir añadiendo 1 porción de un alimento rico en proteina, cada vez que se añade una nueva porción
-          se calcula la adecuación en base al requerimientoCorregidoProteina, hasta llegar al 100% (108gr en este ejemplo).
+          se calcula la adecuación en base al requerimientoCorregidoProteina, hasta llegar al 100% (102gr en este ejemplo).
         - La lista de alimentos ricos en proteina se basa en los alimentos del objeto PORCIONES_GRUPOS_ALIMENTOS,
           e incluye los siguientes aliementos:
           - Grupo: Proteinas. Subcategoría: baja en grasa. Se le llamará 'proteina' simplemente para simplificar.
@@ -135,7 +312,7 @@ del objeto PlanNutricionalDto, generado por el método 'procesar' del archivo `g
       valor de requerimientoCorregidoCarbohidrato es 280gr.
     - Segundo: Calculo de porciones: 
         - Se debe ir añadiendo 1 porción de un alimento ricos en carbohidratos
-          y calcular su adecuación, hasta llegar al 100% de adecuación de requerimientoCorregidoCarbohidrato.
+          y calcular su adecuación, hasta llegar a un ragno de 90-110% de adecuación de requerimientoCorregidoCarbohidrato.
         - Los grupos de alimentos ricos en carbohidratos son: Cereales, verduras, frutas.
         - Se debe seguir el siguiente orden al momento de añadir porciones: 
             - 1° Se deben añadir 2 porciones de verduras de libre consumo en los tiempos que sean Almuerzo y Cena.
@@ -177,13 +354,14 @@ del objeto PlanNutricionalDto, generado por el método 'procesar' del archivo `g
       requerimientoCorregidoLipidos es de 50gr.
     - Segundo: Calculo de porciones: 
         - Se debe ir añadiendo 1 porción de un alimento que aporte lípidos
-          y calcular su adecuación, hasta llegar al 100% de adecuación de requerimientoCorregidoLipidos.
+          y calcular su adecuación, hasta llegar a un rango de adecuación dentro del 90-110% de requerimientoCorregidoLipidos.
         - Los grupos de alimentos que aportan lípidos son: ricos en lipidos y aceites y grasas, disponible
           en PORCIONES_GRUPOS_ALIMENTOS.
         - Se debe seguir el siguiente orden al momento de añadir porciones: 
             - 1° 1 porción de ricos en lipidos.
-            - 2° 1/2 porción de aceites.
-            - Por cada porción de rico en lipidos se debe añadir 1/2 porción de aceite.
+            - 2° 1 porción de ricos en lipidos.
+            - 3° 1/2 porción de aceites.
+            - Por cada 2 porciones de rico en lipidos se debe añadir 1/2 porción de aceite.
             - Cada vez que se añade una porción (o media porción en este caso) se debe calcular la adecuación
               para determinar si se continúa añadiendo o se detiene.
     - Tercero: Distribuir las porciones calculadas en los tiempos de comida:
@@ -201,10 +379,180 @@ del objeto PlanNutricionalDto, generado por el método 'procesar' del archivo `g
        - Ejemplo 2: Tenemos 1 porción de aceite y los tiempos de comida: Desayuno, Almuerzo, Colacion, Once.
           La distribución será: Almuerzo 1 porción de aceites.
 
-## 4 - Todas las porciones han sido calculadas y distribuidas. Ahora se debe calcular la adecuación nuevamente (codigo)
-    - La adecuación total debe estar en el rango de 95-105%, al igual que la adecuación de cada macronutriente.
-    - Si la adecuación es mayor o menor, se deben reajustar las porciones de los tiempos de comida. Aún no se define el como,
-      por lo que solo se debe calcular la adecuación, y deja tal cual esté, aunque no cumpla la regla de 95-105%.
+### 3.4 - Evaluar y corregir adecuación y distribución
+    - Adecuación:
+      - Se debe evaluar la adecuación calorias, proteina, carbohidrato y lipidos. 
+      - El objetivo principal es que calorias tenga un rango de adecuación del 95-105%.
+      - El objetuvo secundario es que proteina, carbohidrato y lipidos logre un rango de adecuación dentro del 90-110%.
+      - Si luego del proceso anterior, no se logran estas reglas, se deben añadir o eliminar alimentos para así cumplirlo.
+    - Distribución:
+      - Se debe evaluar la distribución de alimentos, principalmente, evaluar que todos los tiempos de comida definidos
+        tengan comidas.
+      - Si se da el caso de que, por ejemplo, se definieron los tiempos de comida de desayuno, colacion, almuerzo y once,
+      y luego de distribuir acorde a las reglas anteriores, desayuno, almuerzo y once tienen alimentos, pero colación no,
+      entonces se debe desplazar un alimento de desayuno u once dentro de colación.
+      - Los alimentos que se deben desplazar deben ser 1° ricos en lipidos, 2°fruta, 3°lacteos.
+
+### 3.5 - Ejemplo:
+      - Considerar un requerimiento de 1900 calorias, 119gr de proteina, 238gr de carbohidtato y 53gr lipidos.
+      - El objetivo es que el input se modifique (agregar o eliminar porciones de grupos de alimentos) acorde a las reglas
+        definidas, hasta que el aporte de calorias de todos los alimentos de todos los tiempos de comida alcance una 
+        adecuación del 95-105% de los requerimientos. Y que el aporte de macronutrientes alcance una adecuación dentro
+        del 90-110%.
+      - Input:
+        ```
+        const r24h = [
+          {
+            "tiempo_de_comida": "desayuno",
+            "carbohidrato": true,
+            "verdura_libre_consumo": null,
+            "verdura_consumo_general": null,
+            "fruta": true,
+            "proteina_alta_en_grasa": null,
+            "proteina_baja_en_grasa": true,
+            "lacteo_alto_en_grasa": null,
+            "lacteo_medio_en_grasa": null,
+            "lacteo_bajo_en_grasa": null,
+            "lacteo_alto_en_proteina": null,
+            "rico_en_lipidos": true,
+            "aceite": null, 
+            "azucar": null,
+            "alcohol": null
+          },
+          {
+            "tiempo_de_comida": "almuerzo",
+            "carbohidrato": true,
+            "verdura_libre_consumo": true,
+            "verdura_consumo_general": null,
+            "fruta": null,
+            "proteina_alta_en_grasa": null,
+            "proteina_baja_en_grasa": true,
+            "lacteo_alto_en_grasa": null,
+            "lacteo_medio_en_grasa": null,
+            "lacteo_bajo_en_grasa": null,
+            "lacteo_alto_en_proteina": null,
+            "rico_en_lipidos": null,
+            "aceite": null,
+            "azucar": null,
+            "alcohol": null
+          },
+          {
+            "tiempo_de_comida": "colación",
+            "carbohidrato": null,
+            "verdura_libre_consumo": null,
+            "verdura_consumo_general": null,
+            "fruta": null,
+            "proteina_alta_en_grasa": null,
+            "proteina_baja_en_grasa": null,
+            "lacteo_alto_en_grasa": null,
+            "lacteo_medio_en_grasa": null,
+            "lacteo_bajo_en_grasa": null,
+            "lacteo_alto_en_proteina": null,
+            "rico_en_lipidos": null,
+            "aceite": null,
+            "azucar": null,
+            "alcohol": null
+          },
+          {
+            "tiempo_de_comida": "once",
+            "carbohidrato": true,
+            "verdura_libre_consumo": null,
+            "verdura_consumo_general": null,
+            "fruta": true,
+            "proteina_alta_en_grasa": null,
+            "proteina_baja_en_grasa": true,
+            "lacteo_alto_en_grasa": null,
+            "lacteo_medio_en_grasa": null,
+            "lacteo_bajo_en_grasa": null,
+            "lacteo_alto_en_proteina": null,
+            "rico_en_lipidos": true,
+            "aceite": null,
+            "azucar": null,
+            "alcohol": null
+          }
+        ]
+        ```
+      - Output:
+        ```
+        const adecuacion = {
+          adecuacion_porciones = [
+            {
+              "tiempo_de_comida": "desayuno",
+              "carbohidrato": "2 porciones",
+              "verdura_libre_consumo": null,
+              "verdura_consumo_general": null,
+              "fruta": "1 porción",
+              "proteina_alta_en_grasa": null,
+              "proteina_baja_en_grasa": "2 porciones",
+              "lacteo_alto_en_grasa": null,
+              "lacteo_medio_en_grasa": null,
+              "lacteo_bajo_en_grasa": null,
+              "lacteo_alto_en_proteina": "1 porción",
+              "rico_en_lipidos": "1 porción",
+              "aceite": null,
+              "azucar": null,
+              "alcohol": null
+            },
+            {
+              "tiempo_de_comida": "almuerzo",
+              "carbohidrato": "2 porciones",
+              "verdura_libre_consumo": "2 porciones",
+              "verdura_consumo_general": null,
+              "fruta": null,
+              "proteina_alta_en_grasa": null,
+              "proteina_baja_en_grasa": "2 porciones",
+              "lacteo_alto_en_grasa": null,
+              "lacteo_medio_en_grasa": null,
+              "lacteo_bajo_en_grasa": null,
+              "lacteo_alto_en_proteina": null,
+              "rico_en_lipidos": null,
+              "aceite": null,
+              "azucar": null,
+              "alcohol": null
+            },
+            {
+              "tiempo_de_comida": "colación",
+              "carbohidrato": null,
+              "verdura_libre_consumo": null,
+              "verdura_consumo_general": null,
+              "fruta": null,
+              "proteina_alta_en_grasa": null,
+              "proteina_baja_en_grasa": null,
+              "lacteo_alto_en_grasa": null,
+              "lacteo_medio_en_grasa": null,
+              "lacteo_bajo_en_grasa": null,
+              "lacteo_alto_en_proteina": null,
+              "rico_en_lipidos": "1 porción",
+              "aceite": null,
+              "azucar": null,
+              "alcohol": null
+            },
+            {
+              "tiempo_de_comida": "once",
+              "carbohidrato": "2 porciones",
+              "verdura_libre_consumo": null,
+              "verdura_consumo_general": null,
+              "fruta": "1 porción",
+              "proteina_alta_en_grasa": null,
+              "proteina_baja_en_grasa": "2 porciones",
+              "lacteo_alto_en_grasa": null,
+              "lacteo_medio_en_grasa": null,
+              "lacteo_bajo_en_grasa": null,
+              "lacteo_alto_en_proteina": "1 porción",
+              "rico_en_lipidos": null,
+              "aceite": null,
+              "azucar": null,
+              "alcohol": null
+            }
+          ],
+          adecuacion_suplementos: "whey protein 1 scoop",
+        }
+
+        ```
+        - Considerar que este ejemplo tiene el siguiente aporte y adecuación:
+          - Aporte: Calorias: 1943 cal. Proteina: 118.3gr. Carbohidrato: 251gr. Lipido: 51.6.
+          - Adecuación: Calorias: 102%. Proteina: 100%: Carbohidrato: 106%: Lipido: 98%.
+          - Es decir, cumnple a la perfección con las reglas establecidas.
 
 # Pasos para generar el campo 'aporte' (codigo)
   - Se debe sumar la energía, proteina, carbohidratos y lipidos de cada grupo de alimento o simplemente 'alimento'

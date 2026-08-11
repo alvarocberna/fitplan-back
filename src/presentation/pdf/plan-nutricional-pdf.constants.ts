@@ -16,6 +16,7 @@ export const CAMPOS_ALIMENTOS: { clave: keyof AlimentosTiempo; label: string }[]
     { clave: 'lacteos_alto_en_grasa', label: 'Lácteo alto en grasa' },
     { clave: 'lacteos_medio_en_grasa', label: 'Lácteo medio en grasa' },
     { clave: 'lacteos_bajo_en_grasa', label: 'Lácteo bajo en grasa' },
+    { clave: 'lacteos_alto_en_proteina', label: 'Lácteo alto en proteína' },
     { clave: 'ricos_en_lipidos', label: 'Rico en lípidos' },
     { clave: 'aceites', label: 'Aceite' },
     { clave: 'azucares', label: 'Azúcar' },

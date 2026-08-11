@@ -1,24 +1,27 @@
 //DOMAIN
 import { ConsultaCompletaDto, EstiloVidaSaludableDto } from '../../domain/dtos/consulta-completa.dto';
 import { Requerimientos } from '../../domain/services/formulas/requerimientos.service';
-import { PORCIONES_GRUPOS_ALIMENTOS } from '../../domain/services/alimentos/porciones-alimentos';
+import { PORCIONES_GRUPOS_ALIMENTOS, CAMPO_ALIMENTOS_A_GRUPO } from '../../domain/services/alimentos/porciones-alimentos';
+import { TiempoComidaCalculado, AporteCalculado } from '../../domain/services/alimentos/adecuacion-porciones.service';
 import { SupplementsPrescription } from '../../domain/services/formulas/suplementos.service';
 import { SESIONES_DEPORTIVAS, recomendacionSesionDeportiva } from '../../domain/services/formulas/sesion-deportiva.service';
 
 /*
 INDICE
 Promp global - NUTRICIONISTA_SYSTEM_PROMPT
-Promp prescripcion (paso 2 doc) - PRESCRIPCION_PROMPT
-Codigo generacion campo alimentos (paso 3 doc)
-Promp generacion campo alimentos (paso 3 y 4 doc) - TIEMPOS_DE_COMIDA_PROMPT
+Promp prescripcion (paso 2 doc) - buildPrescripcionPrompt
+Promp resto del campo tiempos_de_comida: hora, ejemplos, comentarios (paso 3 y 4 doc) - buildTiemposDeComidaPrompt
+  (el campo "alimentos" y "aporte" ya NO se le piden a la IA: se calculan por código en
+  adecuacion-porciones.service.ts, ver doc/plan-nutricional/adecuacion-porciones.md)
 Promp con instrucciones de prescripción de suplementos (paso 5 doc)
 Promp con instrucciones de prescripción de indicaciones deportivas (paso 6 doc)
 Promp para extraer info - EXTRAER_INFO_SYSTEM_PROMPT
 */
 
 export const NUTRICIONISTA_SYSTEM_PROMPT = `Eres un nutricionista experto en nutrición deportiva.
-Tu tarea es analizar la información de una consulta (anamnesis y evaluación física de un paciente)
-y generar un plan nutricional personalizado.
+Tu tarea es completar, en base a la información de una consulta (anamnesis y evaluación física de un
+paciente) y a información ya calculada por el sistema (que se te entrega más abajo), las partes del plan
+nutricional que requieren criterio clínico o redacción.
 
 Debes responder ÚNICAMENTE con un objeto JSON válido (sin texto adicional, sin markdown) que siga
 EXACTAMENTE la siguiente estructura:
@@ -26,43 +29,13 @@ EXACTAMENTE la siguiente estructura:
 {
   "prescripcion": {
     "regimen": string,
-    "objetivo": string,
-    "calorias": number,
-    "proteina": number,
-    "carbohidrato": number,
-    "lipido": number
+    "objetivo": string
   },
   "tiempos_de_comida": [
     {
-        description: {
-            tiempo: string // desayuno | almuerzo | once | cena | colacion
-            hora: string | null //ej 10am
-        },
-        aporte: {
-            calorias: number 
-            proteina: number 
-            carbohidrato: number 
-            lipido: number
-        },
-        alimentos: {
-            // Cada campo indica la cantidad de porciones del grupo de alimentos correspondiente
-            // (ver sección "Grupos de porciones de alimentos"), ej "1 porción", "2 porciones", "1/2 porción".
-            // null si el grupo no se usa en este tiempo de comida.
-            cereales: string | null
-            verduras_libre_consumo: string | null
-            verduras_consumo_general: string | null
-            frutas: string | null
-            proteinas_alta_en_grasa: string | null
-            proteinas_baja_en_grasa: string | null
-            lacteos_alto_en_grasa: string | null
-            lacteos_medio_en_grasa: string | null
-            lacteos_bajo_en_grasa: string | null
-            ricos_en_lipidos: string | null
-            aceites: string | null
-            azucares: string | null
-        }
-        ejemplos: string[] // 3 ejemplos de combinaciones de alimentos específicos (con su porción) que cumplan "alimentos"
-        comentarios: string[] 
+        "hora": string | null, // ej "10am"
+        "ejemplos": string[], // 3 ejemplos de combinaciones de alimentos específicos (con su porción)
+        "comentarios": string[]
     }
   ],
   "suplementos": [
@@ -73,6 +46,7 @@ EXACTAMENTE la siguiente estructura:
       intakeIndication: string,
       effects: string[],
       considerations: string[],
+      aporte: { calorias: number, proteina: number, carbohidrato: number, lipido: number },
     }
   ],
   "recomendaciones_deportivas": [
@@ -86,91 +60,112 @@ EXACTAMENTE la siguiente estructura:
   ]
 }
 
-No incluyas el campo "informacion_personal": ese campo se completa aparte, fuera de tu respuesta.
+IMPORTANTE: el arreglo "tiempos_de_comida" que devuelvas debe tener EXACTAMENTE la misma cantidad de
+objetos, EN EL MISMO ORDEN, que la lista entregada en la sección "Tiempos de comida ya calculados" del
+mensaje del usuario. No agregues, quites, fusiones ni reordenes tiempos de comida: cada objeto que
+devuelvas en la posición i corresponde al tiempo de comida en la posición i de esa lista.
+
+No incluyas los campos "informacion_personal", "calorias", "proteina", "carbohidrato", "lipido",
+"alimentos" ni "aporte": esos campos se completan aparte, fuera de tu respuesta.
 No incluyas ningún texto fuera del objeto JSON.`;
 
 
 //PASO 2 DOC
-const PRESCRIPCION_PROMPT = `
+function buildPrescripcionPrompt(objetivo: string): string {
+  return `
 ### Prescripción
-Determina el régimen del paciente en base a tu criterio como nutricionista deportivo,
-usando los datos de evaluación física y anamnesis entregados.
-Para "calorias", "proteina", "carbohidrato" y "lipido" NO los calcules ni los estimes:
-usa EXACTAMENTE los valores entregados en la sección "Requerimientos nutricionales"
-(campos energia, proteina, carbohidrato y lipido respectivamente), ya que corresponden
-a los requerimientos nutricionales ya calculados para este paciente y son la base
-obligatoria del plan.
+
+Completa "regimen" y "objetivo" siguiendo EXACTAMENTE estas reglas (son reglas fijas, no las
+reinterpretes con tu propio criterio):
+
+**Campo "objetivo"**: una descripción breve, en lenguaje natural, del objetivo del paciente, construida
+en base a los campos "objetivos.objetivo_principal" y "objetivos.objetivo_secundario" de la sección
+"Datos de la consulta". Ejemplos de formato esperado (no copies el contenido, solo el estilo):
+"Disminuir porcentaje de grasa corporal y mantener masa muscular", "Aumentar masa muscular",
+"Mejorar rendimiento deportivo", "Mejorar rendimiento deportivo y ganar masa muscular y fuerza".
+
+**Campo "regimen"**: sigue EXACTAMENTE el formato "Régimen {prescripción calórica} {prescripción proteica}."
+- Prescripción calórica: la clasificación interna de objetivo de este paciente, ya determinada por el
+  sistema, es "${objetivo}". Si es "definicion" usa "hipocalórico"; si es "volumen" usa "hipercalórico";
+  si es "mantencion" usa "normocalórico". Esta clasificación interna es solo para construir esta
+  palabra: NUNCA debe aparecer literalmente (ej "volumen" o "definicion") en el campo "objetivo".
+- Prescripción proteica: usa SIEMPRE "hiperproteico" (el sistema siempre prescribe 1.6gr/kg de peso o
+  más de proteína, lo que corresponde siempre a la categoría hiperproteico).
+- Ejemplos completos: "Régimen hipocalórico hiperproteico.", "Régimen hipercalórico hiperproteico.",
+  "Régimen normocalórico hiperproteico."
 `;
-
-//Generación campo alimentos con grupos de aliemtos x tiempo de comida (paso 3 doc)
-
-// Mapea cada campo del objeto "alimentos" de un tiempo de comida al grupo/subcategoría
-// de PORCIONES_GRUPOS_ALIMENTOS que le corresponde.
-const CAMPO_ALIMENTOS_A_GRUPO: Record<string, { grupo: string; subcategoria: string | null }> = {
-  cereales: { grupo: 'Cereales', subcategoria: null },
-  verduras_consumo_general: { grupo: 'Verduras', subcategoria: 'Consumo general' },
-  verduras_libre_consumo: { grupo: 'Verduras', subcategoria: 'Libre consumo' },
-  frutas: { grupo: 'Frutas', subcategoria: null },
-  proteinas_alta_en_grasa: { grupo: 'Proteinas', subcategoria: 'Alta en grasa' },
-  proteinas_baja_en_grasa: { grupo: 'Proteinas', subcategoria: 'Baja en grasa' },
-  lacteos_bajo_en_grasa: { grupo: 'Lácteos', subcategoria: 'Bajo en grasas' },
-  lacteos_medio_en_grasa: { grupo: 'Lácteos', subcategoria: 'Medios en grasas' },
-  lacteos_alto_en_grasa: { grupo: 'Lácteos', subcategoria: 'Altos en grasas' },
-  ricos_en_lipidos: { grupo: 'Ricos en lípidos', subcategoria: null },
-  aceites: { grupo: 'Aceites y grasas', subcategoria: null },
-  azucares: { grupo: 'Azucares', subcategoria: null },
-};
-
-// Arma, para cada campo del objeto "alimentos", el aporte por porción del grupo
-// correspondiente y algunos alimentos de ejemplo con su porción, para que el modelo
-// pueda calcular cuántas porciones de cada grupo corresponden y con qué alimentos
-// concretos ilustrar los ejemplos.
-function buildGruposAlimentosInfo() {
-  return Object.fromEntries(
-    Object.entries(CAMPO_ALIMENTOS_A_GRUPO).map(([campo, { grupo, subcategoria }]) => {
-      const grupoData = PORCIONES_GRUPOS_ALIMENTOS.find(
-        (g) => g.grupo === grupo && g.subcategoria === subcategoria,
-      );
-      return [
-        campo,
-        {
-          grupo,
-          subcategoria,
-          aporte_por_porcion: grupoData?.aporte_por_porcion ?? null,
-          alimentos_de_ejemplo: grupoData?.alimentos ?? [],
-        },
-      ];
-    }),
-  );
 }
 
-const TIEMPOS_DE_COMIDA_PROMPT = `
+//Generación del resto del campo tiempos_de_comida: hora, ejemplos, comentarios (paso 3 y 4 doc)
+//El campo "alimentos" (con las porciones por grupo) y "aporte" ya vienen calculados por código.
+function buildTiemposDeComidaPrompt(tiemposCalculados: TiempoComidaCalculado[]): string {
+  const info = tiemposCalculados.map((tiempo, indice) => {
+    const alimentos = Object.entries(tiempo.alimentos)
+      .filter(([, porciones]) => porciones !== null)
+      .map(([campo, porciones]) => {
+        const { grupo, subcategoria } = CAMPO_ALIMENTOS_A_GRUPO[campo];
+        const grupoData = PORCIONES_GRUPOS_ALIMENTOS.find(
+          (g) => g.grupo === grupo && g.subcategoria === subcategoria,
+        );
+        return {
+          campo,
+          porciones,
+          alimentos_de_ejemplo: grupoData?.alimentos ?? [],
+        };
+      });
+
+    return { indice, tiempo: tiempo.tiempo, aporte: tiempo.aporte, alimentos };
+  });
+
+  return `
 ### Tiempos de comida
-Determina los tiempos de comida del plan.
-Por ahora, genera un número de tiempos de comida razonable en base al r24h entregado por el paciente,
-y distribuye entre ellos las calorías/macronutrientes de la prescripción.
 
-Para el campo "alimentos" de cada tiempo de comida:
-- NO indiques alimentos específicos (ej "1 pan", "media palta"). En su lugar, indica la CANTIDAD DE
-  PORCIONES del grupo de alimentos correspondiente a cada campo, ej "1 porción", "2 porciones", "1/2 porción".
-- Usa la sección "Grupos de porciones de alimentos" para saber el aporte nutricional (energía, proteína,
-  carbohidrato, lípido) de una porción de cada grupo/subcategoría.
-- Calcula el número de porciones de cada grupo de forma que la suma de sus aportes se aproxime al "aporte"
-  (calorías, proteína, carbohidrato, lípido) definido para ese tiempo de comida.
-- Deja en null los campos de grupos que no se usen en ese tiempo de comida.
+Los tiempos de comida del plan, y las porciones de cada grupo de alimentos que le corresponden a cada
+uno, YA FUERON CALCULADOS por el sistema (campo "alimentos" de cada elemento de "info" más abajo): no
+los repitas, no los cambies ni los reinterpretes. Tu trabajo es, para cada tiempo de comida, en el mismo
+orden en que se entregan, completar:
 
-Para el campo "ejemplos": da 3 ejemplos concretos de combinaciones de alimentos (usando los alimentos
-listados en "alimentos_de_ejemplo" de cada grupo, junto con su porción/gramaje) que en conjunto cumplan
-exactamente las cantidades de porciones indicadas en "alimentos".
+- "hora": la hora aproximada de ese tiempo de comida (ej "8am", "1pm"), en base a la información
+  entregada por el paciente en la consulta (rutina diaria, horario de sesiones deportivas u otro
+  contexto disponible). Si no hay información suficiente para estimarla, usa null.
+- "ejemplos": exactamente 3 ejemplos concretos de combinaciones de alimentos reales (usando los
+  alimentos listados en "alimentos_de_ejemplo" de cada grupo del campo "alimentos", junto con su
+  porción/gramaje) que en conjunto cumplan EXACTAMENTE las porciones indicadas en "porciones" de cada
+  grupo de ese tiempo.
+- "comentarios": observaciones breves relevantes para ese tiempo de comida (ej sugerencias de
+  preparación, o advertencias en base a alergias/intolerancias/patologías del paciente). Puede ser una
+  lista vacía si no hay observaciones relevantes.
+
+${JSON.stringify(info, null, 2)}
 `;
+}
 
 //suplementos (paso 5 doc)
-function buildSuplementosPrompt(supplementsPrescription: SupplementsPrescription): string {
+function buildSuplementosPrompt(
+  supplementsPrescription: SupplementsPrescription,
+  adecuacionSuplementos: string | null,
+  aporteSuplementoWhey: AporteCalculado,
+): string {
   return `
 ### Suplementos
 
 Debes decidir qué suplementos del objeto "supplementsPrescription" (entregado más abajo, en la sección
 "Suplementos disponibles") incluir en el campo 'suplementos' del objeto JSON definido como output.
+
+### Suplemento de proteína (whey protein)
+"adecuacionSuplementos" (entregado más abajo) es el resultado del cálculo de adecuación de porciones
+(paso 3 doc): si el requerimiento de proteína no se pudo cubrir solo con alimentos, indica cuánto whey
+protein hace falta. Debes considerar este objeto, y en caso de que tenga contenido, debes incluir su
+contenido en 'suplementos', agregando un objeto con la estructura de supplementPrescription (campos
+supplement, requirement, dosageIndication, intakeIndication, effects, considerations, aporte) para el
+whey protein indicado. Para el campo "aporte" de ese objeto, usa EXACTAMENTE los valores de
+"aporteSuplementoWhey" (entregado más abajo): NO los calcules ni los estimes. El aporte energético de
+este suplemento YA está considerado en la adecuación de los tiempos de comida (aporte_plan): no lo
+menciones como algo adicional aparte de completar el campo "aporte" del objeto. Si "adecuacionSuplementos"
+es null, no agregues ningún suplemento de proteína.
+
+"adecuacionSuplementos": ${JSON.stringify(adecuacionSuplementos)}
+"aporteSuplementoWhey": ${JSON.stringify(aporteSuplementoWhey)}
 
 El campo 'deporte' de la consulta (dentro de anamnesis.estilo_vida.deporte) es una LISTA de disciplinas
 deportivas practicadas por el paciente. Evalúa CADA disciplina de la lista, por separado, contra los
@@ -180,7 +175,7 @@ disciplinas de la lista cumplen criterios de distintos suplementos), o ninguno.
 
 NO calcules ni estimes los valores de dosificación: usa EXACTAMENTE los objetos entregados en
 "Suplementos disponibles" (campos requirement, dosageIndication, intakeIndication, effects,
-considerations), ya que corresponden a valores ya calculados para este paciente.
+considerations, aporte), ya que corresponden a valores ya calculados para este paciente.
 
 Si el campo 'deporte' es null, está vacío, o ninguna disciplina de la lista cumple ningún criterio de
 inclusión, el campo 'suplementos' del output debe ser una lista vacía [].
@@ -204,7 +199,7 @@ CRITERIOS
   --Deportes intermitentes de alta intensidad y corta duración, como deportes de equipo como futbol, rugby, hockey.
   --En exposición a condiciones de hipoxia, como entrenamiento en altitud.
 -Bicarbonato - criterios de inclusión:
-  --Eventos de alta intensidad de 1-7min, donde la acumulación de ácido comienza a causar fatiga, como remo, natación y 
+  --Eventos de alta intensidad de 1-7min, donde la acumulación de ácido comienza a causar fatiga, como remo, natación y
     carreras de mediana distancia como 800 y 1500 metros en atletismo.
   --Deportes de combate, equipo o raqueta que implican esfuerzos repetitivos de alta intensidad.
   --Deportes de resistencia donde la etapa final implica un amento de la intensidad o remate.
@@ -302,7 +297,7 @@ ${JSON.stringify(buildSesionesDeportivasInfo(sesionesDeportivas), null, 2)}
 `;
 }
 
-//promp extración info 
+//promp extración info
 export const EXTRAER_INFO_SYSTEM_PROMPT = `Eres un asistente experto en nutrición deportiva encargado de clasificar
 información de una consulta.
 
@@ -343,25 +338,27 @@ ${JSON.stringify(
 )}`;
 }
 
-export function buildUserPrompt(consulta: ConsultaCompletaDto, requerimientos: Requerimientos, supplementsPrescription: SupplementsPrescription): string {
-  return `A continuación se entrega la información de la consulta de un paciente. Genera el plan
-nutricional siguiendo estas instrucciones para cada sección:
+export function buildUserPrompt(
+  consulta: ConsultaCompletaDto,
+  requerimientos: Requerimientos,
+  objetivo: string,
+  supplementsPrescription: SupplementsPrescription,
+  tiemposCalculados: TiempoComidaCalculado[],
+  adecuacionSuplementos: string | null,
+  aporteSuplementoWhey: AporteCalculado,
+): string {
+  return `A continuación se entrega la información de la consulta de un paciente, junto con datos ya
+calculados por el sistema. Completa el plan nutricional siguiendo estas instrucciones para cada sección:
 
-${PRESCRIPCION_PROMPT}
+${buildPrescripcionPrompt(objetivo)}
 
-${TIEMPOS_DE_COMIDA_PROMPT}
+${buildTiemposDeComidaPrompt(tiemposCalculados)}
 
-${buildSuplementosPrompt(supplementsPrescription)}
+${buildSuplementosPrompt(supplementsPrescription, adecuacionSuplementos, aporteSuplementoWhey)}
 
 ${buildRecomendacionesDeportivasPrompt(consulta.anamnesis?.estilo_vida?.sesion_deportiva ?? null)}
 
-### Grupos de porciones de alimentos
-Para cada campo del objeto "alimentos" de un tiempo de comida, esta es la información del grupo/subcategoría
-que le corresponde: el aporte nutricional de una porción ("aporte_por_porcion") y alimentos de ejemplo con
-su porción y gramaje ("alimentos_de_ejemplo"), a usar solo en la sección "ejemplos".
-${JSON.stringify(buildGruposAlimentosInfo(), null, 2)}
-
-### Requerimientos nutricionales (base obligatoria de la prescripción)
+### Requerimientos nutricionales (contexto; ya fueron usados para calcular las porciones de "Tiempos de comida")
 ${JSON.stringify(requerimientos, null, 2)}
 
 ### Datos de la consulta (anamnesis y evaluación física)

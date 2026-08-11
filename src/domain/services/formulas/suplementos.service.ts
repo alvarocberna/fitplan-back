@@ -6,6 +6,15 @@ export interface SupplementPrescription {
     intakeIndication: string,
     effects: string[],
     considerations: string[],
+    // Aporte nutricional del suplemento. Creatina, cafeina, nitrato y bicarbonato no aportan
+    // energía ni macronutrientes relevantes: se dejan en 0 por consistencia con el shape de
+    // "aporte" usado en el resto del plan (tiempos_de_comida, aporte_plan).
+    aporte: {
+        calorias: number,
+        proteina: number,
+        carbohidrato: number,
+        lipido: number,
+    },
 }
 
 export interface SupplementsPrescription {
@@ -34,6 +43,7 @@ function creatinaPrescription(peso: number){
         intakeIndication: intakeIndication,
         effects: effects,
         considerations: considerations,
+        aporte: { calorias: 0, proteina: 0, carbohidrato: 0, lipido: 0 },
     }
     return prescription;
 }
@@ -55,6 +65,7 @@ function cafeinaPrescription(peso: number){
         intakeIndication: intakeIndication,
         effects: effects,
         considerations: considerations,
+        aporte: { calorias: 0, proteina: 0, carbohidrato: 0, lipido: 0 },
     }
     return prescription;
 }
@@ -78,6 +89,7 @@ function nitratoPrescription(){
         intakeIndication: intakeIndication,
         effects: effects,
         considerations: considerations,
+        aporte: { calorias: 0, proteina: 0, carbohidrato: 0, lipido: 0 },
     }
     return prescription;
 }
@@ -123,6 +135,7 @@ function bicarbonatoPrescription(peso: number){
         intakeIndication: intakeIndication,
         effects: effects,
         considerations: considerations,
+        aporte: { calorias: 0, proteina: 0, carbohidrato: 0, lipido: 0 },
     }
     return prescription;
 }
