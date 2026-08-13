@@ -10,6 +10,11 @@ import { OpenaiService } from '../openai/openai.service';
 import { OutputChatDto, AnamnesisDto } from '../../domain';
 
 
+// Este endpoint (POST /consulta/chat) puede ser usado por cualquier visitante de la página, incluso
+// sin llegar a pagar: se mantiene en el modelo económico actual para no disparar costos por tráfico
+// curioso. Configurable vía env var sin necesidad de redeploy.
+const OPENAI_MODEL_CONSULTA = process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
+
 @Injectable()
 export class ConsultaService {
   constructor(private readonly openaiService: OpenaiService) {}
@@ -32,16 +37,18 @@ export class ConsultaService {
 
     // response de openai en base al promp de instrucciones + el mensaje del user
     let llmResponse = await this.openaiService.chatJson<OutputChatDto>(
-      systemPrompt, 
+      systemPrompt,
       body.messages,
+      OPENAI_MODEL_CONSULTA,
     );
 
-    // si el reply del responde de openai está vacío, reintentamos una vez antes de recurrir 
+    // si el reply del responde de openai está vacío, reintentamos una vez antes de recurrir
     // a un mensaje de resguardo, para no propagar un mensaje vacío al historial de la conversación
     if (!llmResponse.reply?.trim()) {
       llmResponse = await this.openaiService.chatJson<OutputChatDto>(
-        systemPrompt, 
-        body.messages
+        systemPrompt,
+        body.messages,
+        OPENAI_MODEL_CONSULTA,
       );
     }
 

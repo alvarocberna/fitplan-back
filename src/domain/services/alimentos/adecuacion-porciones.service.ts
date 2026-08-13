@@ -115,10 +115,32 @@ export interface AdecuacionTotal {
     lipido: number;
 }
 
+// Mismo shape que AlimentosTiempoCalculado, pero con el número de porciones exacto (float, sin
+// redondear a cuartos ni formatear a texto) de cada grupo. "alimentos" (arriba) es para mostrarle
+// el resultado a un humano/a la IA; este campo es para que el código pueda VALIDAR con precisión
+// numérica los "componentes" que la IA reporte al generar los ejemplos (ver generacion-plan.service.ts,
+// validarEjemplosGenerados). 0 si ese grupo no aplica a este tiempo de comida.
+export interface PorcionesNumericasTiempo {
+    cereales: number;
+    verduras_libre_consumo: number;
+    verduras_consumo_general: number;
+    frutas: number;
+    proteinas_alta_en_grasa: number;
+    proteinas_baja_en_grasa: number;
+    lacteos_alto_en_grasa: number;
+    lacteos_medio_en_grasa: number;
+    lacteos_bajo_en_grasa: number;
+    lacteos_alto_en_proteina: number;
+    ricos_en_lipidos: number;
+    aceites: number;
+    azucares: number;
+}
+
 export interface TiempoComidaCalculado {
     tiempo: TipoTiempo;
     aporte: AporteCalculado;
     alimentos: AlimentosTiempoCalculado;
+    porcionesNumericas: PorcionesNumericasTiempo;
 }
 
 // Objeto devuelto por calcularAlimentosYAporte (ver adecuacion-porciones.md, paso 3): además de
@@ -521,6 +543,22 @@ export function calcularAlimentosYAporte(
             azucares: null,
         };
 
+        const porcionesNumericas: PorcionesNumericasTiempo = {
+            cereales: porCereales[i],
+            verduras_libre_consumo: slotsAlmuerzoCena.includes(i) ? PORCIONES_VERDURA_LIBRE_FIJAS : 0,
+            verduras_consumo_general: 0,
+            frutas: porFruta[i],
+            proteinas_alta_en_grasa: 0,
+            proteinas_baja_en_grasa: porProteina[i],
+            lacteos_alto_en_grasa: 0,
+            lacteos_medio_en_grasa: !lacteoEsProtein ? porLacteo[i] : 0,
+            lacteos_bajo_en_grasa: 0,
+            lacteos_alto_en_proteina: lacteoEsProtein ? porLacteo[i] : 0,
+            ricos_en_lipidos: porRicos[i],
+            aceites: porAceite[i],
+            azucares: 0,
+        };
+
         let aporte: AporteCalculado = { calorias: 0, proteina: 0, carbohidrato: 0, lipido: 0 };
         const sumar = (porciones: number, grupo: (typeof PORCIONES_GRUPOS_ALIMENTOS)[number]) => {
             if (!porciones) return;
@@ -543,6 +581,7 @@ export function calcularAlimentosYAporte(
             tiempo: tipos[i],
             aporte,
             alimentos,
+            porcionesNumericas,
         };
     });
 

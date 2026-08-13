@@ -122,11 +122,18 @@ Definidas en `.env.template`:
 | `BCRYPT_SALT_OR_ROUNDS` | Idem, sin uso actual |
 | `NODE_ENV` | Controla si `HttpExceptionFilter` incluye detalle del error en la respuesta |
 
-Adicionalmente, `OpenaiService` (`src/presentation/openai/openai.service.ts`) lee directamente de
-`process.env`:
+Adicionalmente, `OpenaiService` (`src/presentation/openai/openai.service.ts`) recibe el modelo y la
+temperature por parámetro en cada llamada a `chatJson`; cada caller resuelve su propio valor leyendo
+`process.env` (con fallback si no está seteada):
 
 - `OPENAI_API_KEY` (**requerida**, no está en `.env.template`)
-- `OPENAI_MODEL` (opcional, default `gpt-4o-mini`)
+- `OPENAI_MODEL` (opcional, default `gpt-4o-mini`; fallback interno de `chatJson` si un caller no pasa
+  `model` explícito)
+- `OPENAI_MODEL_CONSULTA` (opcional, default `gpt-4o-mini`; modelo usado por `POST /consulta/chat`
+  -`consulta.service.ts`-, endpoint público sin pago de por medio, priorizando costo bajo)
+- `OPENAI_MODEL_PLAN` (opcional, default `gpt-5-mini`; modelo usado por la generación del plan
+  -`generacion-plan.service.ts`-, disparada solo tras el pago de una orden. No se le fija `temperature`:
+  este modelo solo soporta su valor default, 1 -la API devuelve 400 con cualquier otro valor-)
 
 ## Módulos y endpoints
 

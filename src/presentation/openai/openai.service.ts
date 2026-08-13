@@ -15,9 +15,14 @@ export class OpenaiService {
     systemPrompt: string,
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
     model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+    // undefined = usa el default de la API (1). Bajarla (ej 0-0.3) reduce la aleatoriedad del
+    // modelo: conviene para tareas de generación estructurada/con reglas estrictas (ver
+    // generacion-plan.service.ts), no para el chat conversacional de consulta.service.ts.
+    temperature?: number,
   ): Promise<T> {
     const response = await this.client.chat.completions.create({
       model,
+      ...(temperature !== undefined ? { temperature } : {}),
       response_format: { type: 'json_object' },
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
     });

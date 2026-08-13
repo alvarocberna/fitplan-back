@@ -40,7 +40,7 @@ reglas claras, y no pueden estar sujetos a interpretaciones variables de la IA.
       ser generado por código, ya que esta información debe ser replicable, y no sujeta a interpretaciones variables de la IA.
     - Las reglas en la cual debe basarse el código de este paso están definidas en el archivo `adecuacion-porciones.md`
 
-## 4. Paso 4: Ejemplos, documentado por el archivo `generacion-ejemplos.md`
+## 4. Paso 4: Ejemplos y comentarios documentado por el archivo `generacion-ejemplos.md` 
     - Actualmente es generado por IA, lo cual está bien.
 
 ## 5. Paso 5: Prescripcion de suplementos, documentado por el archivo `suplementos.md`

@@ -23,10 +23,12 @@ export const CAMPOS_ALIMENTOS: { clave: keyof AlimentosTiempo; label: string }[]
 ]
 
 // Devuelve solo los grupos de alimentos que vienen con datos (no null) para un tiempo de comida dado.
+// "valor" es la porción (ej "2 porciones"); el campo "equivalencia" de cada grupo (ver PlanNutricionalDto)
+// no se muestra en el PDF por ahora, pero queda disponible en tiempo.alimentos[clave] si se necesita.
 export function obtenerAlimentos(tiempo: TiempoDeComida): { label: string; valor: string }[] {
     return CAMPOS_ALIMENTOS
         .filter(({ clave }) => !!tiempo.alimentos[clave])
-        .map(({ clave, label }) => ({ label, valor: tiempo.alimentos[clave] as string }))
+        .map(({ clave, label }) => ({ label, valor: tiempo.alimentos[clave]!.porcion }))
 }
 
 // "desayuno" -> "Desayuno"
