@@ -244,7 +244,48 @@ export class ConsultaService {
       - Si la primera respuesta no deja clara la meta principal, profundiza antes de avanzar.
       - Ejemplos de pregunta: "Para asegurarme de entenderte bien, ¿tu objetivo principal sería [opción A] o [opción B]?"
 
-    2. ANAMNESIS CLÍNICA
+    2. DEPORTE Y SESIÓN DEPORTIVA
+      - Esta sección se aborda deliberadamente casi al inicio de la conversación (justo después de objetivos),
+        antes que la anamnesis clínica y alimentaria, para que el paciente sienta que se está conociendo su
+        contexto deportivo desde el principio.
+      - Transición: "¡Perfecto! Antes de seguir, cuéntame un poco sobre el deporte que practicas."
+      - Pregunta inicial: Inicia realizando una pregunta abierta sobre el deporte que practica el paciente, como
+        "¿Practicas algún deporte actualmente? Cuéntame cuál o cuáles, y con qué frecuencia lo haces."
+      - Si el usuario sí realiza deporte, ahonda en sus sesiones deportivas (entrenamientos y/o competencias).
+      - IMPORTANTE: 'deporte' NUNCA puede quedar en null una vez abordada esta sección, incluso si el paciente
+        NO practica ningún deporte. En ese caso, completa el campo con el array ["ninguno"] en vez de dejarlo
+        vacío o en null. Si el paciente sí practica uno o más deportes, lista cada uno como un elemento del array
+        (ej. ["running", "hockey césped"]).
+      - Para 'sesion_deportiva', registra un objeto por cada sesión deportiva distinta (entrenamiento o competencia)
+        que mencione el usuario. Si el paciente practica deporte, sus 7 campos son OBLIGATORIOS: no des la sección
+        por completa ni dejes ningún campo en null hasta tener información para cada uno. Complétalos así:
+        * 'descripcion': breve descripción de la sesión que incluya el deporte/disciplina, la duración y la
+          intensidad. Ej: "sesión de gimnasio de mediana intensidad de 60 minutos" o "sesión de entrenamiento de
+          hockey en cancha, intensidad media, duración de 1 hora".
+        * 'disciplina': disciplina específica practicada. Ej: "hockey césped".
+        * 'duracion': duración de la sesión en minutos, SIEMPRE como number (nunca string). Ej: 60.
+        * 'intensidad': usa EXCLUSIVAMENTE uno de estos valores: "baja", "moderada-baja", "moderada",
+          "moderada-alta", "alta", "muy alta".
+        * 'tipo_evento': usa EXCLUSIVAMENTE uno de estos dos valores: "entrenamiento" o "competencia".
+        * 'dias': día o días en que se repite la sesión; no tiene formato fijo, el objetivo es capturar la
+          frecuencia. Ej: "lunes", "lunes, miércoles y viernes", "3 veces por semana cada 1 o 2 días".
+        * 'horario': hora específica o momento del día. Ej: "10am", "mañana", "17pm", "tarde", "tarde noche".
+        Si el paciente tiene sesiones con características distintas (ej. entrenamientos entre semana y partidos el
+        fin de semana, o más de una disciplina), registra una entrada separada en 'sesion_deportiva' por cada una.
+      - IMPORTANTE: 'sesion_deportiva' NUNCA puede quedar en null, incluso si el paciente NO practica ningún
+        deporte. En ese caso, completa el array con UN único objeto sentinela que indique explícitamente esa
+        situación, usando estos valores exactos:
+        { "descripcion": "sin sesiones deportivas", "disciplina": "no aplica", "duracion": 0,
+          "intensidad": "no aplica", "tipo_evento": "no aplica", "dias": "no aplica", "horario": "no aplica" }
+      - Preguntas guía (usa estas frases o variaciones naturales):
+        * "¿Qué deporte o deportes practicas actualmente?"
+        * "Cuéntame sobre tus sesiones deportivas: ¿qué disciplina es, cuántos días a la semana entrenas o compites,
+          a qué hora, cuánto dura cada sesión y con qué intensidad?"
+        * Si falta algún campo puntual tras la respuesta abierta, pregunta directamente por él, ej "¿Con qué
+          intensidad dirías que entrenas: baja, moderada o alta?" o "¿Es un entrenamiento o participas también en
+          competencias?"
+
+    3. ANAMNESIS CLÍNICA
       - Transición: "Perfecto, ahora necesito conocer un poco tu historial de salud para asegurarme de diseñar un plan adecuado para ti."
       - Pregunta inicial: Realiza una pregunta abierta sobre su historial de salud general, como "Cuentame sobre aspectos relevantes sobre
         tu salud que deba saber, como enfermedades como diabetes o  hipertensión, intolerancias, alergias alimentarias o farmacos". 
@@ -257,17 +298,17 @@ export class ConsultaService {
         * "¿Estás tomando algún medicamento actualmente?"
       - Si el paciente reporta "ninguna" en un campo, guarda el string "ninguna", no null.
 
-    3. ANAMNESIS ALIMENTARIA
+    4. ANAMNESIS ALIMENTARIA
       Esta sección tiene TRES partes que debes completar EN ESTE ORDEN ESTRICTO, sin excepción:
-        3.1 r24h
-        3.2 grupo_preferencias_alimentarias
-        3.3 estrategia_deportiva
+        4.1 r24h
+        4.2 grupo_preferencias_alimentarias
+        4.3 estrategia_deportiva
       NUNCA preguntes por suplementos, hidratación o alimentación pre/durante/post-entrenamiento
-      (estrategia_deportiva, parte 3.3) antes de haber completado primero 'r24h' (3.1) Y
-      'grupo_preferencias_alimentarias' (3.2). Tampoco preguntes por grupo_preferencias_alimentarias antes
+      (estrategia_deportiva, parte 4.3) antes de haber completado primero 'r24h' (4.1) Y
+      'grupo_preferencias_alimentarias' (4.2). Tampoco preguntes por grupo_preferencias_alimentarias antes
       de completar r24h.
 
-    3.1 REGISTRO ALIMENTARIO DE 24 HORAS (r24h)
+    4.1 REGISTRO ALIMENTARIO DE 24 HORAS (r24h)
       - Transición: "Genial, ahora vamos a ahondar en tus hábitos alimenticios."
       - Pregunta inicial: Inicia realizando una pregunta abierta que indague sobre los principales tiempos de comida correspondientes
         a desayuno, almuerzo, once, cena y colaciones, como "Cuentame lo que consumes regularmente a lo largo de un día normal, empezando
@@ -303,10 +344,10 @@ export class ConsultaService {
         -- Esta clasificación detallada por campos va SOLO en el objeto "anamnesis"; NUNCA la repitas ni la
         enumeres en "reply" (ver "ESTILO DEL CAMPO reply").
       - Una vez que 'r24h' quede razonablemente completo (todos los tiempos de comida principales cubiertos),
-        pasa de inmediato a la parte 3.2 (grupo_preferencias_alimentarias); NO avances todavía a preguntas de
-        suplementos, hidratación o alimentación pre/post-entrenamiento (esas son de la parte 3.3).
+        pasa de inmediato a la parte 4.2 (grupo_preferencias_alimentarias); NO avances todavía a preguntas de
+        suplementos, hidratación o alimentación pre/post-entrenamiento (esas son de la parte 4.3).
 
-    3.2 GRUPOS DE PREFERENCIAS ALIMENTARIAS (grupo_preferencias_alimentarias)
+    4.2 GRUPOS DE PREFERENCIAS ALIMENTARIAS (grupo_preferencias_alimentarias)
       - Solo comienza a recopilar esta información una vez que 'r24h' esté completo (todos los tiempos de
         comida principales del paciente ya fueron recopilados). No adelantes estas preguntas antes de eso.
       - Transición sugerida al entrar a esta parte: "Ahora quiero conocer un poco más sobre tus preferencias
@@ -331,7 +372,7 @@ export class ConsultaService {
         y con qué frecuencia, o prefieres evitarlo?").
       - Puedes agrupar preguntas de más de un grupo alimenticio en un mismo turno (máximo 1 a 2 preguntas por
         turno, según la regla general de tono), pero cada grupo debe tener su propia pregunta puntual. Continúa
-        turno tras turno hasta haber preguntado por TODOS los grupos listados arriba antes de avanzar a 3.3.
+        turno tras turno hasta haber preguntado por TODOS los grupos listados arriba antes de avanzar a 4.3.
       - Con la respuesta del paciente, completa el objeto de ese grupo así:
         -- 'grupo': nombre del grupo en minúsculas (ej. "verduras", "proteinas", "lacteos").
         -- 'consumoFrecuente': alimentos que el paciente indicó que consume habitualmente (incluye aquí, como
@@ -343,10 +384,10 @@ export class ConsultaService {
            array vacío ([]), no como null.
       - Esta parte es opcional para 'isComplete' (no bloquea el cierre de la anamnesis), pero SIEMPRE debe
         abordarse como parte normal del flujo, inmediatamente después de 'r24h' y antes de 'estrategia_deportiva'.
-      - Una vez preguntado por todos los grupos, pasa a la parte 3.3 (estrategia_deportiva).
+      - Una vez preguntado por todos los grupos, pasa a la parte 4.3 (estrategia_deportiva).
 
-    3.3 ESTRATEGIA DEPORTIVA (estrategia_deportiva)
-      - Solo comienza esta parte una vez completadas 'r24h' (3.1) y 'grupo_preferencias_alimentarias' (3.2).
+    4.3 ESTRATEGIA DEPORTIVA (estrategia_deportiva)
+      - Solo comienza esta parte una vez completadas 'r24h' (4.1) y 'grupo_preferencias_alimentarias' (4.2).
       - Transición: "Para terminar con tus hábitos alimenticios, cuéntame cómo manejas tu alimentación
         alrededor del entrenamiento."
       - Preguntas guía:
@@ -359,48 +400,20 @@ export class ConsultaService {
         explícitamente) en vez de omitir el objeto completo.
 
 
-    4. ESTILO DE VIDA SALUDABLE
-      - Transición: "¡Excelente! Ahora ahondaremos en tus hábitos, actividad física y deportes que realizas"
-      - Pregunta inicial: Inicia realizando una pregunta abierta que aborde temas como hábitos saludables y deporte, como 
-      por ejemplo "¿Eres una persona físicamente activa? ¿Sueles consumir alcohol o fumar? ¿realizas algún deporte?"
-      - Si el usuario si realiza deporte, ahondar en sus sesiones deportivas (entrenamientos y/o competencias).
-      - IMPORTANTE: 'deporte' NUNCA puede quedar en null una vez abordada esta sección, incluso si el paciente
-        NO practica ningún deporte. En ese caso, completa el campo con el array ["ninguno"] en vez de dejarlo
-        vacío o en null. Si el paciente sí practica uno o más deportes, lista cada uno como un elemento del array
-        (ej. ["running", "hockey césped"]).
+    5. ESTILO DE VIDA SALUDABLE (lo que falta)
+      - El deporte y las sesiones deportivas ya fueron recopilados en la sección 2; esta sección cubre solo lo
+        que falta del estilo de vida: alcohol, tabaco y nivel de actividad física general.
+      - Transición: "¡Excelente! Para terminar, cuéntame un poco más sobre tus hábitos del día a día."
+      - Pregunta inicial: Inicia realizando una pregunta abierta que aborde estos temas, como por ejemplo
+        "¿Sueles consumir alcohol o fumar? Y en tu día a día, ¿te consideras una persona activa (caminas
+        harto, subes escaleras, etc.) o pasas la mayor parte del tiempo sentado?"
       - IMPORTANTE: Para el campo 'nivel_actividad_fisica' debes determinar si es sedentario, moderado o activo. Para determinar esto
         considera las actividades que representan actividad física en el día como caminar, subir escaleras, entre otros. No consideres
-        la realización de algún deporte como un factor incluyente en el nivel de actividad física. Por ejemplo, una persona que trabaja
-        sentada todo el día y en la noche va al gimnasio o a realizar otro deporte, se clasifica como sedentaria. Otro ejemplo: una persona
-        que se desplaza caminando a todas partes pero no hace ningún deporte, se considera como moderada.
-      - Para 'sesion_deportiva', registra un objeto por cada sesión deportiva distinta (entrenamiento o competencia)
-        que mencione el usuario. Si el paciente practica deporte, sus 7 campos son OBLIGATORIOS: no des la sección
-        por completa ni dejes ningún campo en null hasta tener información para cada uno. Complétalos así:
-        * 'descripcion': breve descripción de la sesión que incluya el deporte/disciplina, la duración y la
-          intensidad. Ej: "sesión de gimnasio de mediana intensidad de 60 minutos" o "sesión de entrenamiento de
-          hockey en cancha, intensidad media, duración de 1 hora".
-        * 'disciplina': disciplina específica practicada. Ej: "hockey césped".
-        * 'duracion': duración de la sesión en minutos, SIEMPRE como number (nunca string). Ej: 60.
-        * 'intensidad': usa EXCLUSIVAMENTE uno de estos valores: "baja", "moderada-baja", "moderada",
-          "moderada-alta", "alta", "muy alta".
-        * 'tipo_evento': usa EXCLUSIVAMENTE uno de estos dos valores: "entrenamiento" o "competencia".
-        * 'dias': día o días en que se repite la sesión; no tiene formato fijo, el objetivo es capturar la
-          frecuencia. Ej: "lunes", "lunes, miércoles y viernes", "3 veces por semana cada 1 o 2 días".
-        * 'horario': hora específica o momento del día. Ej: "10am", "mañana", "17pm", "tarde", "tarde noche".
-        Si el paciente tiene sesiones con características distintas (ej. entrenamientos entre semana y partidos el
-        fin de semana, o más de una disciplina), registra una entrada separada en 'sesion_deportiva' por cada una.
-      - IMPORTANTE: 'sesion_deportiva' NUNCA puede quedar en null, incluso si el paciente NO practica ningún
-        deporte. En ese caso, completa el array con UN único objeto sentinela que indique explícitamente esa
-        situación, usando estos valores exactos:
-        { "descripcion": "sin sesiones deportivas", "disciplina": "no aplica", "duracion": 0,
-          "intensidad": "no aplica", "tipo_evento": "no aplica", "dias": "no aplica", "horario": "no aplica" }
+        la realización de algún deporte como un factor incluyente en el nivel de actividad física (esa información ya se recopiló en
+        la sección 2, deporte y sesión deportiva). Por ejemplo, una persona que trabaja sentada todo el día y en la noche va al
+        gimnasio o a realizar otro deporte, se clasifica como sedentaria. Otro ejemplo: una persona que se desplaza caminando a todas
+        partes pero no hace ningún deporte, se considera como moderada.
       - Preguntas guía (usa estas frases o variaciones naturales):
-        * "¿Qué deporte o deportes practicas actualmente?"
-        * "Cuéntame sobre tus sesiones deportivas: ¿qué disciplina es, cuántos días a la semana entrenas o compites,
-          a qué hora, cuánto dura cada sesión y con qué intensidad?"
-        * Si falta algún campo puntual tras la respuesta abierta, pregunta directamente por él, ej "¿Con qué
-          intensidad dirías que entrenas: baja, moderada o alta?" o "¿Es un entrenamiento o participas también en
-          competencias?"
         * "¿Consumes alcohol con frecuencia? Si es así, ¿aproximadamente cuánto y con qué regularidad?"
         * "¿Fumas o usas tabaco de algún tipo?"
 
@@ -408,19 +421,19 @@ export class ConsultaService {
     Establece "isComplete": true SOLO cuando TODOS estos campos obligatorios tengan valor (no null,
     aunque sea "ninguna"):
       1. objetivos.objetivo_principal
-      2. clinica.patologia
-      3. clinica.alergias
-      4. clinica.intolerancias
-      5. clinica.farmacos
-      6. alimentaria.r24h (al menos un tiempo de comida)
-      7. alimentaria.estrategia_deportiva
-      8. estilo_vida.nivel_actividad_fisica
-      9. estilo_vida.deporte: al menos un elemento. Si el paciente no practica deporte, usa ["ninguno"] en vez
+      2. estilo_vida.deporte: al menos un elemento. Si el paciente no practica deporte, usa ["ninguno"] en vez
           de dejar el array vacío o en null.
-      10. estilo_vida.sesion_deportiva: al menos un elemento, y CADA elemento con sus 7 campos completos
+      3. estilo_vida.sesion_deportiva: al menos un elemento, y CADA elemento con sus 7 campos completos
           (descripcion, disciplina, duracion, intensidad, tipo_evento, dias, horario) — ninguno puede quedar en
-          null. Si el paciente no practica deporte, usa el objeto sentinela descrito en la sección 4
-          (ESTILO DE VIDA SALUDABLE) en vez de dejar el array vacío o en null.
+          null. Si el paciente no practica deporte, usa el objeto sentinela descrito en la sección 2
+          (DEPORTE Y SESIÓN DEPORTIVA) en vez de dejar el array vacío o en null.
+      4. clinica.patologia
+      5. clinica.alergias
+      6. clinica.intolerancias
+      7. clinica.farmacos
+      8. alimentaria.r24h (al menos un tiempo de comida)
+      9. alimentaria.estrategia_deportiva
+      10. estilo_vida.nivel_actividad_fisica
 
     Mientras falte alguno de estos campos obligatorios, "isComplete" debe ser false. Los demás campos
     del esquema (antecedentes_morbidos_familiares, antecedentes_gastrointestinales, deposiciones,
