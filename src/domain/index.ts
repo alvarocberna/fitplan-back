@@ -1,20 +1,20 @@
 //dtos
 export * from './dtos/anamnesis-chat.dto';
-export * from './dtos/consulta-completa.dto';
-export * from './dtos/plan-nutricional.dto';
-export * from './dtos/orden.dto';
+export * from './dtos/consultation.dto';
+export * from './dtos/nutrition-plan.dto';
+export * from './dtos/order.dto';
 //formulas
-export * from './services/formulas/imc.service';
-export * from './services/formulas/suma-pliegues.service';
-export * from './services/formulas/masa-muscular.service';
-export * from './services/formulas/grasa-corporal.service';
+export * from './services/formulas/bmi.service';
+export * from './services/formulas/skinfold-sum.service';
+export * from './services/formulas/muscle-mass.service';
+export * from './services/formulas/body-fat.service';
 export * from './services/formulas/phantom.service';
-export * from './services/formulas/imm.service';
-export * from './services/formulas/perimetros-corregidos.service';
-export * from './services/formulas/suplementos.service'
+export * from './services/formulas/muscle-mass-index.service';
+export * from './services/formulas/corrected-girths.service';
+export * from './services/formulas/supplements.service'
 //utils
-export * from './services/utils/edad.service';
-export * from './services/formulas/requerimientos.service';
+export * from './services/utils/age.service';
+export * from './services/formulas/requirements.service';
 
 //objects
 export * from './services/objects/r24h.object';

@@ -13,18 +13,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// SQLite no soporta enums nativos en Prisma, por eso estado_pago / estado_generacion
-// se modelan como String y se tipan a nivel de aplicación (ver src/domain/dtos/orden.dto.ts).
+// SQLite no soporta enums nativos en Prisma, por eso paymentStatus / generationStatus
+// se modelan como String y se tipan a nivel de aplicación (ver src/domain/dtos/order.dto.ts).
 
-model Orden {
+model Order {
   id                String   @id @default(uuid())
-  correo            String
-  payload_json      String? // ConsultaCompletaDto completo (informacion_personal + anamnesis + mediciones)
-  estado_pago       String   @default("pendiente") // 'pendiente' | 'pagado'
-  estado_generacion String   @default("no_iniciado") // 'no_iniciado' | 'generando' | 'completado' | 'error'
-  plan_json         String? // PlanNutricionalDto resultante, null hasta que se genera
-  intentos          Int      @default(0)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  email             String   @map("correo")
+  payloadJson       String?  @map("payload_json") // ConsultaCompletaDto completo (personalInfo + anamnesis + measurements)
+  paymentStatus     String   @default("pendiente") @map("estado_pago") // 'pendiente' | 'pagado'
+  generationStatus  String   @default("no_iniciado") @map("estado_generacion") // 'no_iniciado' | 'generando' | 'completado' | 'error'
+  planJson          String?  @map("plan_json") // PlanNutricionalDto resultante, null hasta que se genera
+  attempts          Int      @default(0) @map("intentos")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
   @@map("orden")
 }

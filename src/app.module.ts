@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ConsultaModule } from './presentation/consulta/consulta.module';
+import { ConsultationModule } from './presentation/consultation/consultation.module';
 import { OpenaiModule } from './presentation/openai/openai.module';
 import { PrismaModule } from './infrastructure/orm/prisma/prisma.module';
-import { OrdenesModule } from './presentation/ordenes/ordenes.module';
+import { OrdersModule } from './presentation/orders/orders.module';
 import { WebhooksModule } from './presentation/webhooks/webhooks.module';
 
 @Module({
@@ -12,9 +12,9 @@ import { WebhooksModule } from './presentation/webhooks/webhooks.module';
       isGlobal: true,
     }),
     PrismaModule,
-    ConsultaModule,
+    ConsultationModule,
     OpenaiModule,
-    OrdenesModule,
+    OrdersModule,
     WebhooksModule,
   ],
 })

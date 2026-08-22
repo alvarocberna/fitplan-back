@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
-import { OrdenesModule } from '../ordenes/ordenes.module';
-import { GeneracionPlanModule } from '../generacion-plan/generacion-plan.module';
+import { OrdersModule } from '../orders/orders.module';
+import { PlanGenerationModule } from '../plan-generation/plan-generation.module';
 
 @Module({
-  imports: [OrdenesModule, GeneracionPlanModule],
+  imports: [OrdersModule, PlanGenerationModule],
   controllers: [WebhooksController],
   providers: [WebhooksService],
 })

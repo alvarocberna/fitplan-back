@@ -1,4 +1,4 @@
-import { AnamnesisDto } from './consulta-completa.dto'
+import { AnamnesisDto } from './consultation.dto'
 
 export type ChatRole = 'user' | 'assistant'
 
