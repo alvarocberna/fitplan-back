@@ -73,7 +73,6 @@ export interface HealthyLifestyleDto {
     tobacco: string | null
     physicalActivityLevel: string | null
     sport: string[] | null
-    // sessionTraining: string[] | null,
     sportSession: {
         description: string | null,
         discipline: string | null,

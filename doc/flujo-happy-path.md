@@ -201,7 +201,7 @@ pasarela de pago real en vez de por el frontend.
 ## Notas relevantes
 
 - **El flujo ya no es stateless**: a diferencia de una versión anterior de este proyecto (ver
-  `doc/README.md`), el estado de la orden (payload, estado de pago, estado de generación, plan
+  `README.md`), el estado de la orden (payload, estado de pago, estado de generación, plan
   resultante) se persiste en SQLite vía Prisma (tabla `orden`, `prisma/schema.prisma`), porque el
   webhook de pago es server-a-server y no tiene acceso al `localStorage` del navegador del paciente.
 - **La IA se ejecuta 3 veces en total por consulta**: una vez por turno en el chat de anamnesis (paso
