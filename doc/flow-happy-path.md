@@ -3,7 +3,7 @@
 Este documento describe, paso a paso, el recorrido completo de una consulta que **sí llega a buen
 puerto**: el paciente completa sus datos, conversa con la IA, paga y recibe su plan nutricional. Por
 cada paso se indica la pantalla del frontend (`nutri-agente-front`) involucrada y el/los endpoint(s)
-del backend (`nutricionista-virtual-back-nest`) que se consumen, en el orden real en que ocurren.
+del backend (`nutricionista-virtual-back`) que se consumen, en el orden real en que ocurren.
 
 No cubre casos de error, reintentos de pago fallido, ni edge cases — para eso ver el código de cada
 servicio (comentarios inline) y `doc/deuda-tecnica.md`.
@@ -13,7 +13,7 @@ servicio (comentarios inline) y `doc/deuda-tecnica.md`.
 - **Frontend**: Next.js (`nutri-agente-front`), guarda el estado del flujo (`informacionPersonal`,
   `anamnesis`, `mediciones`) en `ConsultaContext`, persistido en `localStorage`
   (`src/shared/context/consulta.context.tsx`) para sobrevivir refrescos de página.
-- **Backend**: NestJS (`nutricionista-virtual-back-nest`), expone los endpoints REST.
+- **Backend**: NestJS (`nutricionista-virtual-back`), expone los endpoints REST.
 - **OpenAI**: usado en 3 puntos del flujo (chat de anamnesis, extracción de nivel de actividad/objetivo,
   generación del plan).
 - **Base de datos**: SQLite vía Prisma, con una única tabla `orden` (`prisma/schema.prisma`) que
