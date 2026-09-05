@@ -15,22 +15,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Modelo usado hoy por el flujo real de la app (consulta -> pago -> generación de plan), se
-// deja intacto. paymentStatus/generationStatus siguen siendo String (heredado de la época
-// SQLite, que no soportaba enums nativos) para no romper el código que ya las usa como string.
-model Order {
-  id               String   @id @default(uuid())
-  email            String   @map("correo")
-  payloadJson      String?  @map("payload_json") // ConsultaCompletaDto completo (personalInfo + anamnesis + measurements)
-  paymentStatus    String   @default("pendiente") @map("estado_pago") // 'pendiente' | 'pagado'
-  generationStatus String   @default("no_iniciado") @map("estado_generacion") // 'no_iniciado' | 'generando' | 'completado' | 'error'
-  planJson         String?  @map("plan_json") // PlanNutricionalDto resultante, null hasta que se genera
-  attempts         Int      @default(0) @map("intentos")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-
-  @@map("orden")
-}
+// Modelo usado por el flujo legacy de la app (consulta -> pago -> generación de plan).
+// Comentado: reemplazado por el modelo `Order` de abajo (renombrado desde `CommercialOrder`).
+// model Order {
+//   id               String   @id @default(uuid())
+//   email            String   @map("correo")
+//   payloadJson      String?  @map("payload_json") // ConsultaCompletaDto completo (personalInfo + anamnesis + measurements)
+//   paymentStatus    String   @default("pendiente") @map("estado_pago") // 'pendiente' | 'pagado'
+//   generationStatus String   @default("no_iniciado") @map("estado_generacion") // 'no_iniciado' | 'generando' | 'completado' | 'error'
+//   planJson         String?  @map("plan_json") // PlanNutricionalDto resultante, null hasta que se genera
+//   attempts         Int      @default(0) @map("intentos")
+//   createdAt        DateTime @default(now()) @map("created_at")
+//   updatedAt        DateTime @updatedAt @map("updated_at")
+//
+//   @@map("orden")
+// }
 
 // =========================================
 // IDENTITY & AUTH
@@ -59,7 +58,7 @@ model User {
   authIdentities           AuthIdentity[]
   clinicalRecord           ClinicalRecord?
   nutritionalConsultations NutritionalConsultation[]
-  commercialOrders         CommercialOrder[]
+  orders                   Order[]
 
   @@map("user")
 }
@@ -491,8 +490,8 @@ model NutritionalPlan {
   consultationId String                  @map("consultation_id") @db.Uuid
   consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
 
-  orderId String?          @unique @map("order_id") @db.Uuid
-  order   CommercialOrder? @relation(fields: [orderId], references: [id]) // solo si el plan corresponde a un product.type = GENERATED
+  orderId String? @unique @map("order_id") @db.Uuid
+  order   Order?  @relation(fields: [orderId], references: [id]) // solo si el plan corresponde a un product.type = GENERATED
 
   goal        String?
   dietRegimen String? @map("diet_regimen")
@@ -635,14 +634,15 @@ model Product {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  commercialOrders CommercialOrder[]
+  orders Order[]
 
   @@map("product")
 }
 
-// Tabla `order` del ERD. Se nombra CommercialOrder en Prisma para no chocar con el modelo
-// `Order` de arriba (tabla `orden`), que es un concepto distinto ya en uso por la app.
-model CommercialOrder {
+// Tabla `order` del ERD. Antes se nombraba CommercialOrder en Prisma para no chocar con el
+// modelo `Order` legacy (tabla `orden`); ese modelo quedó comentado arriba, así que este pasa
+// a llamarse Order.
+model Order {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   userId String @map("user_id") @db.Uuid
@@ -668,8 +668,8 @@ model CommercialOrder {
 model Payment {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  orderId String          @map("order_id") @db.Uuid
-  order   CommercialOrder @relation(fields: [orderId], references: [id])
+  orderId String @map("order_id") @db.Uuid
+  order   Order  @relation(fields: [orderId], references: [id])
 
   provider          String // TRANSBANK
   paymentIdentifier String   @map("payment_identifier") // identificador transbank

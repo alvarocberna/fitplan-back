@@ -345,6 +345,14 @@ path }`. Fuera de `NODE_ENV=production`, además incluye `exception: { name, res
 Es el **único** modelo con persistencia real hoy: no hay entidades de usuarios, profesionales, ni
 autenticación conectadas.
 
+> El mismo `schema.prisma` incluye, además, un esquema de dominio completo nuevo sobre **Postgres**
+> (identidad/auth, historial clínico, comercial — modelos `User`, `Anamnesis`, `NutritionalPlan`,
+> `Order` nuevo, etc.), con sus entidades, DTOs, datasources y módulos de NestJS ya escritos bajo
+> `src/domain/{entities,dtos,datasources,repositories}` y
+> `src/infrastructure/datasources/`. Es **groundwork puro, corriendo en paralelo**: no está
+> registrado en `AppModule` ni conectado a ningún endpoint, y no reemplaza nada del flujo descrito
+> arriba. Ver el detalle completo en **[doc/postgres-domain-groundwork.md](./doc/postgres-domain-groundwork.md)**.
+
 Un job de retención (`RetencionService`, cron diario a las 03:00) anonimiza `payload_json` y
 `plan_json` (los pone en `null`) de órdenes con más de 45 días, conservando la fila para
 auditoría/estadística — ver `OrdenesService.limpiarOrdenesAntiguas`.
@@ -356,8 +364,9 @@ Comandos: `npm run test` (unitarios), `npm run test:e2e`, `npm run test:cov`.
 
 ## Deuda técnica y pendientes
 
-Ver también `doc/deuda-tecnica.md` y `to-do-list.md` (esta última describe deuda de una versión anterior
-con capa de datasources/repositories que ya no existe en el código actual).
+Ver también `doc/deuda-tecnica.md`, `doc/postgres-domain-groundwork.md` (deuda específica del nuevo
+dominio Postgres aún sin conectar) y `to-do-list.md` (esta última describe deuda de una versión
+anterior con capa de datasources/repositories que ya no existe en el código actual).
 
 - Las fórmulas de TMB usadas son una aproximación con precisión de 3 decimales; la diferencia frente a
   fórmulas más exactas es mínima (~5 cal) pero convendría validarlas contra fuentes confiables.
