@@ -1,7 +1,9 @@
-// Prisma schema — SQLite (modo WAL activado en runtime, ver PrismaService).
-// Nota: el schema anterior (Postgres, con Usuario/Consulta/Anamnesis/...) no estaba
-// conectado a ningún módulo real de la app (no había PrismaModule/PrismaService en src),
-// por lo que se reemplaza por el mínimo necesario para la orden de cobro.
+// Prisma schema — PostgreSQL.
+// Los modelos debajo del modelo `Order` provienen de doc/database/entity-relation-diagram.md
+// (formato dbdiagram.io) y representan el esquema de dominio completo (identidad, historial
+// clínico, plan nutricional, comercial). Todavía no están conectados a ningún módulo de src/.
+// Convención: nombres de modelo/campo en camelCase (uso en el backend), @map/@@map preservan
+// el nombre snake_case de columna/tabla tal como está definido en el ERD.
 
 generator client {
   provider = "prisma-client-js"
@@ -9,22 +11,675 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// SQLite no soporta enums nativos en Prisma, por eso paymentStatus / generationStatus
-// se modelan como String y se tipan a nivel de aplicación (ver src/domain/dtos/order.dto.ts).
-
+// Modelo usado hoy por el flujo real de la app (consulta -> pago -> generación de plan), se
+// deja intacto. paymentStatus/generationStatus siguen siendo String (heredado de la época
+// SQLite, que no soportaba enums nativos) para no romper el código que ya las usa como string.
 model Order {
-  id                String   @id @default(uuid())
-  email             String   @map("correo")
-  payloadJson       String?  @map("payload_json") // ConsultaCompletaDto completo (personalInfo + anamnesis + measurements)
-  paymentStatus     String   @default("pendiente") @map("estado_pago") // 'pendiente' | 'pagado'
-  generationStatus  String   @default("no_iniciado") @map("estado_generacion") // 'no_iniciado' | 'generando' | 'completado' | 'error'
-  planJson          String?  @map("plan_json") // PlanNutricionalDto resultante, null hasta que se genera
-  attempts          Int      @default(0) @map("intentos")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  email            String   @map("correo")
+  payloadJson      String?  @map("payload_json") // ConsultaCompletaDto completo (personalInfo + anamnesis + measurements)
+  paymentStatus    String   @default("pendiente") @map("estado_pago") // 'pendiente' | 'pagado'
+  generationStatus String   @default("no_iniciado") @map("estado_generacion") // 'no_iniciado' | 'generando' | 'completado' | 'error'
+  planJson         String?  @map("plan_json") // PlanNutricionalDto resultante, null hasta que se genera
+  attempts         Int      @default(0) @map("intentos")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
   @@map("orden")
+}
+
+// =========================================
+// IDENTITY & AUTH
+// =========================================
+
+model User {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  rut           String?
+  rutCheckDigit String? @map("rut_check_digit")
+  email         String? @unique
+
+  firstName        String  @map("first_name")
+  middleName       String? @map("middle_name")
+  paternalLastName String  @map("paternal_last_name")
+  maternalLastName String? @map("maternal_last_name")
+
+  gender String
+
+  dateOfBirth DateTime @map("date_of_birth") @db.Date
+  photoUrl    String?  @map("photo_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  authIdentities           AuthIdentity[]
+  clinicalRecord           ClinicalRecord?
+  nutritionalConsultations NutritionalConsultation[]
+  commercialOrders         CommercialOrder[]
+
+  @@map("user")
+}
+
+model AuthIdentity {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  provider String // COGNITO | GOOGLE
+
+  providerUserId String @map("provider_user_id")
+
+  email String
+
+  emailVerified Boolean @map("email_verified")
+
+  isPrimary Boolean @map("is_primary")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, providerUserId])
+  @@map("auth_identity")
+}
+
+// =========================================
+// CLINICAL DOMAIN
+// =========================================
+
+model ClinicalRecord {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  patientId String @unique @map("patient_id") @db.Uuid
+  patient   User   @relation(fields: [patientId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  nutritionalConsultations NutritionalConsultation[]
+
+  @@map("clinical_record")
+}
+
+model NutritionalConsultation {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  clinicalRecordId String         @map("clinical_record_id") @db.Uuid
+  clinicalRecord   ClinicalRecord @relation(fields: [clinicalRecordId], references: [id])
+
+  patientId String @map("patient_id") @db.Uuid
+  patient   User   @relation(fields: [patientId], references: [id])
+
+  consultationNumber Int      @map("consultation_number")
+  consultationDate   DateTime @map("consultation_date")
+  description        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  anamneses        Anamnesis[]
+  measurements     Measurements[]
+  nutritionalPlans NutritionalPlan[]
+
+  @@map("nutritional_consultation")
+}
+
+model Anamnesis {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  consultationId String                  @map("consultation_id") @db.Uuid
+  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
+
+  goals                 Goals[]
+  anamnesisClinical     AnamnesisClinical[]
+  anamnesisDietary      AnamnesisDietary[]
+  anamnesisPsychosocial AnamnesisPsychosocial[]
+  lifestyles            Lifestyle[]
+
+  @@map("anamnesis")
+}
+
+model Goals {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+
+  mainGoal      String?  @map("main_goal")
+  secondaryGoal String[] @map("secondary_goal")
+
+  @@map("goals")
+}
+
+model AnamnesisClinical {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+
+  pathology        String[]
+  familyHistory    String?  @map("family_history")
+  allergy          String[]
+  intolerance      String[]
+  medication       String[]
+  gastrointestinal String[]
+  surgery          String[]
+  bowelMovement    String?  @map("bowel_movement")
+  exams            String?
+
+  clinicalConditions ClinicalCondition[]
+
+  @@map("anamnesis_clinical")
+}
+
+// pathologies, allergies, intolerances, etc
+model ClinicalCondition {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisClinicalId String            @map("anamnesis_clinical_id") @db.Uuid
+  anamnesisClinical   AnamnesisClinical @relation(fields: [anamnesisClinicalId], references: [id])
+
+  name         String?
+  detail       String?
+  type         String? // allergy, intolerance, etc
+  snomedCtCode String? @map("snomed_ct_code")
+  status       String?
+
+  @@map("clinical_condition")
+}
+
+model AnamnesisDietary {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+
+  dietType String? @map("diet_type")
+
+  dietaryRecalls24h DietaryRecall24h[]
+  foodPreferences   FoodPreference[]
+  supplements       Supplements[]
+
+  @@map("anamnesis_dietary")
+}
+
+model DietaryRecall24h {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id])
+
+  meals DietaryRecall24hMeal[]
+
+  @@map("dietary_recall_24h")
+}
+
+// dietary_recall_24h is composed of an array of Meal (one row per meal in the 24-hour recall)
+model DietaryRecall24hMeal {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  dietaryRecall24hId String           @map("dietary_recall_24h_id") @db.Uuid
+  dietaryRecall24h   DietaryRecall24h @relation(fields: [dietaryRecall24hId], references: [id])
+
+  mealTime                    String @map("meal_time")
+  mealHour                    String @map("meal_hour")
+  carbohydrate                String
+  freeConsumptionVegetable    String @map("free_consumption_vegetable")
+  generalConsumptionVegetable String @map("general_consumption_vegetable")
+  fruit                       String
+  highFatProtein              String @map("high_fat_protein")
+  lowFatProtein               String @map("low_fat_protein")
+  highFatDairy                String @map("high_fat_dairy")
+  mediumFatDairy              String @map("medium_fat_dairy")
+  lowFatDairy                 String @map("low_fat_dairy")
+  highProteinDairy            String @map("high_protein_dairy")
+  lipidRich                   String @map("lipid_rich")
+  oil                         String
+  sugar                       String
+  alcohol                     String
+
+  @@map("dietary_recall_24h_meal")
+}
+
+model FoodPreference {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id])
+
+  group String?
+
+  groups FoodPreferenceGroup[]
+
+  @@map("food_preference")
+}
+
+// food_preference is composed of an array of foods, each classified by consumption level
+model FoodPreferenceGroup {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  foodPreferenceId String         @map("food_preference_id") @db.Uuid
+  foodPreference   FoodPreference @relation(fields: [foodPreferenceId], references: [id])
+
+  group                 String?
+  frequentConsumption   String[] @map("frequent_consumption")
+  occasionalConsumption String[] @map("occasional_consumption")
+  rareConsumption       String[] @map("rare_consumption")
+  avoidedFoods          String[] @map("avoided_foods")
+
+  @@map("food_preference_group")
+}
+
+// supplements is composed of an array of strings (one supplement per row)
+model Supplements {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id])
+
+  supplement String
+  quantity   String?
+  frequency  String?
+  detail     String?
+
+  @@map("supplements")
+}
+
+model AnamnesisPsychosocial {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+
+  occupation  String?
+  education   String?
+  income      String?
+  familyGroup String? @map("family_group")
+
+  @@map("anamnesis_psychosocial")
+}
+
+model Lifestyle {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+
+  tobacco               String?
+  alcohol               String?
+  physicalActivityLevel String?  @map("physical_activity_level")
+  sport                 String[]
+
+  sportsSessions   SportsSession[]
+  sportsStrategies SportsStrategy[]
+
+  @@map("lifestyle")
+}
+
+// lifestyle can have multiple sports sessions
+model SportsSession {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  lifestyleId String    @map("lifestyle_id") @db.Uuid
+  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id])
+
+  description String?
+  discipline  String?
+  duration    Int?
+  intensity   String?
+  eventType   String? @map("event_type") // TRAINING | COMPETITION
+  days        String?
+  schedule    String?
+
+  @@map("sports_session")
+}
+
+model SportsStrategy {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  lifestyleId String    @map("lifestyle_id") @db.Uuid
+  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id])
+
+  supplement         String?
+  hydration          String?
+  preActivityMeal    String? @map("pre_activity_meal")
+  duringActivityMeal String? @map("during_activity_meal")
+  postActivityMeal   String? @map("post_activity_meal")
+
+  @@map("sports_strategy")
+}
+
+model Measurements {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  consultationId String                  @map("consultation_id") @db.Uuid
+  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
+
+  measurementNumber Int     @map("measurement_number")
+  level             String?
+  description       String?
+
+  basicMeasurements  BasicMeasurements[]
+  skinfolds          Skinfolds[]
+  circumferences     Circumferences[]
+  diameters          Diameters[]
+  measurementResults MeasurementResults[]
+
+  @@map("measurements")
+}
+
+model BasicMeasurements {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  weight        Float
+  height        Float
+  sittingHeight Float? @map("sitting_height")
+  armSpan       Float? @map("arm_span")
+
+  @@map("basic_measurements")
+}
+
+model Skinfolds {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  triceps     Float?
+  subscapular Float?
+  biceps      Float?
+  iliacCrest  Float? @map("iliac_crest")
+  supraspinal Float?
+  abdominal   Float?
+  thigh       Float?
+  calf        Float?
+
+  @@map("skinfolds")
+}
+
+model Circumferences {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  relaxedArm Float? @map("relaxed_arm")
+  flexedArm  Float? @map("flexed_arm")
+  waist      Float?
+  hip        Float?
+  midThigh   Float? @map("mid_thigh")
+  calf       Float?
+
+  @@map("circumferences")
+}
+
+model Diameters {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  humerus   Float?
+  bistyloid Float?
+  femur     Float?
+
+  @@map("diameters")
+}
+
+model MeasurementResults {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  bmi               Float?
+  bmiClassification String? @map("bmi_classification")
+
+  bfFormula        String? @map("bf_formula")
+  bfKg             Float?  @map("bf_kg")
+  bfPercentage     Float?  @map("bf_percentage")
+  bfClassification String? @map("bf_classification")
+
+  vfFormula        String? @map("vf_formula")
+  vfKg             Float?  @map("vf_kg")
+  vfPercentage     Float?  @map("vf_percentage")
+  vfClassification String? @map("vf_classification")
+
+  mmFormula        String? @map("mm_formula")
+  mmKg             Float?  @map("mm_kg")
+  mmPercentage     Float?  @map("mm_percentage")
+  mmClassification String? @map("mm_classification")
+
+  mmi               Float?
+  mmiClassification String? @map("mmi_classification")
+
+  endo Float?
+  meso Float?
+  ecto Float?
+
+  phaWeight                 Float? @map("pha_weight")
+  phaSkinfoldTriceps        Float? @map("pha_skinfold_triceps")
+  phaSkinfoldSubscapular    Float? @map("pha_skinfold_subscapular")
+  phaSkinfoldBiceps         Float? @map("pha_skinfold_biceps")
+  phaSkinfoldIliacCrest     Float? @map("pha_skinfold_iliac_crest")
+  phaSkinfoldSupraspinal    Float? @map("pha_skinfold_supraspinal")
+  phaSkinfoldAbdominal      Float? @map("pha_skinfold_abdominal")
+  phaSkinfoldThigh          Float? @map("pha_skinfold_thigh")
+  phaSkinfoldCalf           Float? @map("pha_skinfold_calf")
+  phaCircumferenceArm       Float? @map("pha_circumference_arm")
+  phaCircumferenceArmFlexed Float? @map("pha_circumference_arm_flexed")
+  phaCircumferenceWaist     Float? @map("pha_circumference_waist")
+  phaCircumferenceHip       Float? @map("pha_circumference_hip")
+  phaCircumferenceThigh     Float? @map("pha_circumference_thigh")
+  phaCircumferenceCalf      Float? @map("pha_circumference_calf")
+  phaDiameterHumerus        Float? @map("pha_diameter_humerus")
+  phaDiameterBistyloid      Float? @map("pha_diameter_bistyloid")
+  phaDiameterFemur          Float? @map("pha_diameter_femur")
+
+  @@map("measurement_results")
+}
+
+model NutritionalPlan {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  consultationId String                  @map("consultation_id") @db.Uuid
+  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
+
+  orderId String?          @unique @map("order_id") @db.Uuid
+  order   CommercialOrder? @relation(fields: [orderId], references: [id]) // solo si el plan corresponde a un product.type = GENERATED
+
+  goal        String?
+  dietRegimen String? @map("diet_regimen")
+
+  calorieRequirement      Float @map("calorie_requirement")
+  proteinRequirement      Float @map("protein_requirement")
+  carbohydrateRequirement Float @map("carbohydrate_requirement")
+  lipidRequirement        Float @map("lipid_requirement")
+
+  calorieIntake      Float @map("calorie_intake")
+  proteinIntake      Float @map("protein_intake")
+  carbohydrateIntake Float @map("carbohydrate_intake")
+  lipidIntake        Float @map("lipid_intake")
+
+  pdfUrl String? @map("pdf_url") // ubicación del PDF final generado y entregado al paciente
+
+  mealTimes             PlanMealTime[]
+  supplement            PlanSupplement?
+  sportsRecommendations PlanSportsRecommendation[]
+
+  @@map("nutritional_plan")
+}
+
+// nutritional_plan can have multiple meal times (meal_time array)
+model PlanMealTime {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId String          @map("plan_id") @db.Uuid
+  plan   NutritionalPlan @relation(fields: [planId], references: [id])
+
+  time String? @map("time") // BREAKFAST | LUNCH | AFTERNOON_TEA | DINNER | SNACK
+  hour String? @map("hour")
+
+  calorieIntake      Float @map("calorie_intake")
+  proteinIntake      Float @map("protein_intake")
+  carbohydrateIntake Float @map("carbohydrate_intake")
+  fatIntake          Float @map("fat_intake")
+
+  cereal                      Float?
+  freeConsumptionVegetable    Float? @map("free_consumption_vegetable")
+  generalConsumptionVegetable Float? @map("general_consumption_vegetable")
+  fruit                       Float?
+  highFatProtein              Float? @map("high_fat_protein")
+  lowFatProtein               Float? @map("low_fat_protein")
+  highFatDairy                Float? @map("high_fat_dairy")
+  mediumFatDairy              Float? @map("medium_fat_dairy")
+  lowFatDairy                 Float? @map("low_fat_dairy")
+  highProteinDairy            Float? @map("high_protein_dairy")
+  lipidRich                   Float? @map("lipid_rich")
+  oil                         Float?
+  sugar                       Float?
+
+  notes PlanMealTimeNote[]
+
+  @@map("plan_meal_time")
+}
+
+// plan_meal_time can have multiple examples and comments (examples/comments arrays)
+model PlanMealTimeNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planMealTimeId String       @map("plan_meal_time_id") @db.Uuid
+  planMealTime   PlanMealTime @relation(fields: [planMealTimeId], references: [id])
+
+  note String
+  type String // EXAMPLE | COMMENT
+
+  @@map("plan_meal_time_note")
+}
+
+// nutritional_plan has at most one associated supplement (supplement object, not an array)
+model PlanSupplement {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId String          @unique @map("plan_id") @db.Uuid
+  plan   NutritionalPlan @relation(fields: [planId], references: [id])
+
+  supplement         String
+  requirement        Float?
+  doseInstructions   String? @map("dose_instructions")
+  intakeInstructions String? @map("intake_instructions")
+
+  calorieIntake      Float @map("calorie_intake")
+  proteinIntake      Float @map("protein_intake")
+  carbohydrateIntake Float @map("carbohydrate_intake")
+  fatIntake          Float @map("fat_intake")
+
+  notes PlanSupplementNote[]
+
+  @@map("plan_supplement")
+}
+
+// plan_supplement can have multiple effects and considerations (effects/considerations arrays)
+model PlanSupplementNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planSupplementId String         @map("plan_supplement_id") @db.Uuid
+  planSupplement   PlanSupplement @relation(fields: [planSupplementId], references: [id])
+
+  note String
+  type String // EFFECT | CONSIDERATION
+
+  @@map("plan_supplement_note")
+}
+
+// nutritional_plan can have multiple sports recommendations (sports_recommendation array)
+model PlanSportsRecommendation {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId String          @map("plan_id") @db.Uuid
+  plan   NutritionalPlan @relation(fields: [planId], references: [id])
+
+  session        String?
+  strategy       String?
+  preActivity    String? @map("pre_activity")
+  duringActivity String? @map("during_activity")
+  postActivity   String? @map("post_activity")
+
+  @@map("plan_sports_recommendation")
+}
+
+// =========================================
+// COMMERCIAL DOMAIN
+// =========================================
+
+model Product {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  type        String // PREDEFINED | GENERATED
+  name        String
+  description String
+
+  price    Decimal @db.Decimal(12, 2)
+  currency String
+
+  pdfUrl String? @map("pdf_url") // archivo estático; solo aplica si type = PREDEFINED
+
+  active Boolean
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  commercialOrders CommercialOrder[]
+
+  @@map("product")
+}
+
+// Tabla `order` del ERD. Se nombra CommercialOrder en Prisma para no chocar con el modelo
+// `Order` de arriba (tabla `orden`), que es un concepto distinto ya en uso por la app.
+model CommercialOrder {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  productId String  @map("product_id") @db.Uuid
+  product   Product @relation(fields: [productId], references: [id])
+
+  amount   Decimal @db.Decimal(12, 2) // monto efectivamente cobrado (puede diferir de product.price por descuentos/promos)
+  currency String
+  status   String // PENDING | PAID | EXPIRED | CANCELLED
+
+  creationDate   DateTime  @map("creation_date")
+  paymentDate    DateTime? @map("payment_date")
+  expirationDate DateTime? @map("expiration_date")
+
+  payments        Payment[]
+  nutritionalPlan NutritionalPlan?
+
+  @@map("order")
+}
+
+model Payment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  orderId String          @map("order_id") @db.Uuid
+  order   CommercialOrder @relation(fields: [orderId], references: [id])
+
+  provider          String // TRANSBANK
+  paymentIdentifier String   @map("payment_identifier") // identificador transbank
+  authorizationCode String   @map("authorization_code")
+  amount            Decimal  @db.Decimal(12, 2)
+  installmentCount  Int      @map("installment_count")
+  status            String // AUTHORIZED | REJECTED | CANCELLED
+  transactionDate   DateTime @map("transaction_date")
+  movementType      String   @map("movement_type")
+  cardType          String   @map("card_type")
+
+  @@map("payment")
 }
