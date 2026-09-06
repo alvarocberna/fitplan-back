@@ -1,16 +1,27 @@
-# Nuevo dominio (Postgres) — groundwork en paralelo al flujo legacy
+# Nuevo dominio (Postgres) — groundwork, hoy ya conectado al flujo comercial
 
-Este documento describe una capa de arquitectura nueva que se construyó **en paralelo** al flujo
-legacy (consulta → orden → pago → generación de plan, sobre SQLite y el modelo `Order` que
-documentan el README y `doc/flow-happy-path.md`). Es groundwork puro: define el modelo de dominio
-completo del producto (identidad/auth, historial clínico, comercial) sobre un `schema.prisma` de
-Postgres, con sus entidades, DTOs, contratos y datasources — pero **hoy no está conectada a ningún
-endpoint ni módulo de `AppModule`**. No reemplaza nada del flujo actual; ver la nota al final sobre
-convivencia con el `Order` legacy.
+Este documento describe la capa de arquitectura nueva que se construyó originalmente **en paralelo**
+al flujo legacy (consulta → orden → pago → generación de plan, que corría sobre SQLite y un modelo
+`Order` que ya no existe en `schema.prisma`). Define el modelo de dominio completo del producto
+(identidad/auth, historial clínico, comercial) sobre un `schema.prisma` de Postgres, con sus
+entidades, DTOs, contratos, datasources y repositories.
+
+> **Actualización — esta capa ya no es groundwork "sin consumidor" en su totalidad.** Una migración
+> posterior conectó de verdad `identity-auth` (`User`), `clinical-domain` (`ClinicalRecord`,
+> `NutritionalConsultation`, `Anamnesis` y sus hijas básicas, `Measurements`/`BasicMeasurements`) y
+> `commercial-domain` (`Order`, `Product`) al flujo real `orders` → `webhooks` → `plan-generation`,
+> reemplazando por completo el mecanismo legacy de `payloadJson`/`planJson` sobre el `Order` de
+> SQLite. Ver el detalle completo de esa migración en
+> **[doc/orders-postgres-migration.md](./orders-postgres-migration.md)**. El resto de este documento
+> sigue describiendo con precisión la arquitectura general de la capa (entidades, DTOs, datasources,
+> repositories) tal como se construyó; **no generalizar** — partes de ella (`AuthIdentity`, `Payment`,
+> la mayoría de `clinical-domain` fuera de `Anamnesis`/`Measurements` básicos, como `NutritionalPlan`
+> y sus hijas) siguen sin ningún consumidor real, ver §7 y §9 más abajo.
 
 Si estás buscando cómo funciona el producto en producción hoy, ver el README principal y
-`doc/flow-happy-path.md`. Este documento es la única fuente de verdad sobre las decisiones tomadas
-durante esta migración, ya que no hay PR/commit description que las capture.
+`doc/flow-happy-path.md`. Este documento sigue siendo la única fuente de verdad sobre las decisiones
+de diseño tomadas durante la construcción original de esta capa, ya que no hay PR/commit description
+que las capture.
 
 ## 1. El nuevo schema (`prisma/schema.prisma`)
 
@@ -208,10 +219,32 @@ y **exporta la clase abstracta, nunca el `*Impl`**, de forma que cualquier consu
 inversión de dependencias. Ninguno de los tres módulos importa `PrismaModule` explícitamente,
 porque es `@Global()` (ya disponible en todo el árbol una vez que `AppModule` lo carga).
 
-**Ninguno de estos tres módulos está registrado en `AppModule`** (`src/app.module.ts` solo importa
-`ConfigModule`, `PrismaModule`, `ConsultationModule`, `OpenaiModule`, `OrdersModule`,
-`WebhooksModule`) — es intencional: no hay todavía ningún caso de uso real que los necesite. Quedan
-listos para cuando se conecte un consumidor real o se haga la poda mencionada en §6.
+> **Actualización**: los tres módulos de `identity-auth`, `clinical-domain` y `commercial-domain`
+> **sí están registrados en `AppModule`** desde la migración descrita en
+> [orders-postgres-migration.md](./orders-postgres-migration.md) — `src/app.module.ts` importa los 3
+> `*DatasourcesModule` junto con los 3 `*RepositoriesModule` correspondientes (ver más abajo), y
+> `OrdersModule` los usa para construir `OrdersService`. Lo que describe el párrafo original de esta
+> sección (que sigue siendo cierto para el resto del párrafo) es que **antes** de esa migración
+> ninguno estaba registrado; se deja el texto original a continuación como referencia histórica de
+> cómo se construyó el módulo, más una capa que faltaba documentar aquí:
+>
+> Además de `infrastructure/datasources/**` (arriba), ya existía —sin documentar en este archivo—
+> una capa `infrastructure/repositories/**`: un archivo `<entidad>.repository.ts` por entidad,
+> exportando `<Entidad>RepositoryImpl`, que implementa la clase abstracta de `domain/repositories`
+> inyectando por constructor la clase abstracta de `domain/datasources` (no `PrismaService`
+> directamente) y delegando cada método 1:1 (`return this.datasource.<metodo>(...)`). Cada
+> `<dominio>-repositories.module.ts` (ej. `CommercialDomainRepositoriesModule`) importa el
+> `*DatasourcesModule` de su mismo dominio, ata `{ provide: <Entidad>Repository, useClass:
+> <Entidad>RepositoryImpl }` y exporta solo la clase abstracta — mismo patrón de inversión de
+> dependencias que la capa de datasources. Un consumidor (ej. `OrdersService`) importa el
+> `*RepositoriesModule` e inyecta `UserRepository`/`OrderRepository`/etc., sin conocer que por debajo
+> hay un datasource que a su vez usa Prisma.
+
+Antes de la migración descrita arriba, **ninguno de estos tres módulos estaba registrado en
+`AppModule`** (`src/app.module.ts` solo importaba `ConfigModule`, `PrismaModule`,
+`ConsultationModule`, `OpenaiModule`, `OrdersModule`, `WebhooksModule`) — era intencional: no había
+todavía ningún caso de uso real que los necesitara. Quedaban listos para cuando se conectara un
+consumidor real o se hiciera la poda mencionada en §6; eso es lo que ocurrió después.
 
 ## 8. Árbol de directorios resultante (resumen)
 
@@ -256,19 +289,26 @@ src/
             └── commercial-domain-datasources.module.ts
 ```
 
-## 9. Convivencia con el flujo legacy
+## 9. Convivencia con el flujo legacy (estado histórico — ver actualización arriba)
 
-- `prisma/schema.prisma` ahora corre sobre **Postgres**; el flujo legacy documentado en el README y
-  en `doc/flow-happy-path.md` sigue describiendo el comportamiento real de `OrdersService` /
-  `WebhooksService` / `PlanGenerationService`, que hoy siguen leyendo/escribiendo el modelo `Order`
-  legacy tal como estaba (el README puede quedar desactualizado respecto al motor de base de datos
-  subyacente si `DATABASE_URL` cambia de SQLite a Postgres al aplicar esta migración; no se asume
-  aquí que eso ya haya ocurrido en runtime).
-- El `Order` nuevo (Postgres, `commercial-domain`) y el `Order` legacy (SQLite, tabla `orden`) son
-  modelos distintos que **no se relacionan entre sí** en el schema ni en el código — coexisten en el
-  mismo archivo `schema.prisma` solo porque comparten nombre de modelo Prisma.
-- Nada de lo descrito en este documento cambia el comportamiento observable de
-  `POST /consulta/chat`, `POST /ordenes/crear`, los webhooks de pago, ni la generación de plan en
-  background — todos siguen funcionando exactamente como los documenta el README.
+Lo que sigue describe la situación **tal como estaba antes** de la migración de
+[orders-postgres-migration.md](./orders-postgres-migration.md); se deja como referencia histórica de
+cómo convivían ambos modelos mientras el `Order` nuevo no tenía consumidor:
 
-Ver `doc/technical-debt.md` para el detalle de los puntos pendientes de esta nueva capa.
+- El modelo `Order` legacy (SQLite, tabla `orden`, con `payloadJson`/`planJson` como strings JSON) ya
+  no existe en `prisma/schema.prisma` — está comentado, reemplazado por el `Order` nuevo descrito en
+  este documento. `OrdersService` / `WebhooksService` / `PlanGenerationService` **ya no leen ni
+  escriben ningún modelo legacy**: usan el `Order` de `commercial-domain` y el árbol
+  `ClinicalRecord`/`NutritionalConsultation`/`Anamnesis`/`Measurements` de `clinical-domain` a través
+  de los repositories descritos en §4/§5, tal como documenta
+  [orders-postgres-migration.md](./orders-postgres-migration.md).
+- El `Order` nuevo (Postgres, `commercial-domain`) y el `Order` legacy (que existió en algún momento
+  sobre SQLite, tabla `orden`) fueron siempre modelos distintos, sin relación entre sí en el schema ni
+  en el código, más allá de compartir nombre de modelo Prisma.
+- El contrato HTTP observable (`POST /consulta/chat`, `POST /ordenes/crear`, los webhooks de pago, la
+  generación de plan en background) **no cambió de forma** con esta migración — mismos endpoints,
+  mismos requests/responses — solo cambió la persistencia por debajo. Ver el README y
+  `doc/flow-happy-path.md`, ya actualizados.
+
+Ver `doc/technical-debt.md` y [orders-postgres-migration.md § Deuda técnica](./orders-postgres-migration.md#12-deuda-técnica-de-esta-migración)
+para el detalle de los puntos pendientes de esta capa.

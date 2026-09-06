@@ -2,6 +2,7 @@ import { NutritionalConsultationEntity } from '../../entities/clinical-record.en
 import {
   CreateNutritionalConsultationDto,
   UpdateNutritionalConsultationDto,
+  CreateNutritionalConsultationDetailsDto,
 } from '../..';
 
 export abstract class NutritionalConsultationRepository {
@@ -16,4 +17,13 @@ export abstract class NutritionalConsultationRepository {
     updateNutritionalConsultationDto: UpdateNutritionalConsultationDto,
   ): Promise<NutritionalConsultationEntity>;
   abstract deleteNutritionalConsultationById(id: string): Promise<void>;
+  abstract createNutritionalConsultationWithDetails(
+    dto: CreateNutritionalConsultationDetailsDto,
+  ): Promise<NutritionalConsultationEntity>;
+  abstract getNutritionalConsultationWithDetailsByOrderId(
+    orderId: string,
+  ): Promise<NutritionalConsultationEntity | null>;
+  abstract countNutritionalConsultationsByClinicalRecordId(
+    clinicalRecordId: string,
+  ): Promise<number>;
 }

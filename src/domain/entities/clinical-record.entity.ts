@@ -4,6 +4,7 @@ import type { UserEntity } from './user.entity';
 import type { AnamnesisEntity } from './anamnesis.entity';
 import type { MeasurementsEntity } from './measurements.entity';
 import type { NutritionalPlanEntity } from './nutritional-plan.entity';
+import type { OrderEntity } from './order.entity';
 
 export interface ClinicalRecordEntity {
   id: string;
@@ -29,6 +30,14 @@ export interface NutritionalConsultationEntity {
   consultationNumber: number;
   consultationDate: Date;
   description: string | null;
+
+  // Vínculo con la orden comercial que originó esta consulta (flujo consulta -> pago -> generación
+  // de plan). Simétrico al patrón ya usado por NutritionalPlan.orderId.
+  orderId: string | null;
+  order?: OrderEntity | null;
+
+  // Dato puntual de la consulta (no de la identidad del paciente), recolectado en personalInfo.athlete.
+  athlete: boolean | null;
 
   createdAt: Date;
   updatedAt: Date;

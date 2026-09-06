@@ -1,11 +1,27 @@
 //nest
 import { Injectable, Logger } from '@nestjs/common';
 //domain
-import { CompleteConsultationDto } from '../../domain/dtos/consultation.dto';
-import { NutritionPlanDto, FoodWithEquivalence } from '../../domain/dtos/nutrition-plan.dto';
+import {
+  CompleteConsultationDto,
+  PersonalInfoDto,
+  AnamnesisDto,
+  MeasurementsDto,
+} from '../../domain/dtos/consultation.dto';
+import {
+  NutritionPlanDto,
+  FoodWithEquivalence,
+} from '../../domain/dtos/nutrition-plan.dto';
+import { OrderEntity } from '../../domain/entities/order.entity';
+import { UserEntity } from '../../domain/entities/user.entity';
+import { NutritionalConsultationEntity } from '../../domain/entities/clinical-record.entity';
+import { AnamnesisEntity } from '../../domain/entities/anamnesis.entity';
+import { MeasurementsEntity } from '../../domain/entities/measurements.entity';
 import { calculateAge } from '../../domain/services/utils/age.service';
 import { calculateRequirements } from '../../domain/services/formulas/requirements.service';
-import { calculateSupplements, SupplementPrescription } from '../../domain/services/formulas/supplements.service';
+import {
+  calculateSupplements,
+  SupplementPrescription,
+} from '../../domain/services/formulas/supplements.service';
 import { determineMealTimes } from '../../domain/services/alimentos/meal-times.service';
 import {
   defineFoodGroups,
@@ -14,7 +30,10 @@ import {
   calculateTotalAdequacy,
   CalculatedMealTime,
 } from '../../domain/services/alimentos/portion-adequacy.service';
-import { FOOD_FIELD_TO_GROUP, FOOD_GROUP_PORTIONS } from '../../domain/services/alimentos/food-portions';
+import {
+  FOOD_FIELD_TO_GROUP,
+  FOOD_GROUP_PORTIONS,
+} from '../../domain/services/alimentos/food-portions';
 //openai
 import { OpenaiService } from '../openai/openai.service';
 //presentation - modulo orders
@@ -28,7 +47,6 @@ import {
   EXTRACT_INFO_SYSTEM_PROMPT,
   NUTRITIONIST_SYSTEM_PROMPT,
 } from './plan-generation.prompts';
-
 
 const MAX_ATTEMPTS = 4;
 const BACKOFF_BASE_MS = 1000;
@@ -100,7 +118,6 @@ type ExtractedInfo = {
 // escalamiento" de un reintento por otro motivo (timeout, rate limit, respuesta no-JSON, etc).
 class PlanValidationError extends Error {}
 
-
 @Injectable()
 export class PlanGenerationService {
   private readonly logger = new Logger(PlanGenerationService.name);
@@ -114,17 +131,20 @@ export class PlanGenerationService {
   //se dispara (sin await, "fire and forget") desde el webhook de pago una vez confirmado el cobro
   //cualquier error queda contenido acá adentro: nunca debe tirar una unhandled rejection.
   async generatePlan(orderId: string): Promise<void> {
-
     //guard de estado: si la orden ya está 'generando' (otro disparo concurrente) o 'completado',
     //no hace nada. Solo entra si estaba 'no_iniciado' o 'error' (reintento de un fallo previo).
     const canGenerate = await this.ordersService.tryStartGeneration(orderId);
     if (!canGenerate) {
-      this.logger.log(`Orden ${orderId}: generación ya en curso o completada, se ignora el disparo`);
+      this.logger.log(
+        `Orden ${orderId}: generación ya en curso o completada, se ignora el disparo`,
+      );
       return;
     }
 
-    const order = await this.ordersService.findById(orderId);
-    const payload = this.ordersService.getPayload(order);
+    const order = await this.ordersService.findByIdWithUser(orderId);
+    const consultation =
+      await this.ordersService.getConsultationForOrder(orderId);
+    const payload = this.buildCompleteConsultationDto(order, consultation);
 
     const totalStart = Date.now();
     let validationRejections = 0;
@@ -134,7 +154,9 @@ export class PlanGenerationService {
       try {
         const plan = await this.processPlan(payload);
         const attemptDurationMs = Date.now() - attemptStart;
-        this.logger.log(`Orden ${orderId}: intento ${attempt}/${MAX_ATTEMPTS} generado en ${attemptDurationMs}ms`);
+        this.logger.log(
+          `Orden ${orderId}: intento ${attempt}/${MAX_ATTEMPTS} generado en ${attemptDurationMs}ms`,
+        );
 
         await this.ordersService.completeGeneration(orderId, plan);
         const totalDurationMs = Date.now() - totalStart;
@@ -143,7 +165,12 @@ export class PlanGenerationService {
             `${validationRejections} rechazado(s) por validación, ${totalDurationMs}ms totales)`,
         );
 
-        await this.emailService.sendPlanByEmail(order.email, plan);
+        const userEmail = order.user?.email;
+        if (!userEmail)
+          throw new Error(
+            `Orden ${orderId}: el usuario asociado no tiene email`,
+          );
+        await this.emailService.sendPlanByEmail(userEmail, plan);
         return;
       } catch (error) {
         const attemptDurationMs = Date.now() - attemptStart;
@@ -174,7 +201,9 @@ export class PlanGenerationService {
   }
 
   //recibe la info de consulta y devuelve un objeto con el plan nutricional
-  private async processPlan(body: CompleteConsultationDto): Promise<NutritionPlanDto> {
+  private async processPlan(
+    body: CompleteConsultationDto,
+  ): Promise<NutritionPlanDto> {
     //se extrae informacion del prompt: NAF y objetivo
     const { physicalActivityLevel, goal } = await this.extractInfoPrompt(body);
     //se extrae informacion del body
@@ -196,17 +225,24 @@ export class PlanGenerationService {
       goal: goal,
       athlete: athlete,
       somatotype: somatotype,
-    })
+    });
 
     //PASO 2 - prescripcion: lo ejecuta la IA en base al prompt NUTRITIONIST_SYSTEM_PROMPT
 
     //PASO 3.1 - definir tiempos de comida
-    const finalMealTimes = determineMealTimes(body.anamnesis?.dietary?.r24h ?? null, goal);
+    const finalMealTimes = determineMealTimes(
+      body.anamnesis?.dietary?.r24h ?? null,
+      goal,
+    );
     //PASO 3.2 - definir grupos de alimentos base x tiempo
     const mealTimeGroups = defineFoodGroups(finalMealTimes);
     //PASO 3.3 - adecuación de porciones de alimentos
-    const portionAdequacyResult = calculateFoodsAndIntake(mealTimeGroups, requirements);
-    const { calculatedMealTimes, supplementIntakeNote, supplementIntake } = portionAdequacyResult;
+    const portionAdequacyResult = calculateFoodsAndIntake(
+      mealTimeGroups,
+      requirements,
+    );
+    const { calculatedMealTimes, supplementIntakeNote, supplementIntake } =
+      portionAdequacyResult;
     //calculo aporte total y adecuacion (considerando porciones y suplementos)
     const totalIntake = calculateTotalPlanIntake(portionAdequacyResult);
     const adequacy = calculateTotalAdequacy(totalIntake, requirements);
@@ -214,23 +250,27 @@ export class PlanGenerationService {
     //PASO 4 - generación de ejemplos y comentarios: lo ejecuta la IA en base al prompt NUTRITIONIST_SYSTEM_PROMPT
 
     //PASO 5 - calculo suplementos deportivos. se calculan, pero aún no se prrescriben (eso lo decide la IA)
-    const supplementsPrescription = calculateSupplements(weight)
+    const supplementsPrescription = calculateSupplements(weight);
 
     //PASO 6 - recomendaciones deportivas: la IA decide cuales prescribe en base al prompt NUTRITIONIST_SYSTEM_PROMPT
 
     //generación de plan - codigo + IA
     const generated = await this.openaiService.chatJson<GeneratedNutritionPlan>(
       NUTRITIONIST_SYSTEM_PROMPT,
-      [{ role: 'user', content: buildUserPrompt(
-                                  body,
-                                  requirements,
-                                  goal,
-                                  supplementsPrescription,
-                                  calculatedMealTimes,
-                                  supplementIntakeNote,
-                                  supplementIntake,
-                                )
-      }],
+      [
+        {
+          role: 'user',
+          content: buildUserPrompt(
+            body,
+            requirements,
+            goal,
+            supplementsPrescription,
+            calculatedMealTimes,
+            supplementIntakeNote,
+            supplementIntake,
+          ),
+        },
+      ],
       OPENAI_MODEL_PLAN,
     );
 
@@ -238,7 +278,10 @@ export class PlanGenerationService {
     // por código, se lanza un error acá: lo captura el loop de reintentos de generatePlan() (con
     // backoff), que vuelve a llamar a processPlan() y a pedirle el plan completo a la IA desde cero.
     this.validateGeneratedExamples(calculatedMealTimes, generated.mealTimes);
-    this.validateGeneratedEquivalences(calculatedMealTimes, generated.mealTimes);
+    this.validateGeneratedEquivalences(
+      calculatedMealTimes,
+      generated.mealTimes,
+    );
 
     //merge: "foods" (porción calculada por código + equivalencia redactada por la IA) e "intake"
     //vienen del cálculo por código; "hour", "examples" y "comments" vienen de la IA, alineados por
@@ -255,15 +298,24 @@ export class PlanGenerationService {
       const foods = Object.fromEntries(
         Object.entries(calculated.foods).map(([field, portion]) => [
           field,
-          portion === null ? null : ({ portion, equivalence: equivalenceByField.get(field) ?? '' } as FoodWithEquivalence),
+          portion === null
+            ? null
+            : ({
+                portion,
+                equivalence: equivalenceByField.get(field) ?? '',
+              } as FoodWithEquivalence),
         ]),
       ) as NutritionPlanDto['mealTimes'][number]['foods'];
 
       return {
-        description: { time: calculated.mealTimeType, hour: generatedMealTime?.hour ?? null },
+        description: {
+          time: calculated.mealTimeType,
+          hour: generatedMealTime?.hour ?? null,
+        },
         intake: calculated.intake,
         foods,
-        examples: generatedMealTime?.examples.map((example) => example.text) ?? [],
+        examples:
+          generatedMealTime?.examples.map((example) => example.text) ?? [],
         comments: generatedMealTime?.comments ?? [],
       };
     });
@@ -293,7 +345,9 @@ export class PlanGenerationService {
     const info = body.personalInfo;
 
     const name = [info?.firstName, info?.middleName].filter(Boolean).join(' ');
-    const lastName = [info?.paternalLastName, info?.maternalLastName].filter(Boolean).join(' ');
+    const lastName = [info?.paternalLastName, info?.maternalLastName]
+      .filter(Boolean)
+      .join(' ');
     const age = info?.dateOfBirth ? String(calculateAge(info.dateOfBirth)) : '';
 
     return {
@@ -304,8 +358,148 @@ export class PlanGenerationService {
     };
   }
 
+  // Reconstruye el shape CompleteConsultationDto (el que antes se leía de payloadJson) a partir de
+  // las entidades reales (User + NutritionalConsultation con su Anamnesis/Measurements ya
+  // populadas por OrdersService.getConsultationForOrder). Se reconstruye la MISMA forma en vez de
+  // adaptar processPlan/los prompts al shape de las entidades: es mucho menos invasivo y deja
+  // intacto todo el pipeline de abajo (cálculo de requerimientos, prompts, validadores).
+  private buildCompleteConsultationDto(
+    order: OrderEntity,
+    consultation: NutritionalConsultationEntity,
+  ): CompleteConsultationDto {
+    if (!order.user)
+      throw new Error(`Orden ${order.id}: falta el usuario asociado`);
+    return {
+      personalInfo: this.buildPersonalInfoDto(order.user, consultation.athlete),
+      anamnesis: this.buildAnamnesisDto(consultation.anamneses?.[0]),
+      measurements: this.buildMeasurementsDto(consultation.measurements?.[0]),
+    };
+  }
+
+  private buildPersonalInfoDto(
+    user: UserEntity,
+    athlete: boolean | null,
+  ): PersonalInfoDto {
+    return {
+      rut: user.rut ? Number(user.rut) : null,
+      dvRut: user.rutCheckDigit,
+      firstName: user.firstName,
+      middleName: user.middleName,
+      paternalLastName: user.paternalLastName,
+      maternalLastName: user.maternalLastName,
+      gender: user.gender,
+      athlete,
+      email: user.email,
+      dateOfBirth: user.dateOfBirth,
+    };
+  }
+
+  private buildAnamnesisDto(anamnesis?: AnamnesisEntity): AnamnesisDto {
+    // Este flujo siempre crea a lo más una fila de cada colección por consulta (ver
+    // OrdersService.createOrder / orders.mapper.ts), por eso se toma [0] de cada relación.
+    const goals = anamnesis?.goals?.[0];
+    const clinical = anamnesis?.anamnesisClinical?.[0];
+    const dietary = anamnesis?.anamnesisDietary?.[0];
+    const lifestyle = anamnesis?.lifestyles?.[0];
+    const sportsStrategy = lifestyle?.sportsStrategies?.[0];
+
+    return {
+      goals: goals
+        ? { primaryGoal: goals.mainGoal, secondaryGoal: goals.secondaryGoal }
+        : null,
+      clinical: clinical
+        ? {
+            pathology: clinical.pathology[0] ?? null,
+            familyMedicalHistory: clinical.familyHistory,
+            allergies: clinical.allergy[0] ?? null,
+            intolerances: clinical.intolerance[0] ?? null,
+            medications: clinical.medication[0] ?? null,
+            gastrointestinalHistory: clinical.gastrointestinal[0] ?? null,
+            bowelMovements: clinical.bowelMovement,
+            surgeries: clinical.surgery[0] ?? null,
+          }
+        : null,
+      dietary: dietary
+        ? {
+            r24h:
+              dietary.dietaryRecalls24h?.[0]?.meals?.map((meal) => ({
+                mealTime: meal.mealTime,
+                carbohydrate: meal.carbohydrate,
+                freeConsumptionVegetable: meal.freeConsumptionVegetable,
+                generalConsumptionVegetable: meal.generalConsumptionVegetable,
+                fruit: meal.fruit,
+                highFatProtein: meal.highFatProtein,
+                lowFatProtein: meal.lowFatProtein,
+                highFatDairy: meal.highFatDairy,
+                mediumFatDairy: meal.mediumFatDairy,
+                lowFatDairy: meal.lowFatDairy,
+                highProteinDairy: meal.highProteinDairy,
+                highLipid: meal.lipidRich,
+                oil: meal.oil,
+                sugar: meal.sugar,
+                alcohol: meal.alcohol,
+              })) ?? null,
+            foodPreferenceGroups:
+              dietary.foodPreferences?.[0]?.groups?.map((group) => ({
+                group: group.group ?? '',
+                frequentConsumption: group.frequentConsumption,
+                occasionalConsumption: group.occasionalConsumption,
+                rareConsumption: group.rareConsumption,
+                avoidedFoods: group.avoidedFoods,
+              })) ?? null,
+            sportsStrategy: sportsStrategy
+              ? {
+                  supplement: sportsStrategy.supplement
+                    ? sportsStrategy.supplement.split(', ')
+                    : null,
+                  hydration: sportsStrategy.hydration
+                    ? sportsStrategy.hydration.split(', ')
+                    : null,
+                  preActivityMeal: sportsStrategy.preActivityMeal,
+                  duringActivityMeal: sportsStrategy.duringActivityMeal,
+                  postActivityMeal: sportsStrategy.postActivityMeal,
+                }
+              : null,
+          }
+        : null,
+      lifestyle: lifestyle
+        ? {
+            alcohol: lifestyle.alcohol,
+            tobacco: lifestyle.tobacco,
+            physicalActivityLevel: lifestyle.physicalActivityLevel,
+            sport: lifestyle.sport,
+            sportSession:
+              lifestyle.sportsSessions?.map((session) => ({
+                description: session.description,
+                discipline: session.discipline,
+                duration: session.duration,
+                intensity: session.intensity,
+                eventType: session.eventType,
+                days: session.days,
+                schedule: session.schedule,
+              })) ?? null,
+          }
+        : null,
+    };
+  }
+
+  private buildMeasurementsDto(
+    measurements?: MeasurementsEntity,
+  ): MeasurementsDto {
+    const basic = measurements?.basicMeasurements?.[0];
+    return {
+      weight: basic?.weight ?? null,
+      height: basic?.height ?? null,
+      // El nuevo schema no tiene un campo dedicado para "somatotype"; se persiste como texto
+      // libre en Measurements.description (ver orders.mapper.ts).
+      somatotype: measurements?.description ?? null,
+    };
+  }
+
   //helper de processPlan() - el LLM extrae el NAF y objetivo del body
-  private async extractInfoPrompt(body: CompleteConsultationDto): Promise<ExtractedInfo> {
+  private async extractInfoPrompt(
+    body: CompleteConsultationDto,
+  ): Promise<ExtractedInfo> {
     return this.openaiService.chatJson<ExtractedInfo>(
       EXTRACT_INFO_SYSTEM_PROMPT,
       [{ role: 'user', content: buildExtractInfoPromptUserMessage(body) }],
@@ -320,17 +514,27 @@ export class PlanGenerationService {
   // algunos alimentos "libre consumo" como ajo o zapallo italiano crudo): en ese caso no se puede
   // validar la proporción exacta en gramos, así que el caller debe confiar en la sola presencia del
   // alimento. Lanza si "field" no existe o si "food" no pertenece al grupo de ese campo.
-  private implicitPortions(field: string, food: string, weight: number, context: string): number | null {
+  private implicitPortions(
+    field: string,
+    food: string,
+    weight: number,
+    context: string,
+  ): number | null {
     const groupInfo = FOOD_FIELD_TO_GROUP[field];
     if (!groupInfo) {
       throw new PlanValidationError(`${context}: campo "${field}" no existe`);
     }
     const groupData = FOOD_GROUP_PORTIONS.find(
-      (g) => g.group === groupInfo.group && g.subcategory === groupInfo.subcategory,
+      (g) =>
+        g.group === groupInfo.group && g.subcategory === groupInfo.subcategory,
     );
-    const foodData = groupData?.foods.find((f) => f.food.toLowerCase() === food.toLowerCase());
+    const foodData = groupData?.foods.find(
+      (f) => f.food.toLowerCase() === food.toLowerCase(),
+    );
     if (!foodData) {
-      throw new PlanValidationError(`${context}: alimento "${food}" no pertenece al grupo "${field}"`);
+      throw new PlanValidationError(
+        `${context}: alimento "${food}" no pertenece al grupo "${field}"`,
+      );
     }
     if (!foodData.weight) return null;
     return weight / foodData.weight;
@@ -353,7 +557,10 @@ export class PlanGenerationService {
         );
       }
 
-      const requiredByField = calculated.numericPortions as unknown as Record<string, number>;
+      const requiredByField = calculated.numericPortions as unknown as Record<
+        string,
+        number
+      >;
 
       examples.forEach((example, exampleIndex) => {
         const context = `Tiempo "${calculated.mealTimeType}", ejemplo ${exampleIndex + 1}`;
@@ -361,12 +568,18 @@ export class PlanGenerationService {
         const fieldsWithoutBaseWeight = new Set<string>();
 
         for (const component of example.components) {
-          const portions = this.implicitPortions(component.field, component.food, component.weight, context);
+          const portions = this.implicitPortions(
+            component.field,
+            component.food,
+            component.weight,
+            context,
+          );
           if (portions === null) {
             fieldsWithoutBaseWeight.add(component.field);
             continue;
           }
-          usedPortionsByField[component.field] = (usedPortionsByField[component.field] ?? 0) + portions;
+          usedPortionsByField[component.field] =
+            (usedPortionsByField[component.field] ?? 0) + portions;
         }
 
         for (const [field, required] of Object.entries(requiredByField)) {
@@ -381,7 +594,9 @@ export class PlanGenerationService {
 
         for (const field of Object.keys(usedPortionsByField)) {
           if (!requiredByField[field]) {
-            throw new PlanValidationError(`${context}: usa el grupo "${field}", que no corresponde a este tiempo de comida`);
+            throw new PlanValidationError(
+              `${context}: usa el grupo "${field}", que no corresponde a este tiempo de comida`,
+            );
           }
         }
       });
@@ -399,33 +614,50 @@ export class PlanGenerationService {
     generatedMealTimes: GeneratedNutritionPlan['mealTimes'],
   ): void {
     calculatedMealTimes.forEach((calculated, mealTimeIndex) => {
-      const requiredByField = calculated.numericPortions as unknown as Record<string, number>;
+      const requiredByField = calculated.numericPortions as unknown as Record<
+        string,
+        number
+      >;
       const requiredFields = Object.entries(requiredByField)
         .filter(([, required]) => !!required)
         .map(([field]) => field);
 
-      const equivalences = generatedMealTimes[mealTimeIndex]?.equivalences ?? [];
-      const equivalenceByField = new Map(equivalences.map((group) => [group.field, group]));
+      const equivalences =
+        generatedMealTimes[mealTimeIndex]?.equivalences ?? [];
+      const equivalenceByField = new Map(
+        equivalences.map((group) => [group.field, group]),
+      );
 
       for (const field of requiredFields) {
         const context = `Tiempo "${calculated.mealTimeType}", equivalencias de "${field}"`;
         const generatedGroup = equivalenceByField.get(field);
         if (!generatedGroup) {
-          throw new PlanValidationError(`${context}: falta el desglose de equivalencias para este grupo`);
+          throw new PlanValidationError(
+            `${context}: falta el desglose de equivalencias para este grupo`,
+          );
         }
         if (generatedGroup.options.length !== 3) {
-          throw new PlanValidationError(`${context}: se esperaban 3 opciones, se recibieron ${generatedGroup.options.length}`);
+          throw new PlanValidationError(
+            `${context}: se esperaban 3 opciones, se recibieron ${generatedGroup.options.length}`,
+          );
         }
 
         const usedFoods = new Set<string>();
         for (const option of generatedGroup.options) {
           const normalizedFood = option.food.toLowerCase();
           if (usedFoods.has(normalizedFood)) {
-            throw new PlanValidationError(`${context}: el alimento "${option.food}" está repetido entre las 3 opciones`);
+            throw new PlanValidationError(
+              `${context}: el alimento "${option.food}" está repetido entre las 3 opciones`,
+            );
           }
           usedFoods.add(normalizedFood);
 
-          const portions = this.implicitPortions(field, option.food, option.weight, context);
+          const portions = this.implicitPortions(
+            field,
+            option.food,
+            option.weight,
+            context,
+          );
           if (portions === null) continue;
           const required = requiredByField[field];
           if (Math.abs(portions - required) > PORTION_TOLERANCE) {

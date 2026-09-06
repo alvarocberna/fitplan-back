@@ -36,4 +36,14 @@ export class ClinicalRecordDatasourceImpl implements ClinicalRecordDatasource {
   async deleteClinicalRecordById(id: string): Promise<void> {
     await this.prisma.clinicalRecord.delete({ where: { id } });
   }
+
+  async findOrCreateClinicalRecordByPatientId(
+    patientId: string,
+  ): Promise<ClinicalRecordEntity> {
+    const existing = await this.prisma.clinicalRecord.findUnique({
+      where: { patientId },
+    });
+    if (existing) return existing;
+    return this.prisma.clinicalRecord.create({ data: { patientId } });
+  }
 }

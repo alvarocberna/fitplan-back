@@ -7,6 +7,7 @@ export type CreateNutritionalConsultationDto = Omit<
   | 'updatedAt'
   | 'clinicalRecord'
   | 'patient'
+  | 'order'
   | 'anamneses'
   | 'measurements'
   | 'nutritionalPlans'

@@ -1,5 +1,9 @@
 import { UserEntity } from '../../entities/user.entity';
-import { CreateUserDto, UpdateUserDto } from '../..';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  FindOrCreateUserByEmailDto,
+} from '../..';
 
 export abstract class UserRepository {
   abstract createUser(createUserDto: CreateUserDto): Promise<UserEntity>;
@@ -9,4 +13,7 @@ export abstract class UserRepository {
     updateUserDto: UpdateUserDto,
   ): Promise<UserEntity>;
   abstract deleteUserById(id: string): Promise<void>;
+  abstract findOrCreateUserByEmail(
+    dto: FindOrCreateUserByEmailDto,
+  ): Promise<UserEntity>;
 }

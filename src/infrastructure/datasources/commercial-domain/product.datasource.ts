@@ -8,12 +8,24 @@ import {
 } from '../../../domain/entities/product.entity';
 import { CreateProductDto, UpdateProductDto } from '../../../domain';
 
+// Placeholder: no hay pricing real ni negociación comercial en el flujo actual (el pago se
+// simula/confirma vía webhook sin gateway real). Ajustar estos valores con negocio antes de
+// producción.
+const DEFAULT_GENERATED_PRODUCT: CreateProductDto = {
+  type: 'GENERATED',
+  name: 'Plan Nutricional Personalizado',
+  description:
+    'Plan nutricional generado automáticamente a partir de la consulta del paciente.',
+  price: 19990,
+  currency: 'CLP',
+  pdfUrl: null,
+  active: true,
+};
+
 @Injectable()
 export class ProductDatasourceImpl implements ProductDatasource {
   constructor(private readonly prisma: PrismaService) {}
 
-  // `price` es Decimal(12,2) en Postgres (Prisma lo devuelve como instancia Decimal, no number);
-  // `type` se guarda como String (sin enum nativo en el schema) y ya llega validado vía CreateProductDto.
   private toEntity(product: PrismaProduct): ProductEntity {
     return {
       ...product,
@@ -49,5 +61,16 @@ export class ProductDatasourceImpl implements ProductDatasource {
 
   async deleteProductById(id: string): Promise<void> {
     await this.prisma.product.delete({ where: { id } });
+  }
+
+  async findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {
+    const existing = await this.prisma.product.findFirst({
+      where: { type: 'GENERATED', active: true },
+    });
+    if (existing) return this.toEntity(existing);
+    const created = await this.prisma.product.create({
+      data: DEFAULT_GENERATED_PRODUCT,
+    });
+    return this.toEntity(created);
   }
 }

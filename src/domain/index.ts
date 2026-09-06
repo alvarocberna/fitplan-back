@@ -26,6 +26,7 @@ export * from './services/objects/r24h.object';
 // identity-auth
 export * from './dtos/identity-auth/user/create-user.dto';
 export * from './dtos/identity-auth/user/update-user.dto';
+export * from './dtos/identity-auth/user/find-or-create-user-by-email.dto';
 export * from './dtos/identity-auth/auth-identity/create-auth-identity.dto';
 export * from './dtos/identity-auth/auth-identity/update-auth-identity.dto';
 
@@ -34,6 +35,7 @@ export * from './dtos/clinical-domain/clinical-record/create-clinical-record.dto
 export * from './dtos/clinical-domain/clinical-record/update-clinical-record.dto';
 export * from './dtos/clinical-domain/nutritional-consultation/create-nutritional-consultation.dto';
 export * from './dtos/clinical-domain/nutritional-consultation/update-nutritional-consultation.dto';
+export * from './dtos/clinical-domain/nutritional-consultation/create-nutritional-consultation-details.dto';
 export * from './dtos/clinical-domain/anamnesis/create-anamnesis.dto';
 export * from './dtos/clinical-domain/anamnesis/update-anamnesis.dto';
 export * from './dtos/clinical-domain/goals/create-goals.dto';

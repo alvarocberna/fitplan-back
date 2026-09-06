@@ -116,6 +116,14 @@ model NutritionalConsultation {
   consultationDate   DateTime @map("consultation_date")
   description        String?
 
+  // Vínculo con la orden comercial que originó esta consulta (flujo consulta -> pago -> generación
+  // de plan). Simétrico al patrón ya usado por NutritionalPlan.orderId.
+  orderId String? @unique @map("order_id") @db.Uuid
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  // Dato puntual de la consulta (no de la identidad del paciente), recolectado en personalInfo.athlete.
+  athlete Boolean?
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -653,14 +661,23 @@ model Order {
 
   amount   Decimal @db.Decimal(12, 2) // monto efectivamente cobrado (puede diferir de product.price por descuentos/promos)
   currency String
-  status   String // PENDING | PAID | EXPIRED | CANCELLED
+
+  paymentStatus String @default("pendiente") @map("payment_status") // 'pendiente' | 'pagado'
+
+  // Estado del pipeline de generación del plan (background, fire-and-forget desde el webhook de pago).
+  // No es un dato comercial del pedido en sí, pero vive acá por continuidad con el flujo legacy
+  // (antes columnas de la tabla `orden`) y porque el pipeline opera 1:1 sobre una Order.
+  generationStatus String  @default("no_iniciado") @map("generation_status") // no_iniciado | generando | completado | error
+  planJson         String? @map("plan_json") // NutritionPlanDto serializado, null hasta que se genera
+  attempts         Int     @default(0)
 
   creationDate   DateTime  @map("creation_date")
   paymentDate    DateTime? @map("payment_date")
   expirationDate DateTime? @map("expiration_date")
 
-  payments        Payment[]
-  nutritionalPlan NutritionalPlan?
+  payments                Payment[]
+  nutritionalPlan         NutritionalPlan?
+  nutritionalConsultation NutritionalConsultation?
 
   @@map("order")
 }

@@ -26,4 +26,8 @@ export class ProductRepositoryImpl implements ProductRepository {
   deleteProductById(id: string): Promise<void> {
     return this.datasource.deleteProductById(id);
   }
+
+  findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {
+    return this.datasource.findOrCreateActiveGeneratedProduct();
+  }
 }

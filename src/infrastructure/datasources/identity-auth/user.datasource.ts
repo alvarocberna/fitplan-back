@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../orm/prisma/prisma.service';
 import { UserDatasource } from '../../../domain/datasources/identity-auth/user.datasource';
 import { UserEntity } from '../../../domain/entities/user.entity';
-import { CreateUserDto, UpdateUserDto } from '../../../domain';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  FindOrCreateUserByEmailDto,
+} from '../../../domain';
 
 @Injectable()
 export class UserDatasourceImpl implements UserDatasource {
@@ -25,5 +29,15 @@ export class UserDatasourceImpl implements UserDatasource {
 
   async deleteUserById(id: string): Promise<void> {
     await this.prisma.user.delete({ where: { id } });
+  }
+
+  async findOrCreateUserByEmail(
+    dto: FindOrCreateUserByEmailDto,
+  ): Promise<UserEntity> {
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (existing) return existing;
+    return this.prisma.user.create({ data: dto });
   }
 }

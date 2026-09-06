@@ -5,6 +5,7 @@ import { OrderDatasource } from '../../../domain/datasources/commercial-domain/o
 import {
   OrderEntity,
   OrderStatus,
+  OrderGenerationStatus,
 } from '../../../domain/entities/order.entity';
 import { CreateOrderDto, UpdateOrderDto } from '../../../domain';
 
@@ -12,13 +13,16 @@ import { CreateOrderDto, UpdateOrderDto } from '../../../domain';
 export class OrderDatasourceImpl implements OrderDatasource {
   constructor(private readonly prisma: PrismaService) {}
 
-  // `amount` es Decimal(12,2) en Postgres (Prisma lo devuelve como instancia Decimal, no number);
-  // `status` se guarda como String (sin enum nativo en el schema) y ya llega validado vía CreateOrderDto.
-  private toEntity(order: PrismaOrder): OrderEntity {
+  // `paymentStatus` se guarda como String en Postgres (sin enum nativo en el schema); se castea
+  // acá porque las escrituras siempre pasan por CreateOrderDto/UpdateOrderDto, que ya lo tipan
+  // como OrderStatus. Genérico en T para poder reusarlo con resultados que traen relaciones
+  // incluidas (ej. getOrderWithUserById con `user`).
+  private toEntity<T extends PrismaOrder>(order: T): OrderEntity {
     return {
       ...order,
       amount: order.amount.toNumber(),
-      status: order.status as OrderStatus,
+      paymentStatus: order.paymentStatus as OrderStatus,
+      generationStatus: order.generationStatus as OrderGenerationStatus,
     };
   }
 
@@ -45,5 +49,44 @@ export class OrderDatasourceImpl implements OrderDatasource {
 
   async deleteOrderById(id: string): Promise<void> {
     await this.prisma.order.delete({ where: { id } });
+  }
+
+  async getOrderWithUserById(id: string): Promise<OrderEntity | null> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+    return order ? this.toEntity(order) : null;
+  }
+
+  async markOrderAsPaidIfPending(id: string): Promise<boolean> {
+    const { count } = await this.prisma.order.updateMany({
+      where: { id, paymentStatus: 'pendiente' },
+      data: { paymentStatus: 'pagado' },
+    });
+    return count > 0;
+  }
+
+  async tryTransitionOrderToGenerating(id: string): Promise<boolean> {
+    const { count } = await this.prisma.order.updateMany({
+      where: { id, generationStatus: { in: ['no_iniciado', 'error'] } },
+      data: { generationStatus: 'generando' },
+    });
+    return count > 0;
+  }
+
+  async incrementOrderFailedAttempt(id: string): Promise<void> {
+    await this.prisma.order.update({
+      where: { id },
+      data: { generationStatus: 'error', attempts: { increment: 1 } },
+    });
+  }
+
+  async anonymizeOldOrders(cutoffDate: Date): Promise<number> {
+    const { count } = await this.prisma.order.updateMany({
+      where: { creationDate: { lt: cutoffDate }, planJson: { not: null } },
+      data: { planJson: null },
+    });
+    return count;
   }
 }

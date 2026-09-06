@@ -13,4 +13,10 @@ export abstract class ClinicalRecordDatasource {
     updateClinicalRecordDto: UpdateClinicalRecordDto,
   ): Promise<ClinicalRecordEntity>;
   abstract deleteClinicalRecordById(id: string): Promise<void>;
+
+  // patientId es @unique en el schema (un paciente tiene a lo más un ClinicalRecord). Busca por
+  // patientId; si no existe, lo crea.
+  abstract findOrCreateClinicalRecordByPatientId(
+    patientId: string,
+  ): Promise<ClinicalRecordEntity>;
 }

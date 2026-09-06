@@ -9,4 +9,9 @@ export abstract class OrderRepository {
     updateOrderDto: UpdateOrderDto,
   ): Promise<OrderEntity>;
   abstract deleteOrderById(id: string): Promise<void>;
+  abstract getOrderWithUserById(id: string): Promise<OrderEntity | null>;
+  abstract markOrderAsPaidIfPending(id: string): Promise<boolean>;
+  abstract tryTransitionOrderToGenerating(id: string): Promise<boolean>;
+  abstract incrementOrderFailedAttempt(id: string): Promise<void>;
+  abstract anonymizeOldOrders(cutoffDate: Date): Promise<number>;
 }

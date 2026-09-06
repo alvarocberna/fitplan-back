@@ -7,8 +7,14 @@ import type { UserEntity } from './user.entity';
 import type { ProductEntity } from './product.entity';
 import type { PaymentEntity } from './payment.entity';
 import type { NutritionalPlanEntity } from './nutritional-plan.entity';
+import type { NutritionalConsultationEntity } from './clinical-record.entity';
 
-export type OrderStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'CANCELLED';
+export type OrderStatus = 'pendiente' | 'pagado';
+export type OrderGenerationStatus =
+  | 'no_iniciado'
+  | 'generando'
+  | 'completado'
+  | 'error';
 
 export interface OrderEntity {
   id: string;
@@ -22,7 +28,15 @@ export interface OrderEntity {
   // Monto efectivamente cobrado (puede diferir de product.price por descuentos/promos).
   amount: number;
   currency: string;
-  status: OrderStatus;
+  paymentStatus: OrderStatus;
+
+  // Estado del pipeline de generación del plan (background, fire-and-forget desde el webhook de
+  // pago) y su resultado. No es un dato comercial del pedido en sí, pero vive acá por continuidad
+  // con el flujo legacy (antes columnas de la tabla `orden`) y porque el pipeline opera 1:1 sobre
+  // una Order.
+  generationStatus: OrderGenerationStatus;
+  planJson: string | null;
+  attempts: number;
 
   creationDate: Date;
   paymentDate: Date | null;
@@ -30,4 +44,5 @@ export interface OrderEntity {
 
   payments?: PaymentEntity[];
   nutritionalPlan?: NutritionalPlanEntity | null;
+  nutritionalConsultation?: NutritionalConsultationEntity | null;
 }

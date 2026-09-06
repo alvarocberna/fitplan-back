@@ -11,4 +11,9 @@ export abstract class ProductDatasource {
     updateProductDto: UpdateProductDto,
   ): Promise<ProductEntity>;
   abstract deleteProductById(id: string): Promise<void>;
+
+  // Busca un Product activo de tipo GENERATED; si no existe, crea uno con valores por defecto
+  // (ver el *Impl — son placeholders, hay que revisarlos con negocio). Usado por
+  // OrdersService.createOrder para resolver el productId de la nueva Order sin ningún seed previo.
+  abstract findOrCreateActiveGeneratedProduct(): Promise<ProductEntity>;
 }

@@ -26,4 +26,24 @@ export class OrderRepositoryImpl implements OrderRepository {
   deleteOrderById(id: string): Promise<void> {
     return this.datasource.deleteOrderById(id);
   }
+
+  getOrderWithUserById(id: string): Promise<OrderEntity | null> {
+    return this.datasource.getOrderWithUserById(id);
+  }
+
+  markOrderAsPaidIfPending(id: string): Promise<boolean> {
+    return this.datasource.markOrderAsPaidIfPending(id);
+  }
+
+  tryTransitionOrderToGenerating(id: string): Promise<boolean> {
+    return this.datasource.tryTransitionOrderToGenerating(id);
+  }
+
+  incrementOrderFailedAttempt(id: string): Promise<void> {
+    return this.datasource.incrementOrderFailedAttempt(id);
+  }
+
+  anonymizeOldOrders(cutoffDate: Date): Promise<number> {
+    return this.datasource.anonymizeOldOrders(cutoffDate);
+  }
 }

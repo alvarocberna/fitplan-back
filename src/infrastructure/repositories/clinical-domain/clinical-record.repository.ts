@@ -34,4 +34,10 @@ export class ClinicalRecordRepositoryImpl implements ClinicalRecordRepository {
   deleteClinicalRecordById(id: string): Promise<void> {
     return this.datasource.deleteClinicalRecordById(id);
   }
+
+  findOrCreateClinicalRecordByPatientId(
+    patientId: string,
+  ): Promise<ClinicalRecordEntity> {
+    return this.datasource.findOrCreateClinicalRecordByPatientId(patientId);
+  }
 }

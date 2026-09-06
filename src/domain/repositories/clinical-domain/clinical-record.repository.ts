@@ -13,4 +13,7 @@ export abstract class ClinicalRecordRepository {
     updateClinicalRecordDto: UpdateClinicalRecordDto,
   ): Promise<ClinicalRecordEntity>;
   abstract deleteClinicalRecordById(id: string): Promise<void>;
+  abstract findOrCreateClinicalRecordByPatientId(
+    patientId: string,
+  ): Promise<ClinicalRecordEntity>;
 }

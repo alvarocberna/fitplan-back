@@ -1,19 +1,4 @@
 -- CreateTable
-CREATE TABLE "public"."orden" (
-    "id" TEXT NOT NULL,
-    "correo" TEXT NOT NULL,
-    "payload_json" TEXT,
-    "estado_pago" TEXT NOT NULL DEFAULT 'pendiente',
-    "estado_generacion" TEXT NOT NULL DEFAULT 'no_iniciado',
-    "plan_json" TEXT,
-    "intentos" INTEGER NOT NULL DEFAULT 0,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "orden_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."user" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "rut" TEXT,
@@ -64,6 +49,8 @@ CREATE TABLE "public"."nutritional_consultation" (
     "consultation_number" INTEGER NOT NULL,
     "consultation_date" TIMESTAMP(3) NOT NULL,
     "description" TEXT,
+    "order_id" UUID,
+    "athlete" BOOLEAN,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -473,7 +460,10 @@ CREATE TABLE "public"."order" (
     "product_id" UUID NOT NULL,
     "amount" DECIMAL(12,2) NOT NULL,
     "currency" TEXT NOT NULL,
-    "status" TEXT NOT NULL,
+    "payment_status" TEXT NOT NULL DEFAULT 'pendiente',
+    "generation_status" TEXT NOT NULL DEFAULT 'no_iniciado',
+    "plan_json" TEXT,
+    "attempts" INTEGER NOT NULL DEFAULT 0,
     "creation_date" TIMESTAMP(3) NOT NULL,
     "payment_date" TIMESTAMP(3),
     "expiration_date" TIMESTAMP(3),
@@ -508,6 +498,9 @@ CREATE UNIQUE INDEX "auth_identity_provider_provider_user_id_key" ON "public"."a
 CREATE UNIQUE INDEX "clinical_record_patient_id_key" ON "public"."clinical_record"("patient_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "nutritional_consultation_order_id_key" ON "public"."nutritional_consultation"("order_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "nutritional_plan_order_id_key" ON "public"."nutritional_plan"("order_id");
 
 -- CreateIndex
@@ -524,6 +517,9 @@ ALTER TABLE "public"."nutritional_consultation" ADD CONSTRAINT "nutritional_cons
 
 -- AddForeignKey
 ALTER TABLE "public"."nutritional_consultation" ADD CONSTRAINT "nutritional_consultation_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES "public"."user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."nutritional_consultation" ADD CONSTRAINT "nutritional_consultation_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."order"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."anamnesis" ADD CONSTRAINT "anamnesis_consultation_id_fkey" FOREIGN KEY ("consultation_id") REFERENCES "public"."nutritional_consultation"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
