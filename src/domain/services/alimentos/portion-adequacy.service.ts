@@ -12,9 +12,6 @@ import { Meal } from '../../dtos/consultation.dto';
 import { Requirements } from '../formulas/requirements.service';
 import { FOOD_GROUP_PORTIONS, findFoodGroup } from './food-portions';
 import { MealTimeType, isMainMealTime, normalizeMealTime } from './meal-times.service';
-import { r24h1 } from '../objects/r24h.object';
-import { r24hProcessed1 } from '../objects/r24h-processed.object';
-import { req1 } from '../objects/requirements.object';
 
 
 // ---------------------------------------------------------------------------------------------
@@ -74,10 +71,6 @@ export function defineFoodGroups(mealTimes: Meal[]): MealGroups[] {
         return result;
     });
 }
-
-//probando
-// const resultado = defineFoodGroups(r24h1);
-// console.log(resultado);
 
 // ---------------------------------------------------------------------------------------------
 // PASO 3 - Adecuación de grupos de alimentos + intake
@@ -617,7 +610,3 @@ export function calculateTotalAdequacy(totalIntake: CalculatedIntake, requiremen
         fat: percentage(totalIntake.fat, requirements.fat),
     };
 }
-
-const testResult = calculateFoodsAndIntake(r24hProcessed1, req1);
-
-console.log(testResult);

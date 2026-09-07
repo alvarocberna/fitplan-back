@@ -1,0 +1,13 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts", "tsx"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)sx?$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@react-pdf/renderer$": "<rootDir>/mocks/react-pdf-renderer.ts",
+    "^cron$": "<rootDir>/mocks/cron.ts"
+  }
+}

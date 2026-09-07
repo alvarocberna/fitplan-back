@@ -183,6 +183,17 @@ of the kind this repo has had before — invoke the `doc-updater` subagent (Agen
 the task. Skip it for small/internal changes with no observable impact on architecture, endpoints,
 or documented flows.
 
+## Keeping tests in sync
+
+This repo has a real test suite now (`*.spec.ts` co-located under `src/`, e2e under `test/` — see
+`doc/testing.md` for scope, coverage, and the mocking patterns established). After modifying a
+file that already has a `.spec.ts`, or adding a new service/function to the core pipeline
+(`orders`→`webhooks`→`plan-generation` and wired-in domain formulas), invoke the `test-updater`
+subagent (Agent tool, `subagent_type: "test-updater"`) before considering the task done, so it
+updates/adds the relevant tests and confirms they pass. Skip it for changes to code that has no
+test coverage by design (see `doc/testing.md §7` — dead formulas, `PdfService`, prompt builders)
+unless the user asks to expand coverage there.
+
 ## Stubs / not-yet-real integrations
 
 Be aware these are intentionally fake right now — don't assume they behave like production

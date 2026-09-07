@@ -400,8 +400,11 @@ en `null`) de órdenes con más de 45 días, conservando la fila para auditoría
 
 ## Testing
 
-Cada módulo de `presentation` trae sus `.spec.ts` (controller y service) junto al archivo que testean.
-Comandos: `npm run test` (unitarios), `npm run test:e2e`, `npm run test:cov`.
+Cada módulo de `presentation` y de `domain/services` trae su(s) `.spec.ts` co-localizado(s) junto
+al archivo que testea. Comandos: `npm run test` (unitarios), `npm run test:e2e`, `npm run
+test:cov`. Ver **[doc/testing.md](./doc/testing.md)** para el detalle de qué cubre cada test, las
+decisiones de infraestructura (stubs de `@react-pdf/renderer`/`cron`), y la deuda pendiente
+(fórmulas sin consumidor sin testear, e2e sin verificar en CI).
 
 ## Deuda técnica y pendientes
 
