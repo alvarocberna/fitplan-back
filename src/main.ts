@@ -4,11 +4,15 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import {HttpExceptionFilter} from './presentation/filters/http-exception.filter';
+import helmet from 'helmet';
 
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+  // Cabeceras de seguridad (oculta X-Powered-By, fija X-Content-Type-Options: nosniff, etc.)
+  // CSP desactivada aquí: Swagger UI necesita inline scripts/styles y esta API no sirve HTML propio.
+  app.use(helmet({ contentSecurityPolicy: false }));
   // Habilitar CORS
   app.enableCors({
     origin: configService.get<string>('URL_FRONTEND'), 
