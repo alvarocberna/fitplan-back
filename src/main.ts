@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import {HttpExceptionFilter} from './presentation/filters/http-exception.filter';
 
 
@@ -27,6 +28,17 @@ async function bootstrap() {
         },
       }),
     );
+
+  //habilitamos Swagger solo fuera de producción
+  if (configService.get<string>('NODE_ENV') !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('NutriApp API')
+      .setDescription('API del agente conversacional de nutrición')
+      .setVersion('1.0')
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api-docs', app, document);
+  }
 
   const port = configService.get<string>('PORT');
   await app.listen(port ?? 3001)

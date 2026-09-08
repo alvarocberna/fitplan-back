@@ -44,6 +44,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 - **Lenguaje**: TypeScript
 - **IA**: SDK oficial de [`openai`](https://www.npmjs.com/package/openai) (chat completions, `response_format: json_object`)
 - **Validación**: `class-validator` + `class-transformer` (`ValidationPipe` global en `main.ts`)
+- **Documentación de API**: `@nestjs/swagger` (Swagger UI en `/api-docs`, ver [Puesta en marcha](#puesta-en-marcha))
 - **Configuración**: `@nestjs/config` (`.env`)
 - **ORM**: Prisma + PostgreSQL, usado para todo el dominio comercial/clínico/identidad en producción
 - **PDF**: `@react-pdf/renderer` (corre tanto server-side como client-side)
@@ -110,6 +111,16 @@ cp .env.template .env   # y completar los valores, incluyendo OPENAI_API_KEY y D
 npx prisma migrate dev  # aplica las migraciones sobre la base Postgres apuntada por DATABASE_URL
 npm run start:dev
 ```
+
+Con el servidor corriendo (y fuera de `NODE_ENV=production`), la documentación interactiva de la API
+queda disponible en `GET /api-docs` (Swagger UI) y su schema OpenAPI crudo en `GET /api-docs-json`
+— montados condicionalmente en `main.ts` vía `SwaggerModule.setup('api-docs', app, document)`. Si
+`NODE_ENV` no está seteado, igual se monta (pensado para estar siempre activo salvo que se
+desactive explícitamente en producción). Los tipos de los DTOs que aparecen en el schema de Swagger
+se infieren automáticamente a partir de las clases `class-validator` ya existentes en
+`presentation/**/dto` — no hace falta (ni se usa en este proyecto) anotarlas manualmente con
+`@ApiProperty`, porque el CLI plugin de `@nestjs/swagger` está habilitado en `nest-cli.json`
+(`compilerOptions.plugins: ["@nestjs/swagger"]`) y genera esos metadatos en tiempo de compilación.
 
 Scripts principales (`package.json`):
 
