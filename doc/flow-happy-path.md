@@ -10,10 +10,17 @@ servicio (comentarios inline) y `doc/technical-debt.md`.
 
 ## Actores
 
+- **Cognito**: Amazon Cognito autentica al paciente (Hosted UI, usuario/contraseña nativo o Google
+  como Identity Provider federado) **antes** de que este flujo empiece — es un prerrequisito, no un
+  paso de esta pantalla. Ver `doc/auth.md` para el detalle completo. Sin sesión válida, el paciente
+  ni siquiera llega a `/consulta/informacion-personal` (gating del lado del frontend).
 - **Frontend**: Next.js (`nutricionista-virtual-front`), guarda el estado del flujo (`informacionPersonal`,
   `anamnesis`, `mediciones`) en `ConsultaContext`, persistido en `localStorage`
-  (`src/shared/context/consulta.context.tsx`) para sobrevivir refrescos de página.
-- **Backend**: NestJS (`nutricionista-virtual-back`), expone los endpoints REST.
+  (`src/shared/context/consulta.context.tsx`) para sobrevivir refrescos de página. Las llamadas al
+  backend pasan por Server Actions que adjuntan el Access Token de Cognito
+  (`Authorization: Bearer`), nunca directo desde el navegador.
+- **Backend**: NestJS (`nutricionista-virtual-back`), expone los endpoints REST. Varios exigen
+  sesión válida (`CognitoAuthGuard`, ver `doc/auth.md`).
 - **OpenAI**: usado en 3 puntos del flujo (chat de anamnesis, extracción de nivel de actividad/objetivo,
   generación del plan).
 - **Base de datos**: PostgreSQL vía Prisma (`prisma/schema.prisma`). El flujo persiste sobre el
@@ -32,10 +39,18 @@ sequenceDiagram
     participant FE as Frontend
     participant BE as Backend
     participant AI as OpenAI
-    participant DB as Postgres (User/ClinicalRecord/NutritionalConsultation/Order)
+    participant DB as Postgres (User/AuthIdentity/ClinicalRecord/NutritionalConsultation/Order)
+
+    Note over Paciente,FE: Prerrequisito: login/registro con Cognito (ver doc/auth.md), ya resuelto
+    FE->>BE: POST /auth/perfil { email de la sesión }
+    BE->>DB: find-or-create AuthIdentity + User "esqueleto"
+    BE-->>FE: { profileComplete: false }
+    FE->>Paciente: redirige a /consulta/informacion-personal
 
     Paciente->>FE: /consulta/informacion-personal (form)
-    Note over FE: guarda en ConsultaContext, sin llamada API
+    FE->>BE: PATCH /auth/perfil { firstName, paternalLastName, gender, dateOfBirth }
+    BE->>DB: UPDATE User (completa el perfil)
+    Note over FE: además guarda en ConsultaContext (localStorage) para el resto del wizard
 
     loop por cada turno del chat
         Paciente->>FE: /consulta/anamnesis (mensaje)
@@ -49,8 +64,10 @@ sequenceDiagram
     Note over FE: guarda en ConsultaContext, sin llamada API
 
     Paciente->>FE: /consulta/generar-orden ("Realizar pago")
-    FE->>BE: POST /ordenes/crear (CompleteConsultationDto)
-    Note over BE,DB: find-or-create User + ClinicalRecord + Product
+    FE->>BE: POST /ordenes/crear (CompleteConsultationDto), Authorization: Bearer
+    BE->>BE: CognitoAuthGuard valida el token
+    BE->>DB: resuelve User por sub (AuthIdentity) — ya tiene que existir y estar completo
+    Note over BE,DB: find-or-create ClinicalRecord + Product
     BE->>DB: INSERT Order (paymentStatus='pendiente')
     BE->>DB: INSERT NutritionalConsultation + Anamnesis/Measurements (árbol completo, orderId vinculado)
     BE-->>FE: { orderId }
@@ -83,16 +100,34 @@ sequenceDiagram
 
 ## Paso a paso
 
-### 1. `/consulta/iniciar-consulta` — pantalla informativa
+### 1. `/consulta/inicio` — pantalla informativa y ruteo según sesión/perfil
 
-Sin llamadas al backend. Solo explica los pasos de la consulta y enlaza a
-`/consulta/informacion-personal`.
+Llama **`POST /auth/perfil`** (`AuthController.sync` → `AuthIdentityService.syncUser`) apenas hay
+sesión de Cognito válida — crea `AuthIdentity`+`User` "esqueleto" si es la primera vez que se ve
+ese `sub`, o recupera el existente. Con la respuesta (`profileComplete`), decide a dónde manda el
+botón "Iniciar": sin sesión → login; con sesión pero perfil incompleto →
+`/consulta/informacion-personal`; con sesión y perfil completo → directo a `/consulta/anamnesis`
+(salteando el paso 2). Ver `doc/auth.md`.
 
-### 2. `/consulta/informacion-personal` — datos personales
+### 2. `/consulta/informacion-personal` — completar el perfil (solo si hace falta)
 
-`FormUserInfo` recoge nombre, apellidos, género, correo, fecha de nacimiento (RUT no está en uso
-activo). Al enviar, se guarda en `ConsultaContext.setInformacionPersonal` (persistido en
-`localStorage`) y se navega a `/consulta/anamnesis`. **No hay llamada al backend en este paso.**
+`FormUserInfo` recoge nombre, apellido paterno, género, fecha de nacimiento — pre-llenado con lo
+que el perfil ya tenga (`GET` implícito vía el mismo `POST /auth/perfil` del paso 1). El correo se
+muestra de solo lectura (siempre el de la cuenta de Cognito, nunca editable acá). Al enviar:
+
+- **`PATCH /auth/perfil`** (`AuthController.update` → `AuthIdentityService.updateProfile`)
+  - Request: `{ firstName, paternalLastName, gender, dateOfBirth }` (+ opcionalmente
+    `rut`/`rutCheckDigit`/`middleName`/`maternalLastName`, sin inputs propios en este formulario
+    hoy).
+  - Actualiza el `User` ya existente (creado en el paso 1) — **no crea nada nuevo**.
+  - Response: el perfil actualizado.
+- Recién si la respuesta es exitosa, el frontend guarda los datos en
+  `ConsultaContext.setInformacionPersonal` (persistido en `localStorage`, para el resto del
+  wizard) y navega a `/consulta/anamnesis`.
+
+Este paso se salta por completo si el perfil ya estaba completo (ver paso 1) — en ese caso, al
+entrar a `/consulta/anamnesis` directamente, el frontend hidrata `ConsultaContext` desde el
+perfil del backend si `localStorage` no lo tiene (ej. otro dispositivo).
 
 ### 3. `/consulta/anamnesis` — chat con la IA ("Nuvi")
 
@@ -123,17 +158,22 @@ backend.**
 
 Pantalla de resumen/checkout. Al presionar "Realizar pago" (`BtnGenerarOrden`):
 
-- **`POST /ordenes/crear`** (`OrdersController.create` → `OrdersService.createOrder`)
+- **`POST /ordenes/crear`** (`OrdersController.create` → `OrdersService.createOrder`,
+  `CognitoAuthGuard` — exige sesión válida, ver `doc/auth.md`)
   - Request: `CompleteConsultationDto` completo — `{ personalInfo, anamnesis, measurements }`,
-    armado con las tres piezas de estado acumuladas en `ConsultaContext`.
-  - El backend resuelve/crea el `User` por email, su `ClinicalRecord` y el `Product` activo, crea la
-    `Order` (`paymentStatus='pendiente'`, `generationStatus='no_iniciado'`) y crea en la misma
-    operación el árbol completo `NutritionalConsultation` + `Anamnesis`/`Measurements` (y sus hijas),
-    vinculado a la orden recién creada — ver
+    armado con las tres piezas de estado acumuladas en `ConsultaContext`, más
+    `Authorization: Bearer <access_token>`.
+  - El backend resuelve el `User` por el `sub` del token (**ya tiene que existir y tener el perfil
+    completo** — creado/completado en los pasos 1-2; si no, `400 BadRequestException`), su
+    `ClinicalRecord` y el `Product` activo (estos dos sí con find-or-create), crea la `Order`
+    (`paymentStatus='pendiente'`, `generationStatus='no_iniciado'`) y crea en la misma operación el
+    árbol completo `NutritionalConsultation` + `Anamnesis`/`Measurements` (y sus hijas), vinculado a
+    la orden recién creada — ver
     [orders-postgres-migration.md § 5](./orders-postgres-migration.md#5-reescritura-de-srcpresentationordersordersservicets).
-    Ya no se persiste un `payload_json` crudo. **La IA todavía no se ejecuta en este paso** — se crea
-    la orden antes de cobrar para no perder los datos del paciente si el pago falla o el usuario
-    cierra la pestaña.
+    Ya no se persiste un `payload_json` crudo. `personalInfo.athlete` es el único campo de
+    `personalInfo` que este paso todavía usa (no es un campo de `User`, es propio de esta
+    consulta). **La IA todavía no se ejecuta en este paso** — se crea la orden antes de cobrar para
+    no perder los datos del paciente si el pago falla o el usuario cierra la pestaña.
   - Response: `{ orderId }`.
 - El frontend redirige a `/pago/{orderId}`.
 
@@ -189,7 +229,9 @@ directamente (`PlanGenerationService.generatePlan`):
 
 Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 segundos** a:
 
-- **`GET /ordenes/obtener-estado/:id`** (`OrdersController.getStatus` → `OrdersService.getStatus`)
+- **`GET /ordenes/obtener-estado/:id`** (`OrdersController.getStatus` → `OrdersService.getStatus`,
+  `CognitoAuthGuard` — exige sesión válida, pero **no** valida que la orden pertenezca al usuario
+  del token, ver "Gap conocido" en `doc/auth.md`)
   - Response: `{ paymentStatus, generationStatus, planJson }` (sin la `NutritionalConsultation` ni
     datos del `User`, que son información interna del pipeline).
 - Mientras `generationStatus` sea `'no_iniciado'` o `'generando'`, se muestra un spinner (y, pasados
@@ -202,13 +244,15 @@ Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 s
 
 ## Tabla resumen de endpoints (en orden de uso)
 
-| # | Endpoint | Pantalla que lo dispara | Repeticiones | Efecto |
-|---|---|---|---|---|
-| 1 | `POST /consulta/chat` | `/consulta/anamnesis` | 1 vez por turno del chat | Llama a OpenAI, devuelve la siguiente pregunta y el estado acumulado de la anamnesis |
-| 2 | `POST /ordenes/crear` | `/consulta/generar-orden` | 1 vez | Crea `User`/`ClinicalRecord`/`Product` (find-or-create), la `Order` (`paymentStatus='pendiente'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
-| 3 | `POST /webhooks/ordenes/:id/simular-pago` | `/pago/[ordenId]` | 1 vez | Marca la orden como pagada y dispara la generación del plan en background |
-| — | *(sin request del frontend)* | — | — | `PlanGenerationService.generatePlan`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + envío de correo (stub) |
-| 4 | `GET /ordenes/obtener-estado/:id` | `/ordenes/[id]` | cada 4s hasta `completado`/`error` | Polling del estado de pago/generación y, al terminar, del plan generado |
+| # | Endpoint | Guard | Pantalla que lo dispara | Repeticiones | Efecto |
+|---|---|---|---|---|---|
+| 0a | `POST /auth/perfil` | Sí | `/consulta/inicio`, `/consulta/informacion-personal` | 1+ veces (idempotente) | Crea/recupera `AuthIdentity`+`User` por el `sub` de Cognito; informa si el perfil está completo |
+| 0b | `PATCH /auth/perfil` | Sí | `/consulta/informacion-personal` | 1 vez (si el perfil no estaba completo) | Completa `firstName`/`paternalLastName`/`gender`/`dateOfBirth` del `User` ya existente |
+| 1 | `POST /consulta/chat` | Sí | `/consulta/anamnesis` | 1 vez por turno del chat | Llama a OpenAI, devuelve la siguiente pregunta y el estado acumulado de la anamnesis |
+| 2 | `POST /ordenes/crear` | Sí | `/consulta/generar-orden` | 1 vez | Resuelve el `User` (ya tiene que existir y estar completo), find-or-create `ClinicalRecord`/`Product`, crea la `Order` (`paymentStatus='pendiente'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
+| 3 | `POST /webhooks/ordenes/:id/simular-pago` | No | `/pago/[ordenId]` | 1 vez | Marca la orden como pagada y dispara la generación del plan en background |
+| — | *(sin request del frontend)* | — | — | — | `PlanGenerationService.generatePlan`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + envío de correo (stub) |
+| 4 | `GET /ordenes/obtener-estado/:id` | Sí (sin validar dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `completado`/`error` | Polling del estado de pago/generación y, al terminar, del plan generado |
 
 Endpoint equivalente no usado en este flujo (queda para cuando se integre una pasarela real):
 **`POST /webhooks/pago`** — mismo efecto que el endpoint #3, pero pensado para ser llamado por la
@@ -216,6 +260,10 @@ pasarela de pago real en vez de por el frontend.
 
 ## Notas relevantes
 
+- **El flujo ya no es anónimo**: requiere sesión de Cognito válida desde `/consulta/inicio` en
+  adelante (gating del lado del frontend) y desde `ordenes/crear`/`consulta/chat`/
+  `ordenes/obtener-estado/:id` del lado del backend (`CognitoAuthGuard`). Ver `doc/auth.md` para
+  el detalle completo — incluido el gap de BOLA conocido en el endpoint de estado.
 - **El flujo ya no es stateless**: a diferencia de una versión anterior de este proyecto (ver
   `README.md`), el estado de la orden (estado de pago, estado de generación, plan resultante) y todo
   el árbol de la consulta (`User`/`ClinicalRecord`/`NutritionalConsultation`/`Anamnesis`/`Measurements`)

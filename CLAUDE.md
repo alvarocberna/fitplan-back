@@ -63,6 +63,7 @@ src/
 │   ├── datasources/              # Prisma-backed impls of domain/datasources/** (identity-auth, clinical-domain, commercial-domain)
 │   └── repositories/             # Thin delegation layer over infrastructure/datasources/** (domain/repositories/** impls)
 ├── presentation/                # NestJS modules (controllers, services, validated DTOs)
+│   ├── auth/                       # Cognito JWT Guard + identity/profile endpoints (see doc/auth.md)
 │   ├── consultation/              # Conversational anamnesis-collection chat
 │   ├── orders/                     # Order creation/status + data-retention cron job
 │   ├── webhooks/                   # Payment webhook (real + simulated) → triggers plan generation
@@ -99,18 +100,29 @@ DB layer, only at the HTTP route level.
 email sent. See `doc/orders-postgres-migration.md` for exactly what changed when the domain-layer
 modules got wired in (they used to be built but unused, not registered anywhere).
 
+`AuthModule` (`presentation/auth/`) is imported by `OrdersModule` and `ConsultationModule` — it
+provides `CognitoAuthGuard` (validates the Cognito Access Token via `aws-jwt-verify`) and
+`AuthIdentityService`, and owns its own controller (`POST`/`PATCH /auth/perfil`). See `doc/auth.md`.
+
 ### Request/response flow
 
-1. `POST /consulta/chat` — one call per chat turn. Builds a system prompt describing the full
-   `AnamnesisDto` schema and current fill-state, calls OpenAI, normalizes the model's JSON
-   (`anamnesis-normalizer.ts` repairs common LLM shape drift, e.g. `r24h` must be a flat array of
-   per-meal objects), and **recomputes `isComplete` on the server** rather than trusting the model.
-2. `POST /ordenes/crear` — resolves (find-or-create) the `User` by email and their `ClinicalRecord`,
-   resolves (find-or-create) a `Product`, creates the `Order` (`paymentStatus:'pendiente'`, no AI
-   call yet), and persists the full `NutritionalConsultation` (`Anamnesis`/`Measurements` + their
-   children) in one nested Prisma write — see `doc/orders-postgres-migration.md` for the exact
-   DTO→entity mapping decisions. The HTTP request/response shape is unchanged from before this
-   migration.
+0. `POST /auth/perfil` / `PATCH /auth/perfil` — identity and profile, resolved via
+   `AuthIdentityService` from the Cognito `sub` (see `doc/auth.md`). Called by the frontend before
+   step 2 below, not part of the consultation DTOs.
+1. `POST /consulta/chat` — one call per chat turn (requires a valid session, `CognitoAuthGuard`).
+   Builds a system prompt describing the full `AnamnesisDto` schema and current fill-state, calls
+   OpenAI, normalizes the model's JSON (`anamnesis-normalizer.ts` repairs common LLM shape drift,
+   e.g. `r24h` must be a flat array of per-meal objects), and **recomputes `isComplete` on the
+   server** rather than trusting the model.
+2. `POST /ordenes/crear` (requires a valid session + a **complete** `User` profile, `CognitoAuthGuard`
+   + `AuthIdentityService.isProfileComplete` — 400 if either isn't satisfied) — resolves the `User`
+   by the token's `sub` (find-or-create by email no longer happens here, see `doc/auth.md`) and their
+   `ClinicalRecord`, resolves (find-or-create) a `Product`, creates the `Order`
+   (`paymentStatus:'pendiente'`, no AI call yet), and persists the full `NutritionalConsultation`
+   (`Anamnesis`/`Measurements` + their children) in one nested Prisma write — see
+   `doc/orders-postgres-migration.md` for the exact DTO→entity mapping decisions. `personalInfo` in
+   the request body is only used for its `athlete` field now (not for `User` — that's already
+   resolved from the session).
 3. Payment webhook (`POST /webhooks/pago` or the simulated `POST /webhooks/ordenes/:id/simular-pago`)
    marks the order paid **idempotently**, then fires `PlanGenerationService.generatePlan` without
    awaiting it (fire-and-forget) — the webhook responds immediately.
@@ -121,8 +133,10 @@ modules got wired in (they used to be built but unused, not registered anywhere)
    precomputed numbers verbatim, expressing food as portions from the exchange-group table (not
    free-form quantities) → retries up to 4x with exponential backoff → persists `Order.planJson` and
    emails it.
-5. `GET /ordenes/obtener-estado/:id` — polling endpoint the frontend uses to check
-   `generationStatus` and fetch `planJson` once ready (response shape unchanged).
+5. `GET /ordenes/obtener-estado/:id` (requires a valid session, `CognitoAuthGuard` — but does
+   **not** verify the order belongs to the token's user, a known BOLA gap, see `doc/auth.md`) —
+   polling endpoint the frontend uses to check `generationStatus` and fetch `planJson` once ready
+   (response shape unchanged).
 
 `OpenaiService.chatJson<T>` (`presentation/openai/openai.service.ts`) is the single point of access
 to the OpenAI SDK for the whole backend; `chat.completions.create` is called with
@@ -159,15 +173,24 @@ at the application layer (`domain/entities/*.entity.ts`).
 
 Only part of this schema has a real consumer today — the `orders`/`webhooks`/`plan-generation`
 pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamnesis`/`Measurements`
-children), `Order`, and `Product`. The rest (`AuthIdentity`, `Payment`, `NutritionalPlan` and its
-children, several `clinical-domain` leaf entities) exists as fully-built domain/infrastructure code
-(entities, DTOs, datasources, repositories — see the `domain/`/`infrastructure/` tree above) but is
-not wired into any endpoint yet. See `doc/postgres-domain-groundwork.md` for the full architecture
-of that layer and `doc/orders-postgres-migration.md` for exactly what got connected and why.
+children), `Order`, and `Product`; `AuthIdentity` is used by `presentation/auth/` (see below). The
+rest (`Payment`, `NutritionalPlan` and its children, several `clinical-domain` leaf entities)
+exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
+the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. See
+`doc/postgres-domain-groundwork.md` for the full architecture of that layer and
+`doc/orders-postgres-migration.md` for exactly what got connected and why.
 
-There is still no login/registration flow: `OrdersService.createOrder` resolves a `User` via
-find-or-create by email (no password, no session). Env vars for JWT/bcrypt in `.env.template` are
-leftovers from a removed auth module, unrelated to this `User` model.
+**Login/registration is implemented** with Amazon Cognito (Hosted UI, native + Google as a
+federated Identity Provider) — see `doc/auth.md` for the full picture. `presentation/auth/`
+(`CognitoAuthGuard`, `AuthIdentityService`) validates the Cognito Access Token
+(`aws-jwt-verify` against the User Pool's JWKS) and resolves/creates `AuthIdentity`+`User` by the
+token's `sub` — `POST /auth/perfil` creates the identity ("skeleton" `User`, no password ever
+stored) as soon as there's a valid session, and `PATCH /auth/perfil` completes the profile
+(`firstName`/`paternalLastName`/`gender`/`dateOfBirth`, all nullable in the schema for exactly this
+reason) separately, since Cognito never provides those fields. `JWT_ACCESS_SECRET`/
+`JWT_REFRESH_SECRET`/`BCRYPT_SALT_OR_ROUNDS` in `.env.template` are still leftovers from an
+unrelated, removed local-auth module — `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID` are the ones
+actually used by the Guard.
 
 A daily cron (`RetentionService`, 03:00) anonymizes `Order.planJson` on orders older than 45 days
 while keeping the row (`OrdersService.cleanupOldOrders`) — it does not yet anonymize the clinical

@@ -1,15 +1,16 @@
 // Input para UserDatasource.findOrCreateUserByEmail: si ya existe un User con ese email se
 // reutiliza tal cual (estos datos NO actualizan el registro existente); si no existe, se crea con
-// estos datos. Usado por OrdersService.createOrder, que no tiene ningún flujo de login/registro
-// real detrás — el email de personalInfo es la única identidad disponible hoy.
+// estos datos. Usado por AuthIdentityService.syncUser al primer login — solo el email está
+// garantizado ahí (Cognito no da nombre/género/fecha de nacimiento); el resto del perfil se
+// completa después vía PATCH /auth/perfil.
 export interface FindOrCreateUserByEmailDto {
   email: string;
-  rut: string | null;
-  rutCheckDigit: string | null;
-  firstName: string;
-  middleName: string | null;
-  paternalLastName: string;
-  maternalLastName: string | null;
-  gender: string;
-  dateOfBirth: Date;
+  rut?: string | null;
+  rutCheckDigit?: string | null;
+  firstName?: string | null;
+  middleName?: string | null;
+  paternalLastName?: string | null;
+  maternalLastName?: string | null;
+  gender?: string | null;
+  dateOfBirth?: Date | null;
 }

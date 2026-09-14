@@ -24,7 +24,7 @@ describe('OrdersService', () => {
         OrdersService,
         {
           provide: AuthIdentityService,
-          useValue: { resolveUser: jest.fn() },
+          useValue: { getUserBySub: jest.fn(), isProfileComplete: jest.fn() },
         },
         {
           provide: ClinicalRecordRepository,
@@ -86,14 +86,23 @@ describe('OrdersService', () => {
       measurements: null,
     } as CompleteConsultationDtoImpl;
 
-    it('lanza BadRequestException si falta el email de contacto', async () => {
-      const dto = { ...baseDto, personalInfo: { ...baseDto.personalInfo, email: null } } as CompleteConsultationDtoImpl;
+    it('lanza BadRequestException si falta personalInfo', async () => {
+      const dto = { ...baseDto, personalInfo: null } as CompleteConsultationDtoImpl;
       await expect(service.createOrder(dto, cognitoUser)).rejects.toBeInstanceOf(BadRequestException);
-      expect(authIdentityService.resolveUser).not.toHaveBeenCalled();
+      expect(authIdentityService.getUserBySub).not.toHaveBeenCalled();
     });
 
-    it('crea usuario, ficha clínica, producto, orden y consulta nutricional, devolviendo el orderId', async () => {
-      authIdentityService.resolveUser.mockResolvedValue({ id: 'user-1' } as any);
+    it('lanza BadRequestException si el perfil (User) está incompleto', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      authIdentityService.isProfileComplete.mockReturnValue(false);
+
+      await expect(service.createOrder(baseDto, cognitoUser)).rejects.toBeInstanceOf(BadRequestException);
+      expect(clinicalRecordRepository.findOrCreateClinicalRecordByPatientId).not.toHaveBeenCalled();
+    });
+
+    it('crea ficha clínica, producto, orden y consulta nutricional, devolviendo el orderId', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      authIdentityService.isProfileComplete.mockReturnValue(true);
       clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue({
         id: 'clinical-1',
       } as any);
@@ -109,10 +118,7 @@ describe('OrdersService', () => {
       const result = await service.createOrder(baseDto, cognitoUser);
 
       expect(result).toEqual({ orderId: 'order-1' });
-      expect(authIdentityService.resolveUser).toHaveBeenCalledWith(
-        cognitoUser,
-        expect.objectContaining({ email: 'ana@example.com' }),
-      );
+      expect(authIdentityService.getUserBySub).toHaveBeenCalledWith(cognitoUser);
       expect(orderRepository.createOrder).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'user-1',

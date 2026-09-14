@@ -18,9 +18,11 @@ export class PersonalInfoDtoImpl implements PersonalInfoDto {
 
   @Type(() => Number)
   @IsNumber()
+  @IsOptional()
   rut!: number | null;
 
   @IsString()
+  @IsOptional()
   dvRut!: string | null;
 
   @IsString()

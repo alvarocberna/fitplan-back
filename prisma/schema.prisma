@@ -42,14 +42,14 @@ model User {
   rutCheckDigit String? @map("rut_check_digit")
   email         String? @unique
 
-  firstName        String  @map("first_name")
+  firstName        String? @map("first_name")
   middleName       String? @map("middle_name")
-  paternalLastName String  @map("paternal_last_name")
+  paternalLastName String? @map("paternal_last_name")
   maternalLastName String? @map("maternal_last_name")
 
-  gender String
+  gender String?
 
-  dateOfBirth DateTime @map("date_of_birth") @db.Date
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
   photoUrl    String?  @map("photo_url")
 
   createdAt DateTime @default(now()) @map("created_at")

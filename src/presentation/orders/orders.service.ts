@@ -42,28 +42,19 @@ export class OrdersService {
     cognitoUser: CognitoUserClaims,
   ): Promise<{ orderId: string }> {
     const personalInfo = dto.personalInfo;
-    if (!personalInfo?.email) {
+    if (!personalInfo) {
+      throw new BadRequestException('Falta personalInfo en la solicitud');
+    }
+
+    // El perfil (User) ya tiene que existir y estar completo a esta altura — se crea al primer
+    // login (POST /auth/perfil) y se completa en informacion-personal (PATCH /auth/perfil).
+    // ordenes/crear ya no crea ni completa User, solo lee el athlete puntual de esta consulta.
+    const user = await this.authIdentityService.getUserBySub(cognitoUser);
+    if (!this.authIdentityService.isProfileComplete(user)) {
       throw new BadRequestException(
-        'Falta el correo de contacto para la orden',
+        'Completa tu información personal antes de generar una orden',
       );
     }
-    // firstName/paternalLastName/gender/dateOfBirth vienen garantizados no-null por los
-    // @IsNotEmpty() de PersonalInfoDtoImpl (ver presentation/consultation/dto/consultation.dto.ts).
-    // dateOfBirth llega como string ISO ('1990-05-15'): @IsDateString() solo valida el formato,
-    // no lo convierte a Date (no hay @Type(() => Date) en el DTO) — hay que convertirlo acá antes
-    // de pasarlo a Prisma, que rechaza un string incompleto para una columna DateTime.
-
-    const user = await this.authIdentityService.resolveUser(cognitoUser, {
-      email: personalInfo.email,
-      rut: personalInfo.rut !== null ? String(personalInfo.rut) : null,
-      rutCheckDigit: personalInfo.dvRut,
-      firstName: personalInfo.firstName!,
-      middleName: personalInfo.middleName,
-      paternalLastName: personalInfo.paternalLastName!,
-      maternalLastName: personalInfo.maternalLastName,
-      gender: personalInfo.gender!,
-      dateOfBirth: new Date(personalInfo.dateOfBirth!),
-    });
 
     const clinicalRecord =
       await this.clinicalRecordRepository.findOrCreateClinicalRecordByPatientId(

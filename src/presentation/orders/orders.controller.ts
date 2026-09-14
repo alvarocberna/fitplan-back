@@ -34,6 +34,7 @@ export class OrdersController {
   }
 
   //el frontend hace polling a este endpoint desde /consulta/resultado
+  @UseGuards(CognitoAuthGuard)
   @Get('obtener-estado/:id')
   getStatus(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string): Promise<OrderStatusDto> {
     return this.ordersService.getStatus(id);

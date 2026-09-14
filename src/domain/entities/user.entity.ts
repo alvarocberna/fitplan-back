@@ -17,14 +17,14 @@ export interface UserEntity {
   rutCheckDigit: string | null;
   email: string | null;
 
-  firstName: string;
+  firstName: string | null;
   middleName: string | null;
-  paternalLastName: string;
+  paternalLastName: string | null;
   maternalLastName: string | null;
 
-  gender: string;
+  gender: string | null;
 
-  dateOfBirth: Date;
+  dateOfBirth: Date | null;
   photoUrl: string | null;
 
   createdAt: Date;
