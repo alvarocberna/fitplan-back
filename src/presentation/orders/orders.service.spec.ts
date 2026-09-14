@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
-import { UserRepository } from '../../domain/repositories/identity-auth/user.repository';
+import { AuthIdentityService } from '../auth/auth-identity.service';
+import type { CognitoUserClaims } from '../auth/cognito-user.decorator';
 import { ClinicalRecordRepository } from '../../domain/repositories/clinical-domain/clinical-record.repository';
 import { NutritionalConsultationRepository } from '../../domain/repositories/clinical-domain/nutritional-consultation.repository';
 import { ProductRepository } from '../../domain/repositories/commercial-domain/product.repository';
@@ -11,7 +12,7 @@ import { NutritionPlanDto } from '../../domain';
 
 describe('OrdersService', () => {
   let service: OrdersService;
-  let userRepository: jest.Mocked<UserRepository>;
+  let authIdentityService: jest.Mocked<AuthIdentityService>;
   let clinicalRecordRepository: jest.Mocked<ClinicalRecordRepository>;
   let nutritionalConsultationRepository: jest.Mocked<NutritionalConsultationRepository>;
   let productRepository: jest.Mocked<ProductRepository>;
@@ -22,8 +23,8 @@ describe('OrdersService', () => {
       providers: [
         OrdersService,
         {
-          provide: UserRepository,
-          useValue: { findOrCreateUserByEmail: jest.fn() },
+          provide: AuthIdentityService,
+          useValue: { resolveUser: jest.fn() },
         },
         {
           provide: ClinicalRecordRepository,
@@ -58,7 +59,7 @@ describe('OrdersService', () => {
     }).compile();
 
     service = module.get(OrdersService);
-    userRepository = module.get(UserRepository);
+    authIdentityService = module.get(AuthIdentityService);
     clinicalRecordRepository = module.get(ClinicalRecordRepository);
     nutritionalConsultationRepository = module.get(NutritionalConsultationRepository);
     productRepository = module.get(ProductRepository);
@@ -66,6 +67,8 @@ describe('OrdersService', () => {
   });
 
   describe('createOrder', () => {
+    const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
+
     const baseDto: CompleteConsultationDtoImpl = {
       personalInfo: {
         rut: null,
@@ -85,12 +88,12 @@ describe('OrdersService', () => {
 
     it('lanza BadRequestException si falta el email de contacto', async () => {
       const dto = { ...baseDto, personalInfo: { ...baseDto.personalInfo, email: null } } as CompleteConsultationDtoImpl;
-      await expect(service.createOrder(dto)).rejects.toBeInstanceOf(BadRequestException);
-      expect(userRepository.findOrCreateUserByEmail).not.toHaveBeenCalled();
+      await expect(service.createOrder(dto, cognitoUser)).rejects.toBeInstanceOf(BadRequestException);
+      expect(authIdentityService.resolveUser).not.toHaveBeenCalled();
     });
 
     it('crea usuario, ficha clínica, producto, orden y consulta nutricional, devolviendo el orderId', async () => {
-      userRepository.findOrCreateUserByEmail.mockResolvedValue({ id: 'user-1' } as any);
+      authIdentityService.resolveUser.mockResolvedValue({ id: 'user-1' } as any);
       clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue({
         id: 'clinical-1',
       } as any);
@@ -103,10 +106,11 @@ describe('OrdersService', () => {
       nutritionalConsultationRepository.countNutritionalConsultationsByClinicalRecordId.mockResolvedValue(0);
       nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mockResolvedValue({} as any);
 
-      const result = await service.createOrder(baseDto);
+      const result = await service.createOrder(baseDto, cognitoUser);
 
       expect(result).toEqual({ orderId: 'order-1' });
-      expect(userRepository.findOrCreateUserByEmail).toHaveBeenCalledWith(
+      expect(authIdentityService.resolveUser).toHaveBeenCalledWith(
+        cognitoUser,
         expect.objectContaining({ email: 'ana@example.com' }),
       );
       expect(orderRepository.createOrder).toHaveBeenCalledWith(

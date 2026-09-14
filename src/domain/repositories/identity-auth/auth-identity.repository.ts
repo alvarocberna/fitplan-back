@@ -1,4 +1,4 @@
-import { AuthIdentityEntity } from '../../entities/user.entity';
+import { AuthIdentityEntity, AuthProvider } from '../../entities/user.entity';
 import { CreateAuthIdentityDto, UpdateAuthIdentityDto } from '../..';
 
 export abstract class AuthIdentityRepository {
@@ -11,4 +11,8 @@ export abstract class AuthIdentityRepository {
     updateAuthIdentityDto: UpdateAuthIdentityDto,
   ): Promise<AuthIdentityEntity>;
   abstract deleteAuthIdentityById(id: string): Promise<void>;
+  abstract findAuthIdentityByProvider(
+    provider: AuthProvider,
+    providerUserId: string,
+  ): Promise<AuthIdentityEntity | null>;
 }

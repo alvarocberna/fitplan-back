@@ -10,7 +10,8 @@ import {
   NutritionPlanDto,
 } from '../../domain';
 import { CompleteConsultationDtoImpl } from '../consultation/dto/consultation.dto';
-import { UserRepository } from '../../domain/repositories/identity-auth/user.repository';
+import { AuthIdentityService } from '../auth/auth-identity.service';
+import { CognitoUserClaims } from '../auth/cognito-user.decorator';
 import { ClinicalRecordRepository } from '../../domain/repositories/clinical-domain/clinical-record.repository';
 import { NutritionalConsultationRepository } from '../../domain/repositories/clinical-domain/nutritional-consultation.repository';
 import { ProductRepository } from '../../domain/repositories/commercial-domain/product.repository';
@@ -27,7 +28,7 @@ export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
 
   constructor(
-    private readonly userRepository: UserRepository,
+    private readonly authIdentityService: AuthIdentityService,
     private readonly clinicalRecordRepository: ClinicalRecordRepository,
     private readonly nutritionalConsultationRepository: NutritionalConsultationRepository,
     private readonly productRepository: ProductRepository,
@@ -38,6 +39,7 @@ export class OrdersService {
   //(el webhook de pago es server-a-server y no tiene acceso al localStorage del navegador)
   async createOrder(
     dto: CompleteConsultationDtoImpl,
+    cognitoUser: CognitoUserClaims,
   ): Promise<{ orderId: string }> {
     const personalInfo = dto.personalInfo;
     if (!personalInfo?.email) {
@@ -51,7 +53,7 @@ export class OrdersService {
     // no lo convierte a Date (no hay @Type(() => Date) en el DTO) — hay que convertirlo acá antes
     // de pasarlo a Prisma, que rechaza un string incompleto para una columna DateTime.
 
-    const user = await this.userRepository.findOrCreateUserByEmail({
+    const user = await this.authIdentityService.resolveUser(cognitoUser, {
       email: personalInfo.email,
       rut: personalInfo.rut !== null ? String(personalInfo.rut) : null,
       rutCheckDigit: personalInfo.dvRut,

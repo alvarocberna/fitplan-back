@@ -48,4 +48,14 @@ export class AuthIdentityDatasourceImpl implements AuthIdentityDatasource {
   async deleteAuthIdentityById(id: string): Promise<void> {
     await this.prisma.authIdentity.delete({ where: { id } });
   }
+
+  async findAuthIdentityByProvider(
+    provider: AuthProvider,
+    providerUserId: string,
+  ): Promise<AuthIdentityEntity | null> {
+    const authIdentity = await this.prisma.authIdentity.findUnique({
+      where: { provider_providerUserId: { provider, providerUserId } },
+    });
+    return authIdentity ? this.toEntity(authIdentity) : null;
+  }
 }

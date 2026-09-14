@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { CompleteConsultationDtoImpl } from '../consultation/dto/consultation.dto';
+import type { CognitoUserClaims } from '../auth/cognito-user.decorator';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
@@ -27,10 +28,11 @@ describe('OrdersController', () => {
 
   it('create() delega en OrdersService.createOrder y devuelve su resultado', async () => {
     const dto = { personalInfo: { email: 'a@b.com' } } as unknown as CompleteConsultationDtoImpl;
+    const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
     service.createOrder.mockResolvedValue({ orderId: 'order-1' });
 
-    await expect(controller.create(dto)).resolves.toEqual({ orderId: 'order-1' });
-    expect(service.createOrder).toHaveBeenCalledWith(dto);
+    await expect(controller.create(dto, cognitoUser)).resolves.toEqual({ orderId: 'order-1' });
+    expect(service.createOrder).toHaveBeenCalledWith(dto, cognitoUser);
   });
 
   it('getStatus() delega en OrdersService.getStatus con el id recibido', async () => {
