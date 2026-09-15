@@ -8,27 +8,27 @@ import { StyleSheet } from '@react-pdf/renderer'
 // ============================================================
 export const palette = {
     primary: '#10b968',       // color de marca (igual a --color-primary en globals.css)
-    primarySoft: '#beffe0',  // fondo suave para bloques destacados (aporte nutricional, etc)
+    primarySoft: '#beffe0',   // fondo suave para bloques destacados (aporte nutricional, etc)
     text: '#1f2937',          // gris oscuro para texto principal
-    textDark: '#0f172a',    // casi negro, para el título grande de la portada
-    textSoft: '#6b7280',     // gris medio para textos secundarios / labels
-    border: '#e5e7eb',          // gris claro para líneas divisorias
-    alternateBackground: '#f9fafb',   // fondo gris muy claro (filas alternadas, tarjetas)
-    background: '#fcf9f4',          // fondo general de cada página del documento
-    darkBackground: '#f0ede8',    // variante un poco más oscura de fondo (badges sobre tarjetas claras)
-    cardBackground: '#fffbf6',   // punto medio entre blanco y fondo (aporte nutricional)
+    textDark: '#0f172a',      // casi negro, para el título grande de la portada
+    textSoft: '#6b7280',      // gris medio para textos secundarios / labels
+    border: '#e5e7eb',        // gris claro para líneas divisorias
+    alternateBackground: '#f9fafb', // fondo gris muy claro (filas alternadas, tarjetas)
+    background: '#fcf9f4',    // fondo general de cada página del documento
+    darkBackground: '#f0ede8', // variante un poco más oscura de fondo (badges sobre tarjetas claras)
+    cardBackground: '#fffbf6', // punto medio entre blanco y fondo (aporte nutricional)
     white: '#ffffff',
     // -------- Acentos usados en la portada (macros + formas decorativas) --------
-    accent: '#f4a261',         // naranja (carbohidratos)
+    accent: '#f4a261',        // naranja (carbohidratos)
     accentSoft: '#fde3cf',
-    accentDark: '#ab7144',   // variante oscurecida, para íconos sin badge
-    yellow: '#eab308',       // (grasas)
+    accentDark: '#ab7144',    // variante oscurecida, para íconos sin badge
+    yellow: '#eab308',        // (grasas)
     yellowSoft: '#fef3c7',
-    yellowDark: '#a47d06', // variante oscurecida, para íconos sin badge
-    blue: '#38bdf8',           // (energía)
+    yellowDark: '#a47d06',    // variante oscurecida, para íconos sin badge
+    blue: '#38bdf8',          // (energía)
     blueSoft: '#dbeafe',
-    blueDark: '#2784ae',   // variante oscurecida, para íconos sin badge
-    primaryDark: '#0b8249', // variante oscurecida, para íconos sin badge
+    blueDark: '#2784ae',      // variante oscurecida, para íconos sin badge
+    primaryDark: '#0b8249',   // variante oscurecida, para íconos sin badge
 }
 
 const spacing = {
@@ -69,7 +69,7 @@ export const styles = StyleSheet.create({
     },
 
     // -------- Pie de página (numeración) --------
-    footer: {
+    pageFooter: {
         position: 'absolute',
         bottom: 16,
         left: spacing.pageX,
@@ -146,7 +146,7 @@ export const styles = StyleSheet.create({
     // react-pdf no soporta boxShadow nativo: dos capas sutiles detrás de la
     // tarjeta (una un poco más grande y más transparente que la otra) para
     // dar un pelín más de difuminado sin perder la sutileza.
-    nutritionalIntakeSoftShadow: {
+    nutritionalIntakeDiffuseShadow: {
         position: 'absolute',
         top: 3,
         left: -2,
@@ -257,7 +257,7 @@ export const styles = StyleSheet.create({
     },
     // borde inferior más grueso que el de las filas normales (mismo color
     // gris que las demás), para que se note más sin cambiar de paleta.
-    foodsTableHeaderRow: {
+    foodsTableRowHeader: {
         flexDirection: 'row',
         borderBottomWidth: 2,
         borderBottomColor: palette.border,
@@ -268,9 +268,9 @@ export const styles = StyleSheet.create({
         color: palette.primary,
         textTransform: 'uppercase',
     },
-    foodsTableGroupCol: { width: '20%', paddingHorizontal: 4 },
-    foodsTablePortionsCol: { width: '40%', paddingHorizontal: 4 },
-    foodsTableEquivalenceCol: { width: '40%', paddingHorizontal: 4 },
+    foodsTableGroupCol: { width: '25%', paddingHorizontal: 4 },
+    foodsTablePortionsCol: { width: '25%', paddingHorizontal: 4 },
+    foodsTableEquivalenceCol: { width: '50%', paddingHorizontal: 4 },
     // línea vertical solo en las filas de datos (no en el header)
     foodsTableEquivalenceColBorder: {
         borderLeftWidth: 1,
@@ -289,19 +289,19 @@ export const styles = StyleSheet.create({
         paddingHorizontal: 8,
         marginBottom: 10,
     },
-    summaryTableHeaderRow: {
+    summaryTableRowHeader: {
         flexDirection: 'row',
         backgroundColor: palette.primary,
         borderRadius: 4,
         paddingVertical: 6,
         marginBottom: 10,
     },
-    tableTimeCol: { width: '30%', paddingLeft: 8 },
-    tableTimeColRow: {
+    summaryTableTimeCol: { width: '30%', paddingLeft: 8 },
+    summaryTableTimeColRow: {
         flexDirection: 'row',
         alignItems: 'center',
     },
-    tableTimeColIconBadge: {
+    summaryTableTimeIconBadge: {
         width: 36,
         height: 36,
         borderRadius: 18,
@@ -310,43 +310,43 @@ export const styles = StyleSheet.create({
         justifyContent: 'center',
         marginRight: 8,
     },
-    tableFoodsCol: { width: '40%', paddingHorizontal: 4 },
-    tableMacrosCol: { width: '30%', paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center' },
+    summaryTableFoodsCol: { width: '40%', paddingHorizontal: 4 },
+    summaryTableMacrosCol: { width: '30%', paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center' },
     // borderLeft siempre ocupa el 100% del alto; para que la línea sea más
     // corta hace falta un elemento aparte, centrado verticalmente. Alto fijo
     // en puntos (no '%'): con 3 niveles de fila anidados (summaryTableRow >
-    // tableMacrosCol > tableMacrosColSub, todos de alto automático) el % no
+    // summaryTableMacrosCol > summaryTableMacrosSubCol, todos de alto automático) el % no
     // tenía una base definida contra la cual resolverse y terminaba en 0.
-    tableMacrosColSub: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-    tableMacrosColLine: { width: 1, height: 66, backgroundColor: palette.border, marginRight: 6 },
-    tableHeaderText: {
+    summaryTableMacrosSubCol: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+    summaryTableMacrosLine: { width: 1, height: 66, backgroundColor: palette.border, marginRight: 6 },
+    summaryTableHeaderText: {
         fontSize: 10,
         fontFamily: 'Helvetica-Bold',
         color: palette.white,
         textTransform: 'uppercase',
     },
-    tableMealText: {
+    summaryTableMealText: {
         fontSize: 10,
         lineHeight: 1.4,
         color: palette.primary,
         textTransform: 'uppercase',
         fontWeight: 600,
     },
-    tableMacrosText: {
+    summaryTableMacrosText: {
         fontSize: 10,
         lineHeight: 1.4,
         marginBottom: 6,
         marginLeft: 2,
     },
-    tableText: {
+    summaryTableText: {
         fontSize: 10,
         lineHeight: 1.4,
         marginBottom: 2,
     },
-    tableFoodRow: {
+    summaryTableFoodRow: {
         flexDirection: 'row',
     },
-    tableTextBullet: {
+    summaryTableTextBullet: {
         color: palette.primary,
         marginRight: 4,
     },
@@ -374,7 +374,7 @@ export const styles = StyleSheet.create({
         lineHeight: 1.4,
         marginBottom: 8,
     },
-    // etiqueta pequeña en mayúscula, mismo patrón que coverFieldLabel / foodsTableHeaderRow
+    // etiqueta pequeña en mayúscula, mismo patrón que coverFieldLabel / foodsTableRowHeader
     highlightedItemLabel: {
         fontSize: 7,
         fontFamily: 'Helvetica-Bold',
@@ -563,7 +563,7 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 16,
     },
-    coverIconTextItemBlock: {
+    coverIconTextBlock: {
         marginLeft: 8,
         flex: 1,
     },

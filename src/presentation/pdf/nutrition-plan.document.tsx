@@ -1,7 +1,7 @@
 import { Document, Page, Text, View, Svg, Polygon, Circle, Path, Rect, Line, G, Defs, LinearGradient, Stop } from '@react-pdf/renderer'
-import { NutritionPlanDto } from '../../domain'
+import { NutritionPlanDto, SupplementPrescription } from '../../domain'
 import { styles, palette } from './nutrition-plan-pdf.styles'
-import { getFoods, capitalize } from './nutrition-plan-pdf.constants'
+import { getFoods, capitalize, sumSupplementsIntake } from './nutrition-plan-pdf.constants'
 
 type MealTime = NutritionPlanDto['mealTimes'][number]
 
@@ -25,10 +25,10 @@ function Header({ plan, subtitle }: { plan: NutritionPlanDto; subtitle: string }
 }
 
 // Numeración de página, fija al pie de cada hoja.
-function Footer() {
+function PageFooter() {
     return (
         <Text
-            style={styles.footer}
+            style={styles.pageFooter}
             fixed
             render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`}
         />
@@ -39,7 +39,7 @@ function Footer() {
 function NutritionalIntake({ calories, protein, carbohydrate, fat }: { calories: number; protein: number; carbohydrate: number; fat: number }) {
     return (
         <View style={styles.nutritionalIntakeContainer}>
-            <View style={styles.nutritionalIntakeSoftShadow} />
+            <View style={styles.nutritionalIntakeDiffuseShadow} />
             <View style={styles.nutritionalIntakeShadow} />
             <View style={styles.nutritionalIntake}>
                 <View style={styles.intakeItem}>
@@ -187,9 +187,24 @@ function MoonIcon({ size = 20, color = palette.primary }: { size?: number; color
     )
 }
 
+// Convierte el string de hora a un número de 0 a 23. Soporta tanto formato 24h ("08:00", "20:30")
+// como 12h con am/pm ("10am", "1:30pm") — este último es el formato documentado en el DTO
+// (nutrition-plan.dto.ts, campo "hour"), que sin esta conversión se interpretaba tal cual
+// (ej. "1pm" -> 1), haciendo que casi todas las horas PM cayeran mal.
+function hourTo24HourFormat(hour?: string | null): number {
+    if (!hour) return NaN
+    const match = hour.trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/)
+    if (!match) return NaN
+    let hourNum = parseInt(match[1], 10)
+    const meridian = match[3]
+    if (meridian === 'pm' && hourNum !== 12) hourNum += 12
+    if (meridian === 'am' && hourNum === 12) hourNum = 0
+    return hourNum
+}
+
 // Elige el ícono de hora (sol amanecer / sol pleno / luna) según la hora del tiempo de comida.
 function TimeIcon({ hour }: { hour?: string | null }) {
-    const hourNum = hour ? parseInt(hour.split(':')[0], 10) : NaN
+    const hourNum = hourTo24HourFormat(hour)
     if (isNaN(hourNum) || (hourNum >= 12 && hourNum < 19)) return <MiddaySunIcon />
     if (hourNum < 12) return <SunriseIcon />
     return <MoonIcon />
@@ -226,11 +241,11 @@ function CoverDecoration() {
     const bottom2OffsetY = height - bottom2Height
     // arco inferior: ancho = 52% del ancho del documento, pegado al borde inferior,
     // a una distancia del borde izquierdo equivalente al 8% del ancho del documento
-    const arcWidth = width * 0.52
-    const arcScale = arcWidth / 1288
-    const arcHeight = 655 * arcScale
-    const arcOffsetX = width * 0.08
-    const arcOffsetY = height - arcHeight
+    const archWidth = width * 0.52
+    const archScale = archWidth / 1288
+    const archHeight = 655 * archScale
+    const archOffsetX = width * 0.08
+    const archOffsetY = height - archHeight
     // veta inferior derecha: ancho = 56% del ancho del documento, pegada a la esquina inferior derecha
     const bottomRightWidth = width * 0.56
     const bottomRightScale = bottomRightWidth / 1384
@@ -262,7 +277,7 @@ function CoverDecoration() {
                     <Stop offset={0.548665} stopColor="#BE371F" stopOpacity={0.9} />
                     <Stop offset={1} stopColor="#A24939" stopOpacity={0.6} />
                 </LinearGradient>
-                <LinearGradient id="coverArcGradient" x1={1088} y1={518.563} x2={336} y2={202.563} gradientUnits="userSpaceOnUse">
+                <LinearGradient id="coverArchGradient" x1={1088} y1={518.563} x2={336} y2={202.563} gradientUnits="userSpaceOnUse">
                     <Stop offset={0} stopColor="#DC2303" stopOpacity={0} />
                     <Stop offset={1} stopColor="#DC2303" stopOpacity={0.2} />
                 </LinearGradient>
@@ -294,10 +309,10 @@ function CoverDecoration() {
                 />
             </G>
             {/* arco inferior (figura personalizada, diseñada en Figma con viewBox 1288x655; detrás de las dos vetas inferior izquierda) */}
-            <G transform={`translate(${arcOffsetX}, ${arcOffsetY}) scale(${arcScale})`}>
+            <G transform={`translate(${archOffsetX}, ${archOffsetY}) scale(${archScale})`}>
                 <Path
                     d="M924 162.563L1288 662.563H0L328 162.563C328 162.563 387.219 82.8182 440 50.5634C557.296 -21.1175 669.83 -12.4524 792 50.5634C852.083 81.5545 924 162.563 924 162.563Z"
-                    fill="url(#coverArcGradient)"
+                    fill="url(#coverArchGradient)"
                     fillOpacity={0.7}
                 />
             </G>
@@ -365,7 +380,7 @@ function IconTextItem({ icon, label, value }: { icon: React.ReactNode; label: st
     return (
         <View style={styles.coverIconTextItem}>
             {/* <View style={styles.coverIconBadge}>{icon}</View> */}
-            <View style={styles.coverIconTextItemBlock}>
+            <View style={styles.coverIconTextBlock}>
                 <Text style={styles.coverItemLabel}>{label}</Text>
                 <Text style={styles.coverItemValue}>{value}</Text>
             </View>
@@ -390,38 +405,81 @@ function MealTimeSummaryRow({ mealTime }: { mealTime: MealTime }) {
     const foods = getFoods(mealTime)
     return (
         <View style={styles.summaryTableRow} wrap={false}>
-            <View style={styles.tableTimeCol}>
-                <View style={styles.tableTimeColRow}>
-                    <View style={styles.tableTimeColIconBadge}>
+            <View style={styles.summaryTableTimeCol}>
+                <View style={styles.summaryTableTimeColRow}>
+                    <View style={styles.summaryTableTimeIconBadge}>
                         <TimeIcon hour={mealTime.description.hour} />
                     </View>
                     <View>
-                        <Text style={styles.tableMealText}>{capitalize(mealTime.description.time)}</Text>
-                        {mealTime.description.hour && <Text style={[styles.tableText, { color: palette.textSoft }]}>{mealTime.description.hour}</Text>}
+                        <Text style={styles.summaryTableMealText}>{capitalize(mealTime.description.time)}</Text>
+                        {mealTime.description.hour && <Text style={[styles.summaryTableText, { color: palette.textSoft }]}>{mealTime.description.hour}</Text>}
                     </View>
                 </View>
             </View>
-            <View style={styles.tableFoodsCol}>
-                {foods.map((f, i) => (
-                    <View key={i} style={styles.tableFoodRow}>
-                        <Text style={styles.tableTextBullet}>•</Text>
-                        <Text style={styles.tableText}>{f.label}: {f.value}</Text>
+            <View style={styles.summaryTableFoodsCol}>
+                {foods.map((food, i) => (
+                    <View key={i} style={styles.summaryTableFoodRow}>
+                        <Text style={styles.summaryTableTextBullet}>•</Text>
+                        <Text style={styles.summaryTableText}>{food.label}: {food.portion}</Text>
                     </View>
                 ))}
             </View>
-            <View style={styles.tableMacrosCol}>
-                <View style={styles.tableMacrosColSub}>
-                    <View style={styles.tableMacrosColLine} />
+            <View style={styles.summaryTableMacrosCol}>
+                <View style={styles.summaryTableMacrosSubCol}>
+                    <View style={styles.summaryTableMacrosLine} />
                     <View>
-                        <Text style={styles.tableMacrosText}>E: {mealTime.intake.calories} kcal</Text>
-                        <Text style={styles.tableMacrosText}>C: {mealTime.intake.carbohydrate} g</Text>
+                        <Text style={styles.summaryTableMacrosText}>E: {mealTime.intake.calories} kcal</Text>
+                        <Text style={styles.summaryTableMacrosText}>C: {mealTime.intake.carbohydrate} g</Text>
                     </View>
                 </View>
-                <View style={styles.tableMacrosColSub}>
-                    <View style={styles.tableMacrosColLine} />
+                <View style={styles.summaryTableMacrosSubCol}>
+                    <View style={styles.summaryTableMacrosLine} />
                     <View>
-                        <Text style={styles.tableMacrosText}>P: {mealTime.intake.protein} g</Text>
-                        <Text style={styles.tableMacrosText}>G: {mealTime.intake.fat} g</Text>
+                        <Text style={styles.summaryTableMacrosText}>P: {mealTime.intake.protein} g</Text>
+                        <Text style={styles.summaryTableMacrosText}>G: {mealTime.intake.fat} g</Text>
+                    </View>
+                </View>
+            </View>
+        </View>
+    )
+}
+
+// Fila de la tabla-resumen (página 2): resumen de todos los suplementos, con el mismo
+// formato que MealTimeSummaryRow — pero "Tiempo" pasa a ser el título "Suplementos" y
+// el aporte nutricional es la suma de los aportes de todos los suplementos.
+function SupplementsSummaryRow({ supplements }: { supplements: SupplementPrescription[] }) {
+    const intake = sumSupplementsIntake(supplements)
+    return (
+        <View style={styles.summaryTableRow} wrap={false}>
+            <View style={styles.summaryTableTimeCol}>
+                <View style={styles.summaryTableTimeColRow}>
+                    <View style={styles.summaryTableTimeIconBadge}>
+                        <HexagonIcon color={palette.primary} />
+                    </View>
+                    <Text style={styles.summaryTableMealText}>Suplementos</Text>
+                </View>
+            </View>
+            <View style={styles.summaryTableFoodsCol}>
+                {supplements.map((s, i) => (
+                    <View key={i} style={styles.summaryTableFoodRow}>
+                        <Text style={styles.summaryTableTextBullet}>•</Text>
+                        <Text style={styles.summaryTableText}>{s.supplement}: {s.requirement}</Text>
+                    </View>
+                ))}
+            </View>
+            <View style={styles.summaryTableMacrosCol}>
+                <View style={styles.summaryTableMacrosSubCol}>
+                    <View style={styles.summaryTableMacrosLine} />
+                    <View>
+                        <Text style={styles.summaryTableMacrosText}>E: {intake.calories} kcal</Text>
+                        <Text style={styles.summaryTableMacrosText}>C: {intake.carbohydrate} g</Text>
+                    </View>
+                </View>
+                <View style={styles.summaryTableMacrosSubCol}>
+                    <View style={styles.summaryTableMacrosLine} />
+                    <View>
+                        <Text style={styles.summaryTableMacrosText}>P: {intake.protein} g</Text>
+                        <Text style={styles.summaryTableMacrosText}>G: {intake.fat} g</Text>
                     </View>
                 </View>
             </View>
@@ -433,7 +491,7 @@ function MealTimeSummaryRow({ mealTime }: { mealTime: MealTime }) {
 // DOCUMENTO PRINCIPAL
 // ============================================================
 export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
-    const { personalInfo, prescription, mealTimes, supplements, sportsRecommendations } = plan
+    const { personalInfo, prescription, planIntake, mealTimes, supplements, sportsRecommendations } = plan
 
     return (
         <Document>
@@ -458,7 +516,7 @@ export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
                 </View>
 
                 <View style={styles.coverCardContainer}>
-                    <View style={styles.nutritionalIntakeSoftShadow} />
+                    <View style={styles.nutritionalIntakeDiffuseShadow} />
                     <View style={styles.nutritionalIntakeShadow} />
                     <View style={[styles.coverCard, { flexDirection: 'column', marginBottom: 0 }]}>
                         <Text style={styles.coverSectionTitle}>INFORMACIÓN DEL PACIENTE</Text>
@@ -482,28 +540,28 @@ export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
                         <MacroStat
                             icon={<BoltIcon size={22} color={palette.blueDark} />}
                             color={palette.blueDark}
-                            value={prescription.calories}
+                            value={Math.round(planIntake.totalIntake.calories)}
                             unit="kcal / día"
                             label="ENERGÍA"
                         />
                         <MacroStat
                             icon={<HexagonIcon size={22} color={palette.primaryDark} />}
                             color={palette.primaryDark}
-                            value={prescription.protein}
+                            value={Math.round(planIntake.totalIntake.protein)}
                             unit="g / día"
                             label="PROTEÍNA"
                         />
                         <MacroStat
                             icon={<WheatIcon size={22} color={palette.accentDark} />}
                             color={palette.accentDark}
-                            value={prescription.carbohydrate}
+                            value={Math.round(planIntake.totalIntake.carbohydrate)}
                             unit="g / día"
                             label="CARBOHIDRATOS"
                         />
                         <MacroStat
                             icon={<DropIcon size={22} color={palette.yellowDark} />}
                             color={palette.yellowDark}
-                            value={prescription.fat}
+                            value={Math.round(planIntake.totalIntake.fat)}
                             unit="g / día"
                             label="GRASAS"
                         />
@@ -529,26 +587,27 @@ export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
                     <View style={styles.coverLine} />
                 </View>
 
-                <View style={styles.summaryTableHeaderRow}>
-                    <Text style={[styles.tableTimeCol, styles.tableHeaderText]}>Tiempo</Text>
-                    <Text style={[styles.tableFoodsCol, styles.tableHeaderText]}>Alimentos</Text>
-                    <Text style={[styles.tableMacrosCol, styles.tableHeaderText]}>Aporte nutricional</Text>
+                <View style={styles.summaryTableRowHeader}>
+                    <Text style={[styles.summaryTableTimeCol, styles.summaryTableHeaderText]}>Tiempo</Text>
+                    <Text style={[styles.summaryTableFoodsCol, styles.summaryTableHeaderText]}>Alimentos</Text>
+                    <Text style={[styles.summaryTableMacrosCol, styles.summaryTableHeaderText]}>Aporte nutricional</Text>
                 </View>
-                {mealTimes.map((mealTime, idx) => (
-                    <MealTimeSummaryRow key={idx} mealTime={mealTime} />
+                {mealTimes.map((mealTime, index) => (
+                    <MealTimeSummaryRow key={index} mealTime={mealTime} />
                 ))}
+                {supplements.length > 0 && <SupplementsSummaryRow supplements={supplements} />}
 
-                <Footer />
+                <PageFooter />
             </Page>
 
             {/* ============================================================
                 UNA PÁGINA POR CADA TIEMPO DE COMIDA
                 Orden dentro de cada página: aporte nutricional -> alimentos -> ejemplos -> comentarios
                ============================================================ */}
-            {mealTimes.map((mealTime, idx) => {
+            {mealTimes.map((mealTime, index) => {
                 const foods = getFoods(mealTime)
                 return (
-                    <Page key={idx} size="A4" style={styles.page} wrap>
+                    <Page key={index} size="A4" style={styles.page} wrap>
                         <PageDecoration />
                         {/* <Header plan={plan} subtitle={capitalize(mealTime.description.time)} /> */}
                         <Text style={styles.pageTitle}>
@@ -570,16 +629,16 @@ export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
                         <Text style={styles.sectionTitle}>Alimentos</Text>
                         <View style={styles.sectionLine} />
                         <View style={styles.card}>
-                            <View style={styles.foodsTableHeaderRow}>
+                            <View style={styles.foodsTableRowHeader}>
                                 <Text style={[styles.foodsTableGroupCol]}>Grupo</Text>
                                 <Text style={[styles.foodsTablePortionsCol]}>Porciones</Text>
                                 <Text style={[styles.foodsTableEquivalenceCol]}>Equivalencia</Text>
                             </View>
-                            {foods.map((f, i) => (
+                            {foods.map((food, i) => (
                                 <View key={i} style={[styles.foodsTableRow, ...(i === foods.length - 1 ? [styles.foodsTableRowNoBorder] : [])]}>
-                                    <Text style={[styles.foodsTableGroupCol, styles.foodsTableCell, styles.tableText]}>{f.label}</Text>
-                                    <Text style={[styles.foodsTablePortionsCol, styles.foodsTableCell, styles.tableText]}>{f.value}</Text>
-                                    <Text style={[styles.foodsTableEquivalenceCol, styles.foodsTableCell, styles.tableText, styles.foodsTableEquivalenceColBorder]}></Text>
+                                    <Text style={[styles.foodsTableGroupCol, styles.foodsTableCell, styles.summaryTableText]}>{food.label}</Text>
+                                    <Text style={[styles.foodsTablePortionsCol, styles.foodsTableCell, styles.summaryTableText]}>{food.portion}</Text>
+                                    <Text style={[styles.foodsTableEquivalenceCol, styles.foodsTableCell, styles.summaryTableText, styles.foodsTableEquivalenceColBorder]}>{food.equivalence}</Text>
                                 </View>
                             ))}
                         </View>
@@ -601,7 +660,7 @@ export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
                         )}
 
                         {/* 4. Comentarios (al final, como pediste) */}
-                        {mealTime.comments.length > 0 && (
+                        {/* {mealTime.comments.length > 0 && (
                             <>
                                 <Text style={styles.sectionTitle}>Comentarios</Text>
                                 <View style={styles.sectionLine} />
@@ -614,9 +673,9 @@ export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
                                     ))}
                                 </View>
                             </>
-                        )}
+                        )} */}
 
-                        <Footer />
+                        <PageFooter />
                     </Page>
                 )
             })}
@@ -667,32 +726,32 @@ export function NutritionPlanDocument({ plan }: { plan: NutritionPlanDto }) {
 
                 <Text style={styles.sectionTitle}>Recomendaciones deportivas</Text>
                 <View style={styles.sectionLine} />
-                {sportsRecommendations.map((r, i) => (
+                {sportsRecommendations.map((recommendation, i) => (
                     <View key={i} style={styles.highlightedItem} wrap={false}>
-                        {r.session && <Text style={styles.highlightedItemTitle}>{r.session}</Text>}
-                        {r.strategy && <Text style={styles.highlightedItemSubtitle}>{r.strategy}</Text>}
-                        {r.preActivity && (
+                        {recommendation.session && <Text style={styles.highlightedItemTitle}>{recommendation.session}</Text>}
+                        {recommendation.strategy && <Text style={styles.highlightedItemSubtitle}>{recommendation.strategy}</Text>}
+                        {recommendation.preActivity && (
                             <>
                                 <Text style={styles.highlightedItemLabel}>Pre actividad</Text>
-                                <Text style={styles.highlightedItemText}>{r.preActivity}</Text>
+                                <Text style={styles.highlightedItemText}>{recommendation.preActivity}</Text>
                             </>
                         )}
-                        {r.duringActivity && (
+                        {recommendation.duringActivity && (
                             <>
                                 <Text style={styles.highlightedItemLabel}>Durante actividad</Text>
-                                <Text style={styles.highlightedItemText}>{r.duringActivity}</Text>
+                                <Text style={styles.highlightedItemText}>{recommendation.duringActivity}</Text>
                             </>
                         )}
-                        {r.postActivity && (
+                        {recommendation.postActivity && (
                             <>
                                 <Text style={styles.highlightedItemLabel}>Post actividad</Text>
-                                <Text style={styles.highlightedItemText}>{r.postActivity}</Text>
+                                <Text style={styles.highlightedItemText}>{recommendation.postActivity}</Text>
                             </>
                         )}
                     </View>
                 ))}
 
-                <Footer />
+                <PageFooter />
             </Page>
         </Document>
     )

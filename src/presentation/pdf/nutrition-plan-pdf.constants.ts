@@ -1,9 +1,9 @@
-import { NutritionPlanDto } from '../../domain'
+import { NutritionPlanDto, SupplementPrescription } from '../../domain'
 
 type MealTime = NutritionPlanDto['mealTimes'][number]
 type MealTimeFoods = MealTime['foods']
 
-// Claves de MealTimeFoods que representan grupos de alimentos.
+// Keys de MealTimeFoods que representan grupos de alimentos.
 // El orden de este arreglo define el orden en el que se listan los alimentos en el PDF.
 // Para agregar o quitar una categoría de alimento del PDF, solo edita este arreglo.
 export const FOOD_FIELDS: { key: keyof MealTimeFoods; label: string }[] = [
@@ -23,12 +23,26 @@ export const FOOD_FIELDS: { key: keyof MealTimeFoods; label: string }[] = [
 ]
 
 // Devuelve solo los grupos de alimentos que vienen con datos (no null) para un tiempo de comida dado.
-// "value" es la porción (ej "2 porciones"); el campo "equivalence" de cada grupo (ver NutritionPlanDto)
-// no se muestra en el PDF por ahora, pero queda disponible en mealTime.foods[key] si se necesita.
-export function getFoods(mealTime: MealTime): { label: string; value: string }[] {
+export function getFoods(mealTime: MealTime): { label: string; portion: string; equivalence: string }[] {
     return FOOD_FIELDS
         .filter(({ key }) => !!mealTime.foods[key])
-        .map(({ key, label }) => ({ label, value: mealTime.foods[key]!.portion }))
+        .map(({ key, label }) => {
+            const food = mealTime.foods[key]!
+            return { label, portion: food.portion, equivalence: food.equivalence }
+        })
+}
+
+// Suma el aporte nutricional de todos los suplementos (para la fila resumen de la página 2).
+export function sumSupplementsIntake(supplements: SupplementPrescription[]): { calories: number; protein: number; carbohydrate: number; fat: number } {
+    return supplements.reduce(
+        (total, s) => ({
+            calories: total.calories + s.intake.calories,
+            protein: total.protein + s.intake.protein,
+            carbohydrate: total.carbohydrate + s.intake.carbohydrate,
+            fat: total.fat + s.intake.fat,
+        }),
+        { calories: 0, protein: 0, carbohydrate: 0, fat: 0 }
+    )
 }
 
 // "desayuno" -> "Desayuno"
