@@ -10,6 +10,7 @@ export abstract class OrderRepository {
   ): Promise<OrderEntity>;
   abstract deleteOrderById(id: string): Promise<void>;
   abstract getOrderWithUserById(id: string): Promise<OrderEntity | null>;
+  abstract getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]>;
   abstract markOrderAsPaidIfPending(id: string): Promise<boolean>;
   abstract tryTransitionOrderToGenerating(id: string): Promise<boolean>;
   abstract incrementOrderFailedAttempt(id: string): Promise<void>;

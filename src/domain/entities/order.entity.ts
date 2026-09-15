@@ -36,6 +36,7 @@ export interface OrderEntity {
   // una Order.
   generationStatus: OrderGenerationStatus;
   planJson: string | null;
+  pdfKey: string | null;
   attempts: number;
 
   creationDate: Date;

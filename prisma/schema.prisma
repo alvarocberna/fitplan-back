@@ -669,6 +669,7 @@ model Order {
   // (antes columnas de la tabla `orden`) y porque el pipeline opera 1:1 sobre una Order.
   generationStatus String  @default("no_iniciado") @map("generation_status") // no_iniciado | generando | completado | error
   planJson         String? @map("plan_json") // NutritionPlanDto serializado, null hasta que se genera
+  pdfKey           String? @map("pdf_key") // object key en S3 (carpeta productos-personalizados/) del PDF ya generado y subido
   attempts         Int     @default(0)
 
   creationDate   DateTime  @map("creation_date")

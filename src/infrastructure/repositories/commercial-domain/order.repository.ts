@@ -31,6 +31,10 @@ export class OrderRepositoryImpl implements OrderRepository {
     return this.datasource.getOrderWithUserById(id);
   }
 
+  getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]> {
+    return this.datasource.getPaidOrdersWithPdfByUserId(userId);
+  }
+
   markOrderAsPaidIfPending(id: string): Promise<boolean> {
     return this.datasource.markOrderAsPaidIfPending(id);
   }

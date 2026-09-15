@@ -40,6 +40,10 @@ import { OpenaiService } from '../openai/openai.service';
 import { OrdersService } from '../orders/orders.service';
 //presentatation - modulo notifications
 import { EmailService } from '../notifications/email.service';
+//presentation - modulo pdf
+import { PdfService } from '../pdf/pdf.service';
+//presentation - modulo storage
+import { StorageService, buildPersonalizedPlanKey } from '../storage/storage.service';
 //presentation - modulo plan-generation (actual)
 import {
   buildExtractInfoPromptUserMessage,
@@ -126,6 +130,8 @@ export class PlanGenerationService {
     private readonly ordersService: OrdersService,
     private readonly openaiService: OpenaiService,
     private readonly emailService: EmailService,
+    private readonly pdfService: PdfService,
+    private readonly storageService: StorageService,
   ) {}
 
   //se dispara (sin await, "fire and forget") desde el webhook de pago una vez confirmado el cobro
@@ -158,7 +164,14 @@ export class PlanGenerationService {
           `Orden ${orderId}: intento ${attempt}/${MAX_ATTEMPTS} generado en ${attemptDurationMs}ms`,
         );
 
-        await this.ordersService.completeGeneration(orderId, plan);
+        // El PDF se genera UNA sola vez acá (backend), se sube a S3, y el mismo buffer se
+        // reutiliza para el adjunto del correo — evita regenerarlo tanto en el frontend como
+        // una segunda vez dentro de EmailService.
+        const pdfBuffer = await this.pdfService.generateBuffer(plan);
+        const pdfKey = buildPersonalizedPlanKey(orderId);
+        await this.storageService.uploadPdf(pdfBuffer, pdfKey);
+
+        await this.ordersService.completeGeneration(orderId, plan, pdfKey);
         const totalDurationMs = Date.now() - totalStart;
         this.logger.log(
           `Orden ${orderId}: plan generado con éxito (intento ${attempt}/${MAX_ATTEMPTS}, ` +
@@ -170,7 +183,7 @@ export class PlanGenerationService {
           throw new Error(
             `Orden ${orderId}: el usuario asociado no tiene email`,
           );
-        await this.emailService.sendPlanByEmail(userEmail, plan);
+        await this.emailService.sendPlanByEmail(userEmail, plan, pdfBuffer);
         return;
       } catch (error) {
         const attemptDurationMs = Date.now() - attemptStart;

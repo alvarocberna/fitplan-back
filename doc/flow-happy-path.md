@@ -86,12 +86,13 @@ sequenceDiagram
         Note over BE: calculateRequirements + calculateSupplements (sin IA)
         BE->>AI: generación del plan (NUTRITIONIST_SYSTEM_PROMPT)
         AI-->>BE: GeneratedNutritionPlan
-        BE->>DB: UPDATE Order planJson, generationStatus='completado'
-        Note over BE: genera PDF y "envía" el correo (stub)
+        Note over BE: genera el PDF y lo sube a S3 (productos-personalizados/<orderId>.pdf)
+        BE->>DB: UPDATE Order planJson, pdfKey, generationStatus='completado'
+        Note over BE: "envía" el correo con el mismo PDF ya generado como adjunto (stub)
     and polling del frontend
         loop cada 4s hasta 'completado' o 'error'
             FE->>BE: GET /ordenes/obtener-estado/:id
-            BE-->>FE: paymentStatus, generationStatus, planJson
+            BE-->>FE: paymentStatus, generationStatus, planJson, pdfUrl
         end
     end
 
@@ -217,11 +218,14 @@ directamente (`PlanGenerationService.generatePlan`):
    (no se le permite a la IA recalcularlos).
 6. **Reintentos**: hasta 4 intentos con backoff exponencial (1s, 2s, 4s, 8s) si cualquiera de las
    llamadas anteriores falla, o si la IA reporta ejemplos/equivalencias que no calzan con las
-   porciones ya calculadas por código.
-   - Si tiene éxito: guarda `planJson` en la orden y marca `generationStatus: 'completado'`, luego
-     llama a `EmailService.sendPlanByEmail` — genera el PDF del plan server-side (`PdfService`,
-     `@react-pdf/renderer`) y "envía" el correo (hoy es un stub que solo logea; no hay proveedor de
-     email real conectado todavía).
+   porciones ya calculadas por código. La generación del PDF y su subida a S3 (paso siguiente) caen
+   en el mismo loop: un fallo ahí también cuenta como intento fallido.
+   - Si tiene éxito: genera el PDF del plan server-side una sola vez (`PdfService.generateBuffer`,
+     `@react-pdf/renderer`), lo sube a S3 (`StorageService.uploadPdf`, key
+     `productos-personalizados/<orderId>.pdf`), guarda `planJson` y `pdfKey` en la orden y marca
+     `generationStatus: 'completado'` — luego llama a `EmailService.sendPlanByEmail` reutilizando el
+     mismo buffer del PDF como adjunto (ya no lo regenera) y "envía" el correo (hoy es un stub que
+     solo logea; no hay proveedor de email real conectado todavía).
    - Si fallan los 4 intentos: marca `generationStatus: 'error'` y registra el evento (log
      estructurado; sin alerta real todavía, ver `doc/technical-debt.md`).
 
@@ -230,15 +234,17 @@ directamente (`PlanGenerationService.generatePlan`):
 Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 segundos** a:
 
 - **`GET /ordenes/obtener-estado/:id`** (`OrdersController.getStatus` → `OrdersService.getStatus`,
-  `CognitoAuthGuard` — exige sesión válida, pero **no** valida que la orden pertenezca al usuario
-  del token, ver "Gap conocido" en `doc/auth.md`)
-  - Response: `{ paymentStatus, generationStatus, planJson }` (sin la `NutritionalConsultation` ni
-    datos del `User`, que son información interna del pipeline).
+  `CognitoAuthGuard` — exige sesión válida y valida que la orden pertenezca al usuario del token,
+  ver `doc/auth.md`)
+  - Response: `{ paymentStatus, generationStatus, planJson, pdfUrl }` (sin la
+    `NutritionalConsultation` ni datos del `User`, que son información interna del pipeline).
+    `pdfUrl` es una URL firmada de S3 (10 min), `null` hasta que el plan termina de generarse.
 - Mientras `generationStatus` sea `'no_iniciado'` o `'generando'`, se muestra un spinner (y, pasados
   45s sin terminar, un aviso de demora que tranquiliza al paciente: el pago ya quedó registrado).
 - Cuando `generationStatus === 'completado'`, se muestra el plan y un botón de descarga que genera el
-  PDF **en el cliente** (mismo documento react-pdf que usa el backend para el adjunto del correo, pero
-  ejecutado en el navegador — no hay llamada adicional al backend para esto).
+  PDF **en el cliente** (mismo documento react-pdf que usa el backend para el adjunto del correo y
+  para el PDF persistido en S3, pero ejecutado en el navegador — no hay llamada adicional al backend
+  para esto).
 - Si `generationStatus === 'error'`, se muestra un mensaje indicando que el pago quedó registrado y
   que el equipo ya fue notificado (vía el log del paso 7).
 
@@ -251,8 +257,8 @@ Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 s
 | 1 | `POST /consulta/chat` | Sí | `/consulta/anamnesis` | 1 vez por turno del chat | Llama a OpenAI, devuelve la siguiente pregunta y el estado acumulado de la anamnesis |
 | 2 | `POST /ordenes/crear` | Sí | `/consulta/generar-orden` | 1 vez | Resuelve el `User` (ya tiene que existir y estar completo), find-or-create `ClinicalRecord`/`Product`, crea la `Order` (`paymentStatus='pendiente'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
 | 3 | `POST /webhooks/ordenes/:id/simular-pago` | No | `/pago/[ordenId]` | 1 vez | Marca la orden como pagada y dispara la generación del plan en background |
-| — | *(sin request del frontend)* | — | — | — | `PlanGenerationService.generatePlan`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + envío de correo (stub) |
-| 4 | `GET /ordenes/obtener-estado/:id` | Sí (sin validar dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `completado`/`error` | Polling del estado de pago/generación y, al terminar, del plan generado |
+| — | *(sin request del frontend)* | — | — | — | `PlanGenerationService.generatePlan`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + generación/subida del PDF a S3 + envío de correo (stub) |
+| 4 | `GET /ordenes/obtener-estado/:id` | Sí (valida dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `completado`/`error` | Polling del estado de pago/generación y, al terminar, del plan generado y su `pdfUrl` |
 
 Endpoint equivalente no usado en este flujo (queda para cuando se integre una pasarela real):
 **`POST /webhooks/pago`** — mismo efecto que el endpoint #3, pero pensado para ser llamado por la
@@ -263,7 +269,7 @@ pasarela de pago real en vez de por el frontend.
 - **El flujo ya no es anónimo**: requiere sesión de Cognito válida desde `/consulta/inicio` en
   adelante (gating del lado del frontend) y desde `ordenes/crear`/`consulta/chat`/
   `ordenes/obtener-estado/:id` del lado del backend (`CognitoAuthGuard`). Ver `doc/auth.md` para
-  el detalle completo — incluido el gap de BOLA conocido en el endpoint de estado.
+  el detalle completo — incluida la corrección del gap de BOLA que tenía el endpoint de estado.
 - **El flujo ya no es stateless**: a diferencia de una versión anterior de este proyecto (ver
   `README.md`), el estado de la orden (estado de pago, estado de generación, plan resultante) y todo
   el árbol de la consulta (`User`/`ClinicalRecord`/`NutritionalConsultation`/`Anamnesis`/`Measurements`)
@@ -279,8 +285,11 @@ pasarela de pago real en vez de por el frontend.
   (`POST /webhooks/pago`, con verificación de firma) existe pero su verificación
   (`WebhooksService.verifyWebhookSignature`) siempre devuelve `true` hoy.
 - **El envío de correo es un stub**: `EmailService.sendRealEmail` solo logea, no hay proveedor
-  (SendGrid/SES/Resend/etc.) conectado. El PDF sí se genera de verdad (server-side para el adjunto,
-  client-side para la descarga manual).
+  (SendGrid/SES/Resend/etc.) conectado. El PDF sí se genera y persiste de verdad: server-side
+  (`PdfService`), una sola vez por generación exitosa, subido a un bucket S3 privado
+  (`StorageService`, ver `doc/technical-debt.md`) y reutilizado tanto para el adjunto del correo
+  como para el `pdfUrl` firmado que expone `GET /ordenes/obtener-estado/:id`; también se sigue
+  generando client-side (mismo documento react-pdf) para la descarga manual desde el navegador.
 - **Retención de datos**: un cron diario (`RetentionService`, 03:00) anonimiza (`Order.planJson` →
   `null`) las órdenes con más de 45 días, conservando la fila para auditoría/estadística. Los datos
   clínicos de la `NutritionalConsultation` asociada no se anonimizan todavía (ver

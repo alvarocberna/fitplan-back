@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { NutritionPlanDto } from '../../domain';
-import { PdfService } from '../pdf/pdf.service';
 
 interface EmailDelivery {
   email: string;
@@ -17,11 +16,14 @@ interface EmailDelivery {
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
-  constructor(private readonly pdfService: PdfService) {}
-
-  async sendPlanByEmail(email: string, plan: NutritionPlanDto): Promise<void> {
+  // El PDF ya lo generó y subió a S3 PlanGenerationService (ver plan-generation.service.ts);
+  // se recibe ya armado acá para no generarlo dos veces.
+  async sendPlanByEmail(
+    email: string,
+    plan: NutritionPlanDto,
+    attachment: Buffer,
+  ): Promise<void> {
     const { name, lastName } = plan.personalInfo;
-    const attachment = await this.pdfService.generateBuffer(plan);
 
     await this.sendRealEmail({
       email,

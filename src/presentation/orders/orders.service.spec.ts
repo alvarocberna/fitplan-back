@@ -9,6 +9,7 @@ import { ProductRepository } from '../../domain/repositories/commercial-domain/p
 import { OrderRepository } from '../../domain/repositories/commercial-domain/order.repository';
 import { CompleteConsultationDtoImpl } from '../consultation/dto/consultation.dto';
 import { NutritionPlanDto } from '../../domain';
+import { StorageService } from '../storage/storage.service';
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -17,6 +18,7 @@ describe('OrdersService', () => {
   let nutritionalConsultationRepository: jest.Mocked<NutritionalConsultationRepository>;
   let productRepository: jest.Mocked<ProductRepository>;
   let orderRepository: jest.Mocked<OrderRepository>;
+  let storageService: jest.Mocked<StorageService>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -48,12 +50,17 @@ describe('OrdersService', () => {
             createOrder: jest.fn(),
             getOrderById: jest.fn(),
             getOrderWithUserById: jest.fn(),
+            getPaidOrdersWithPdfByUserId: jest.fn(),
             markOrderAsPaidIfPending: jest.fn(),
             tryTransitionOrderToGenerating: jest.fn(),
             updateOrderById: jest.fn(),
             incrementOrderFailedAttempt: jest.fn(),
             anonymizeOldOrders: jest.fn(),
           },
+        },
+        {
+          provide: StorageService,
+          useValue: { uploadPdf: jest.fn(), getSignedDownloadUrl: jest.fn() },
         },
       ],
     }).compile();
@@ -64,6 +71,7 @@ describe('OrdersService', () => {
     nutritionalConsultationRepository = module.get(NutritionalConsultationRepository);
     productRepository = module.get(ProductRepository);
     orderRepository = module.get(OrderRepository);
+    storageService = module.get(StorageService);
   });
 
   describe('createOrder', () => {
@@ -126,6 +134,7 @@ describe('OrdersService', () => {
           paymentStatus: 'pendiente',
           generationStatus: 'no_iniciado',
           planJson: null,
+          pdfKey: null,
           attempts: 0,
         }),
       );
@@ -145,29 +154,59 @@ describe('OrdersService', () => {
   });
 
   describe('getStatus / findById / findByIdWithUser / getConsultationForOrder', () => {
-    it('getStatus devuelve el estado público, parseando planJson si existe', async () => {
+    const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
+
+    it('getStatus devuelve el estado público, parseando planJson si existe, y la URL firmada del PDF', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
+        userId: 'user-1',
         paymentStatus: 'pagado',
         generationStatus: 'completado',
         planJson: JSON.stringify({ prescription: { goal: 'volumen' } }),
+        pdfKey: 'productos-personalizados/order-1.pdf',
       } as any);
+      storageService.getSignedDownloadUrl.mockResolvedValue('https://signed-url.example/plan.pdf');
 
-      const status = await service.getStatus('order-1');
+      const status = await service.getStatus('order-1', cognitoUser);
 
       expect(status.paymentStatus).toBe('pagado');
       expect(status.generationStatus).toBe('completado');
       expect((status.planJson as any).prescription.goal).toBe('volumen');
+      expect(status.pdfUrl).toBe('https://signed-url.example/plan.pdf');
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
+        'productos-personalizados/order-1.pdf',
+      );
     });
 
-    it('getStatus devuelve planJson null si aún no hay plan', async () => {
+    it('getStatus devuelve planJson y pdfUrl null si aún no hay plan', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
+        userId: 'user-1',
         paymentStatus: 'pendiente',
         generationStatus: 'no_iniciado',
         planJson: null,
+        pdfKey: null,
       } as any);
 
-      const status = await service.getStatus('order-1');
+      const status = await service.getStatus('order-1', cognitoUser);
       expect(status.planJson).toBeNull();
+      expect(status.pdfUrl).toBeNull();
+      expect(storageService.getSignedDownloadUrl).not.toHaveBeenCalled();
+    });
+
+    it('getStatus lanza NotFoundException si la orden pertenece a otro usuario (BOLA)', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      orderRepository.getOrderById.mockResolvedValue({
+        userId: 'otro-usuario',
+        paymentStatus: 'pagado',
+        generationStatus: 'completado',
+        planJson: null,
+        pdfKey: null,
+      } as any);
+
+      await expect(service.getStatus('order-1', cognitoUser)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('findById lanza NotFoundException si el repositorio devuelve null', async () => {
@@ -211,19 +250,43 @@ describe('OrdersService', () => {
   });
 
   describe('completeGeneration / recordFailedAttempt', () => {
-    it('completeGeneration serializa el plan a JSON y marca generationStatus completado', async () => {
+    it('completeGeneration serializa el plan a JSON, marca generationStatus completado y persiste pdfKey', async () => {
       const plan = { prescription: { goal: 'definicion' } } as unknown as NutritionPlanDto;
-      await service.completeGeneration('order-1', plan);
+      await service.completeGeneration('order-1', plan, 'productos-personalizados/order-1.pdf');
 
       expect(orderRepository.updateOrderById).toHaveBeenCalledWith('order-1', {
         generationStatus: 'completado',
         planJson: JSON.stringify(plan),
+        pdfKey: 'productos-personalizados/order-1.pdf',
       });
     });
 
     it('recordFailedAttempt delega en el repositorio', async () => {
       await service.recordFailedAttempt('order-1');
       expect(orderRepository.incrementOrderFailedAttempt).toHaveBeenCalledWith('order-1');
+    });
+  });
+
+  describe('getOrdersForUser', () => {
+    it('devuelve las órdenes del usuario con su URL firmada, tal como las entrega el repositorio', async () => {
+      const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      const creationDate = new Date('2026-01-01T00:00:00.000Z');
+      orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([
+        { id: 'order-1', creationDate, pdfKey: 'productos-personalizados/order-1.pdf' } as any,
+      ]);
+      storageService.getSignedDownloadUrl.mockResolvedValue('https://signed-url.example/order-1.pdf');
+
+      const summaries = await service.getOrdersForUser(cognitoUser);
+
+      expect(orderRepository.getPaidOrdersWithPdfByUserId).toHaveBeenCalledWith('user-1');
+      expect(summaries).toEqual([
+        {
+          orderId: 'order-1',
+          creationDate,
+          pdfUrl: 'https://signed-url.example/order-1.pdf',
+        },
+      ]);
     });
   });
 

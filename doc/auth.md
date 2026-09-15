@@ -59,7 +59,8 @@ protegidas hoy:
 |---|---|---|
 | `POST /ordenes/crear` | Sí | Sí — resuelve el `User` dueño de la orden |
 | `POST /consulta/chat` | Sí | No — solo exige sesión, no usa la identidad |
-| `GET /ordenes/obtener-estado/:id` | Sí | No — solo exige sesión, no usa la identidad |
+| `GET /ordenes/obtener-estado/:id` | Sí | Sí — valida que la orden pertenezca al usuario del token (ver más abajo) |
+| `GET /ordenes` | Sí | Sí — filtra siempre por el usuario del token |
 | `POST /auth/perfil`, `PATCH /auth/perfil` | Sí | Sí |
 | `POST /webhooks/pago`, `POST /webhooks/ordenes/:id/simular-pago` | **No** | — |
 
@@ -68,11 +69,14 @@ el frontend sin que medie una sesión de usuario), y necesitan su propia verific
 (`WebhooksService.verifyWebhookSignature`, hoy un stub que siempre pasa — ver
 `doc/technical-debt.md`), no una sesión de Cognito.
 
-**Gap conocido en `GET /ordenes/obtener-estado/:id`**: exige sesión válida, pero no valida que la
-orden pertenezca al usuario del token (BOLA — Broken Object Level Authorization). Cualquier usuario
-logueado que conozca/adivine el UUID de una orden ajena puede ver su estado. No resuelto
-intencionalmente (decisión explícita al agregar el Guard), ver
-`nutricionista-virtual-front/doc/auth-pending.md`.
+**Gap de BOLA en `GET /ordenes/obtener-estado/:id` — resuelto**: exigía sesión válida, pero no
+validaba que la orden perteneciera al usuario del token (BOLA — Broken Object Level Authorization),
+por lo que cualquier usuario logueado que conociera/adivinara el UUID de una orden ajena podía ver
+su estado. `OrdersService.getStatus(id, cognitoUser)` ahora resuelve el `User` del token
+(`AuthIdentityService.getUserBySub`) y compara `order.userId` contra `user.id`; si no coinciden,
+lanza `NotFoundException` — la misma respuesta que si la orden no existiera, para no filtrar cuál de
+los dos casos ocurrió. El nuevo `GET /ordenes` (listado de órdenes del usuario autenticado) no tiene
+este riesgo porque nunca recibe un id externo: siempre filtra por el usuario del token.
 
 ## `AuthIdentityService` (`auth-identity.service.ts`)
 

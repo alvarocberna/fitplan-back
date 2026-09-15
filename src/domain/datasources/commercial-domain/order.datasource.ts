@@ -12,6 +12,10 @@ export abstract class OrderDatasource {
 
   abstract getOrderWithUserById(id: string): Promise<OrderEntity | null>;
 
+  // órdenes con plan generado y PDF ya subido a S3, de un usuario, más nuevas primero (usado por
+  // el listado del panel/GET /ordenes).
+  abstract getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]>;
+
   // idempotente: devuelve true solo si esta llamada fue la que efectivamente marcó el pago.
   abstract markOrderAsPaidIfPending(id: string): Promise<boolean>;
 

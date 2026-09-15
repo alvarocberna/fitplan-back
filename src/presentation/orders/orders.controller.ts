@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 //domain
-import { OrderStatusDto } from '../../domain';
+import { OrderStatusDto, OrderSummaryDto } from '../../domain';
 //presentation - orders
 import { OrdersService } from './orders.service';
 //presentation - consultation
@@ -36,7 +36,20 @@ export class OrdersController {
   //el frontend hace polling a este endpoint desde /consulta/resultado
   @UseGuards(CognitoAuthGuard)
   @Get('obtener-estado/:id')
-  getStatus(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string): Promise<OrderStatusDto> {
-    return this.ordersService.getStatus(id);
+  getStatus(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CognitoUser() cognitoUser: CognitoUserClaims,
+  ): Promise<OrderStatusDto> {
+    return this.ordersService.getStatus(id, cognitoUser);
+  }
+
+  //listado de órdenes con plan generado y PDF disponible del usuario autenticado, usado por el
+  //panel del frontend. Filtra siempre por el usuario del token (nunca recibe un id externo).
+  @UseGuards(CognitoAuthGuard)
+  @Get()
+  list(
+    @CognitoUser() cognitoUser: CognitoUserClaims,
+  ): Promise<OrderSummaryDto[]> {
+    return this.ordersService.getOrdersForUser(cognitoUser);
   }
 }

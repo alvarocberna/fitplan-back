@@ -59,6 +59,14 @@ export class OrderDatasourceImpl implements OrderDatasource {
     return order ? this.toEntity(order) : null;
   }
 
+  async getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]> {
+    const orders = await this.prisma.order.findMany({
+      where: { userId, generationStatus: 'completado', pdfKey: { not: null } },
+      orderBy: { creationDate: 'desc' },
+    });
+    return orders.map((order) => this.toEntity(order));
+  }
+
   async markOrderAsPaidIfPending(id: string): Promise<boolean> {
     const { count } = await this.prisma.order.updateMany({
       where: { id, paymentStatus: 'pendiente' },

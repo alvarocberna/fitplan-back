@@ -3,6 +3,8 @@ import { PlanGenerationService } from './plan-generation.service';
 import { OrdersService } from '../orders/orders.service';
 import { OpenaiService } from '../openai/openai.service';
 import { EmailService } from '../notifications/email.service';
+import { PdfService } from '../pdf/pdf.service';
+import { StorageService } from '../storage/storage.service';
 import { calculateAge } from '../../domain/services/utils/age.service';
 import { calculateRequirements } from '../../domain/services/formulas/requirements.service';
 import { determineMealTimes } from '../../domain/services/alimentos/meal-times.service';
@@ -67,6 +69,8 @@ describe('PlanGenerationService', () => {
   let ordersService: jest.Mocked<OrdersService>;
   let openaiService: jest.Mocked<OpenaiService>;
   let emailService: jest.Mocked<EmailService>;
+  let pdfService: jest.Mocked<PdfService>;
+  let storageService: jest.Mocked<StorageService>;
 
   const dateOfBirth = new Date('1996-01-01');
   const weight = 70;
@@ -161,6 +165,8 @@ describe('PlanGenerationService', () => {
         },
         { provide: OpenaiService, useValue: { chatJson: jest.fn() } },
         { provide: EmailService, useValue: { sendPlanByEmail: jest.fn() } },
+        { provide: PdfService, useValue: { generateBuffer: jest.fn() } },
+        { provide: StorageService, useValue: { uploadPdf: jest.fn(), getSignedDownloadUrl: jest.fn() } },
       ],
     }).compile();
 
@@ -168,10 +174,14 @@ describe('PlanGenerationService', () => {
     ordersService = module.get(OrdersService);
     openaiService = module.get(OpenaiService);
     emailService = module.get(EmailService);
+    pdfService = module.get(PdfService);
+    storageService = module.get(StorageService);
 
     ordersService.tryStartGeneration.mockResolvedValue(true);
     ordersService.findByIdWithUser.mockResolvedValue(orderEntity);
     ordersService.getConsultationForOrder.mockResolvedValue(consultationEntity);
+    pdfService.generateBuffer.mockResolvedValue(Buffer.from('contenido-pdf'));
+    storageService.uploadPdf.mockResolvedValue(undefined);
   });
 
   it('si tryStartGeneration devuelve false (ya en curso/completado), no hace nada más', async () => {
@@ -214,7 +224,7 @@ describe('PlanGenerationService', () => {
 
     expect(openaiService.chatJson).toHaveBeenCalledTimes(2);
     expect(ordersService.completeGeneration).toHaveBeenCalledTimes(1);
-    const [, plan] = ordersService.completeGeneration.mock.calls[0];
+    const [, plan, pdfKey] = ordersService.completeGeneration.mock.calls[0];
 
     expect(plan.prescription).toMatchObject({
       regimen: 'Plan personalizado',
@@ -229,7 +239,13 @@ describe('PlanGenerationService', () => {
     expect(plan.mealTimes).toHaveLength(portionAdequacyResult.calculatedMealTimes.length);
     expect(plan.personalInfo).toMatchObject({ name: 'Ana', lastName: 'Pérez' });
 
-    expect(emailService.sendPlanByEmail).toHaveBeenCalledWith('ana@example.com', plan);
+    // el PDF se genera UNA sola vez, se sube a S3 con esa key, y el mismo buffer se reutiliza
+    // como adjunto del correo (no se vuelve a generar dentro de EmailService).
+    expect(pdfKey).toBe('productos-personalizados/order-1.pdf');
+    const pdfBuffer = await pdfService.generateBuffer.mock.results[0].value;
+    expect(pdfService.generateBuffer).toHaveBeenCalledWith(plan);
+    expect(storageService.uploadPdf).toHaveBeenCalledWith(pdfBuffer, pdfKey);
+    expect(emailService.sendPlanByEmail).toHaveBeenCalledWith('ana@example.com', plan, pdfBuffer);
     expect(ordersService.recordFailedAttempt).not.toHaveBeenCalled();
   });
 

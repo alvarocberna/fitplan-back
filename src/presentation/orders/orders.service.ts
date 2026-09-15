@@ -7,6 +7,7 @@ import {
 import {
   GenerationStatus,
   OrderStatusDto,
+  OrderSummaryDto,
   NutritionPlanDto,
 } from '../../domain';
 import { CompleteConsultationDtoImpl } from '../consultation/dto/consultation.dto';
@@ -18,6 +19,7 @@ import { ProductRepository } from '../../domain/repositories/commercial-domain/p
 import { OrderRepository } from '../../domain/repositories/commercial-domain/order.repository';
 import { OrderEntity } from '../../domain/entities/order.entity';
 import { NutritionalConsultationEntity } from '../../domain/entities/clinical-record.entity';
+import { StorageService } from '../storage/storage.service';
 import {
   mapAnamnesisDtoToDetails,
   mapMeasurementsDtoToDetails,
@@ -33,6 +35,7 @@ export class OrdersService {
     private readonly nutritionalConsultationRepository: NutritionalConsultationRepository,
     private readonly productRepository: ProductRepository,
     private readonly orderRepository: OrderRepository,
+    private readonly storageService: StorageService,
   ) {}
 
   //crea la orden en paymentStatus='pendiente', antes de que el usuario pague
@@ -71,6 +74,7 @@ export class OrdersService {
       paymentStatus: 'pendiente',
       generationStatus: 'no_iniciado',
       planJson: null,
+      pdfKey: null,
       attempts: 0,
       creationDate: new Date(),
       paymentDate: null,
@@ -103,15 +107,50 @@ export class OrdersService {
 
   //estado público que consulta el frontend (sin la consulta nutricional completa, que es
   //información interna del pipeline de generación)
-  async getStatus(id: string): Promise<OrderStatusDto> {
+  //valida que la orden pertenezca al usuario del token (BOLA) — se devuelve NotFoundException
+  //tanto si la orden no existe como si es de otro usuario, para no filtrar cuál de los dos casos es.
+  async getStatus(
+    id: string,
+    cognitoUser: CognitoUserClaims,
+  ): Promise<OrderStatusDto> {
+    const user = await this.authIdentityService.getUserBySub(cognitoUser);
     const order = await this.findById(id);
+    if (order.userId !== user.id) {
+      throw new NotFoundException(`Orden ${id} no encontrada`);
+    }
+
     return {
       paymentStatus: order.paymentStatus,
       generationStatus: order.generationStatus as GenerationStatus,
       planJson: order.planJson
         ? (JSON.parse(order.planJson) as NutritionPlanDto)
         : null,
+      pdfUrl: order.pdfKey
+        ? await this.storageService.getSignedDownloadUrl(order.pdfKey)
+        : null,
     };
+  }
+
+  //listado de PDFs generados del usuario autenticado, más nuevo primero (panel del frontend).
+  //siempre filtra por el usuario del token, no recibe ningún id externo, por lo que no hay BOLA
+  //posible acá (a diferencia de getStatus).
+  async getOrdersForUser(
+    cognitoUser: CognitoUserClaims,
+  ): Promise<OrderSummaryDto[]> {
+    const user = await this.authIdentityService.getUserBySub(cognitoUser);
+    const orders = await this.orderRepository.getPaidOrdersWithPdfByUserId(
+      user.id,
+    );
+
+    return Promise.all(
+      orders.map(async (order) => ({
+        orderId: order.id,
+        creationDate: order.creationDate,
+        pdfUrl: await this.storageService.getSignedDownloadUrl(
+          order.pdfKey!,
+        ),
+      })),
+    );
   }
 
   async findById(id: string): Promise<OrderEntity> {
@@ -152,10 +191,15 @@ export class OrdersService {
     return this.orderRepository.tryTransitionOrderToGenerating(id);
   }
 
-  async completeGeneration(id: string, plan: NutritionPlanDto): Promise<void> {
+  async completeGeneration(
+    id: string,
+    plan: NutritionPlanDto,
+    pdfKey: string,
+  ): Promise<void> {
     await this.orderRepository.updateOrderById(id, {
       generationStatus: 'completado',
       planJson: JSON.stringify(plan),
+      pdfKey,
     });
   }
 

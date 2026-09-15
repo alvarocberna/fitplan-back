@@ -28,6 +28,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
   - [`POST /consulta/chat`](#post-consultachat)
   - [`POST /ordenes/crear`](#post-ordenescrear)
   - [`GET /ordenes/obtener-estado/:id`](#get-ordenesobtener-estadoid)
+  - [`GET /ordenes`](#get-ordenes)
   - [`POST /webhooks/pago` y `POST /webhooks/ordenes/:id/simular-pago`](#post-webhookspago-y-post-webhooksordenesidsimular-pago)
   - [Generación del plan (background)](#generación-del-plan-background)
   - [`GET /user/me` y `PATCH /user/me`](#get-userme-y-patch-userme)
@@ -36,7 +37,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
   - [Fórmulas de requerimientos energéticos](#fórmulas-de-requerimientos-energéticos)
   - [Porciones de alimentos](#porciones-de-alimentos)
 - [Integración con OpenAI](#integración-con-openai)
-- [PDF y notificaciones](#pdf-y-notificaciones)
+- [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)
 - [Manejo de errores](#manejo-de-errores)
 - [Base de datos (Prisma)](#base-de-datos-prisma)
 - [Testing](#testing)
@@ -52,6 +53,8 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 - **Configuración**: `@nestjs/config` (`.env`)
 - **ORM**: Prisma + PostgreSQL, usado para todo el dominio comercial/clínico/identidad en producción
 - **PDF**: `@react-pdf/renderer` (corre tanto server-side como client-side)
+- **Almacenamiento**: AWS SDK v3 (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`) para
+  persistir el PDF de cada plan en un bucket S3 privado y servirlo vía URL firmada
 - **Jobs programados**: `cron` (job de retención de datos)
 - **Testing**: Jest (`.spec.ts` unitarios) + Supertest (e2e)
 
@@ -83,7 +86,8 @@ src/
 │   ├── webhooks/           # Webhook de pago (real y simulado) → dispara la generación del plan
 │   ├── plan-generation/    # Worker que genera el plan con IA (disparado por el webhook de pago)
 │   ├── pdf/                # Generación del PDF del plan (@react-pdf/renderer)
-│   ├── notifications/      # Envío del plan por correo (stub, con el PDF adjunto)
+│   ├── storage/            # Persistencia del PDF del plan en S3 (subida + URL de descarga firmada)
+│   ├── notifications/      # Envío del plan por correo (stub, con el PDF ya generado como adjunto)
 │   ├── openai/             # Cliente/wrapper del SDK de OpenAI, compartido por los módulos anteriores
 │   └── filters/            # ExceptionFilter global
 │
@@ -106,10 +110,14 @@ Postgres (`IdentityAuthDatasourcesModule`/`IdentityAuthRepositoriesModule`,
 `ClinicalDomainDatasourcesModule`/`ClinicalDomainRepositoriesModule`,
 `CommercialDomainDatasourcesModule`/`CommercialDomainRepositoriesModule` — ver
 [Base de datos](#base-de-datos-prisma)), `OrdersModule`, `WebhooksModule` (este último importa
-`PlanGenerationModule`, que a su vez importa `NotificationsModule` → `PdfModule`), `UserModule` y
-`PanelModule`. En conjunto, `OrdersModule`/`WebhooksModule`/`PlanGenerationModule` forman la cadena:
-pago confirmado → generación del plan → PDF → correo. `OrdersModule` importa los tres
-`*RepositoriesModule` para poder inyectar los repositories que usa `OrdersService`.
+`PlanGenerationModule`, que a su vez importa `OrdersModule`, `OpenaiModule`, `NotificationsModule`,
+`PdfModule` y `StorageModule` directamente), `UserModule` y `PanelModule`. En conjunto,
+`OrdersModule`/`WebhooksModule`/`PlanGenerationModule` forman la cadena: pago confirmado →
+generación del plan → PDF → subida a S3 → correo (con el mismo PDF ya generado como adjunto).
+`OrdersModule` importa los tres `*RepositoriesModule` (para los repositories que usa
+`OrdersService`) y también `StorageModule`, para firmar la URL de descarga del PDF que devuelven
+`GET /ordenes/obtener-estado/:id` y `GET /ordenes`. `NotificationsModule` ya no importa `PdfModule`:
+`EmailService` recibe el buffer del PDF ya generado en vez de generarlo internamente.
 
 `AuthModule` (`presentation/auth/`, guard `CognitoAuthGuard` + `AuthIdentityService` — ver
 [doc/auth.md](./doc/auth.md)) no está en la lista de arriba porque no se importa directo en
@@ -257,9 +265,30 @@ saber si el plan ya está listo.
     paymentStatus: 'pendiente' | 'pagado',
     generationStatus: 'no_iniciado' | 'generando' | 'completado' | 'error',
     planJson: NutritionPlanDto | null,
+    pdfUrl: string | null, // URL firmada de S3 (10 min), null hasta que el plan termine de generarse
   }
   ```
-- 404 (`NotFoundException`) si el `id` no corresponde a ninguna orden.
+- Valida que la orden pertenezca al usuario del token (`order.userId` contra el `User` resuelto vía
+  `AuthIdentityService.getUserBySub`); si no coincide, responde `404` igual que si la orden no
+  existiera, para no filtrar cuál de los dos casos ocurrió. Esto corrige un gap de BOLA (Broken
+  Object Level Authorization) documentado anteriormente en `doc/auth.md`/`doc/technical-debt.md`.
+- 404 (`NotFoundException`) si el `id` no corresponde a ninguna orden, o si corresponde a una orden
+  de otro usuario.
+
+### `GET /ordenes`
+
+Lista las órdenes con plan generado y PDF disponible del usuario autenticado, usada por un panel del
+frontend para mostrar el historial de planes descargables.
+
+- **Controller**: `OrdersController.list` → `OrdersService.getOrdersForUser`
+- **Response** (`OrderSummaryDto[]`), ordenado por `creationDate` descendente:
+  ```ts
+  { orderId: string, creationDate: Date, pdfUrl: string }[]
+  ```
+- Solo incluye órdenes con `generationStatus='completado'` y `pdfKey` no nulo
+  (`OrderRepository.getPaidOrdersWithPdfByUserId`, `Prisma.findMany`). Filtra siempre por el usuario
+  del token y nunca recibe un id externo, por lo que no hay BOLA posible acá (a diferencia de
+  `GET /ordenes/obtener-estado/:id`).
 
 ### `POST /webhooks/pago` y `POST /webhooks/ordenes/:id/simular-pago`
 
@@ -308,9 +337,13 @@ Resumen:
    [doc/orders-postgres-migration.md § 7](./doc/orders-postgres-migration.md#7-srcpresentationplan-generationplan-generationservicets),
    que reemplazó al antiguo `payload_json`), el plan generado por la IA, y fuerza
    `prescripcion.objetivo` al valor calculado en el paso 2 (por si el modelo lo omite o lo cambia).
-6. Reintenta hasta 4 veces con backoff exponencial ante cualquier error. Si tiene éxito, persiste el
-   plan en la orden (`generationStatus='completado'`) y llama a `EmailService.sendPlanByEmail`. Si
-   agota los reintentos, marca `generationStatus='error'` y registra el evento.
+6. Reintenta hasta 4 veces con backoff exponencial ante cualquier error, incluyendo fallos al generar
+   el PDF o al subirlo a S3 (caen en el mismo loop de reintentos). Si tiene éxito: genera el PDF una
+   sola vez (`PdfService.generateBuffer`), lo sube a S3 (`StorageService.uploadPdf`, key
+   `productos-personalizados/<orderId>.pdf`) y persiste el plan junto al `pdfKey` en la orden en la
+   misma llamada (`generationStatus='completado'`) — luego llama a `EmailService.sendPlanByEmail`
+   reutilizando el mismo buffer del PDF para el adjunto, sin regenerarlo. Si agota los reintentos,
+   marca `generationStatus='error'` y registra el evento.
 
 ### `GET /user/me` y `PATCH /user/me`
 
@@ -367,9 +400,11 @@ protegido por `CognitoAuthGuard`.
      `user.dateOfBirth`.
   4. Todo es null-safe: si el usuario no tiene ninguna consulta o ningún plan, `goal` y
      `nutritionalPlan` vuelven `null` en vez de fallar.
-- Una futura vista previa del PDF del plan en esta misma pantalla queda **deliberadamente pendiente**
-  hasta que exista un bucket S3 para almacenar los PDFs (hoy el PDF solo se genera al vuelo para el
-  correo y para la descarga client-side, no se persiste en ningún lado).
+- El bucket S3 para almacenar los PDFs ya existe y está en uso (ver
+  [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)), pero este endpoint todavía no expone
+  `pdfUrl` ni el historial de planes del usuario — eso hoy vive en el endpoint dedicado
+  [`GET /ordenes`](#get-ordenes), consumido por una pantalla separada del panel. Fusionarlo en este
+  resumen (o no) queda a criterio de una futura pasada de UX.
 
 ## Capa de dominio
 
@@ -419,16 +454,32 @@ OpenAI en todo el backend; se llama desde `ConsultaService` (chat de anamnesis) 
 `GeneracionPlanService` (extracción de nivel de actividad/objetivo y generación del plan), cada uno con
 sus propios prompts (`consulta.service.ts` y `generacion-plan.prompts.ts` respectivamente).
 
-## PDF y notificaciones
+## PDF y almacenamiento en S3
 
-- **`PdfModule` (`presentation/pdf/`)**: `PdfService.generarBuffer(plan)` renderiza
-  `PlanNutricionalDocument` (definido con primitivas de `@react-pdf/renderer`) a un `Buffer` PDF. El
-  mismo componente de documento se reutiliza en el frontend para la descarga client-side del plan, sin
-  duplicar el layout.
+- **`PdfModule` (`presentation/pdf/`)**: `PdfService.generateBuffer(plan)` renderiza
+  `NutritionPlanDocument` (definido con primitivas de `@react-pdf/renderer`) a un `Buffer` PDF. El
+  mismo componente de documento se reutiliza en el frontend para la descarga client-side del plan
+  (pantalla `/ordenes/[id]`), sin duplicar el layout.
+- **`StorageModule` (`presentation/storage/`)**: `StorageService` envuelve `@aws-sdk/client-s3` +
+  `@aws-sdk/s3-request-presigner` y expone dos métodos:
+  - `uploadPdf(buffer, key)`: sube el PDF al bucket privado `nutricionista-virtual-planes-pdfs`.
+  - `getSignedDownloadUrl(key, ttlSeconds = 600)`: como el bucket no tiene acceso público, esta URL
+    firmada es la única forma de leer el objeto; expira en `ttlSeconds` y nunca se persiste, se
+    genera on-demand en cada request.
+  El bucket tiene dos carpetas: `productos-personalizados/` (planes generados por consulta, en uso —
+  key `<orderId>.pdf` vía el helper `buildPersonalizedPlanKey`) y `productos-estandarizados/` (planes
+  predefinidos fijos subidos manualmente, pendiente — ver
+  [Deuda técnica](#deuda-técnica-y-pendientes)). Lee
+  `AWS_REGION`/`AWS_S3_BUCKET_NAME`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` de `ConfigService`
+  (`.env.template`).
+  `PlanGenerationService` genera el PDF **una sola vez** por generación exitosa
+  (`PdfService.generateBuffer`), lo sube a S3 y persiste su key en `Order.pdfKey`; el mismo buffer se
+  reutiliza para el adjunto del correo, sin regenerarlo (ver
+  [Generación del plan](#generación-del-plan-background)).
 - **`NotificationsModule` (`presentation/notifications/`)**: `EmailService.sendPlanByEmail(email,
-  plan)` arma el asunto/cuerpo del correo, genera el PDF vía `PdfService` y llama a
-  `sendRealEmail` — **hoy un stub** que solo deja un log estructurado; no hay proveedor de correo
-  (SendGrid/SES/Resend/etc.) conectado todavía.
+  plan, attachment)` recibe el PDF ya generado como `Buffer` — **ya no depende de `PdfService`** —
+  arma el asunto/cuerpo del correo y llama a `sendRealEmail` — **hoy un stub** que solo deja un log
+  estructurado; no hay proveedor de correo (SendGrid/SES/Resend/etc.) conectado todavía.
 
 ## Manejo de errores
 
@@ -469,6 +520,7 @@ Campos relevantes de `Order` (tabla `order`):
 | `paymentStatus` | `'pendiente'` \| `'pagado'` |
 | `generationStatus` | `'no_iniciado'` \| `'generando'` \| `'completado'` \| `'error'` |
 | `planJson` | `NutritionPlanDto` resultante serializado, `null` hasta que se genera |
+| `pdfKey` | Key del PDF del plan en el bucket S3 (`productos-personalizados/<orderId>.pdf`), `null` hasta que se genera — ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3) |
 | `attempts` | Contador de intentos fallidos de generación |
 | `nutritionalConsultation` | Relación inversa 1:1 hacia la `NutritionalConsultation` con los datos de la anamnesis/mediciones de esta orden |
 
@@ -519,9 +571,11 @@ datasources/repositories que ya no existe en el código actual).
   escribe ahí todavía: `PlanGenerationService` solo persiste el plan como `Order.planJson`, no como
   filas `NutritionalPlan`/hijas. Hasta que se conecte ese lado de escritura, el panel siempre devuelve
   `nutritionalPlan: null` en la práctica.
-- La vista previa del PDF del plan en `/panel` queda pendiente hasta que exista un bucket S3 donde
-  almacenarlo (hoy el PDF no se persiste, solo se genera al vuelo para el correo y la descarga
-  client-side).
+- El bucket S3 para los PDFs de planes ya existe y está en uso
+  (`productos-personalizados/`, ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)); la
+  carpeta `productos-estandarizados/` (planes predefinidos fijos) sigue sin ningún flujo de subida
+  automatizado y el `Product` tipo `PREDEFINIDO` que los usaría no está implementado — fuera de
+  alcance de este cambio.
 - `notifyGenerationFailure` (cuando la generación del plan agota sus reintentos) solo deja un log
   estructurado; falta integrarlo con un canal de alertas/soporte real.
 - El `Product` que usa hoy el flujo comercial (`findOrCreateActiveGeneratedProduct`) tiene su precio y

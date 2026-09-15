@@ -94,17 +94,17 @@ junto con los imports que quedaron sin uso.
 
 | Servicio | Test | Mockea |
 |---|---|---|
-| `OrdersService` | `orders.service.spec.ts` | los 5 repositorios (`UserRepository`, `ClinicalRecordRepository`, `NutritionalConsultationRepository`, `ProductRepository`, `OrderRepository`) |
+| `OrdersService` | `orders.service.spec.ts` | `AuthIdentityService`, `ClinicalRecordRepository`, `NutritionalConsultationRepository`, `ProductRepository`, `OrderRepository`, `StorageService` (esta última para firmar `pdfUrl` en `getStatus`/`getOrdersForUser`) |
 | `orders.mapper.ts` | `orders.mapper.spec.ts` | nada (funciones puras) |
 | `OrdersController` | `orders.controller.spec.ts` | `OrdersService` |
 | `RetentionService` | `retention.service.spec.ts` | `OrdersService` + `cron` (local `jest.mock`) |
 | `WebhooksService` | `webhooks.service.spec.ts` | `OrdersService`, `PlanGenerationService` |
 | `WebhooksController` | `webhooks.controller.spec.ts` | `WebhooksService` |
-| `PlanGenerationService` | `plan-generation.service.spec.ts` | solo `OrdersService`/`OpenaiService`/`EmailService` — **las fórmulas de dominio corren de verdad** (test híbrido unit+integración); ver §5 |
+| `PlanGenerationService` | `plan-generation.service.spec.ts` | `OrdersService`/`OpenaiService`/`EmailService`/`PdfService`/`StorageService` — **las fórmulas de dominio corren de verdad** (test híbrido unit+integración); ver §5 |
 | `ConsultationService` | `consultation.service.spec.ts` | `OpenaiService` |
 | `ConsultationController` | `consultation.controller.spec.ts` | `ConsultationService` |
 | `OpenaiService` | `openai.service.spec.ts` | el SDK `openai` (`jest.mock('openai', ...)`) |
-| `EmailService` | `email.service.spec.ts` | `PdfService` |
+| `EmailService` | `email.service.spec.ts` | nada — ya no depende de `PdfService` (recibe el PDF ya generado como `Buffer` en `sendPlanByEmail`) |
 | `HttpExceptionFilter` | `http-exception.filter.spec.ts` | `ArgumentsHost` construido a mano |
 | `UserService` | `user.service.spec.ts` | `AuthIdentityService`, `UserRepository` |
 | `UserController` | `user.controller.spec.ts` | `UserService` |
@@ -121,8 +121,9 @@ ese límite, igual que `OrdersService` mockea sus 5 repositorios.
 
 ## 5. Patrones usados que vale la pena conocer antes de tocar estos tests
 
-- **`PlanGenerationService` es un test híbrido**: solo se mockean los 3 bordes externos
-  (`OrdersService`, `OpenaiService`, `EmailService`); `calculateRequirements`, `determineMealTimes`,
+- **`PlanGenerationService` es un test híbrido**: solo se mockean los bordes externos
+  (`OrdersService`, `OpenaiService`, `EmailService`, `PdfService`, `StorageService`);
+  `calculateRequirements`, `determineMealTimes`,
   `defineFoodGroups`, `calculateFoodsAndIntake` corren de verdad. El test del caso feliz define un
   helper (`buildMatchingGeneratedMealTimes`) que arma una respuesta de IA "perfecta" **a partir del
   resultado real** de `calculateFoodsAndIntake` (usa `FOOD_GROUP_PORTIONS`/`FOOD_FIELD_TO_GROUP`
@@ -178,3 +179,10 @@ confiar en él como gate de CI.
 - No hay tests de los servicios de `presentation/pdf` (`PdfService`) ni de los prompts de
   `plan-generation/prompts/**` (son generadores de texto para el prompt de la IA, sin lógica de
   negocio verificable más allá de "no revienta") — bajo valor, se dejaron fuera deliberadamente.
+- **`StorageService` (`presentation/storage/`) no tiene spec propio** — se cubre indirectamente
+  como mock en `orders.service.spec.ts`/`plan-generation.service.spec.ts`, pero nadie testea que
+  `uploadPdf`/`getSignedDownloadUrl` arman correctamente los comandos del SDK de S3
+  (`PutObjectCommand`/`GetObjectCommand`) ni el manejo de errores de red/credenciales. `GET /ordenes`
+  (listado de PDFs del usuario) tampoco tiene cobertura e2e todavía (`test/app.e2e-spec.ts` solo
+  cubre `POST /ordenes/crear`, `GET /ordenes/obtener-estado/:id` y `POST /webhooks/pago`, y ese
+  archivo predata la migración a `CognitoAuthGuard` — ver §6).

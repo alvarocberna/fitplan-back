@@ -24,4 +24,15 @@ export interface OrderStatusDto {
   paymentStatus: PaymentStatus;
   generationStatus: GenerationStatus;
   planJson: NutritionPlanDto | null;
+  // URL firmada (corta duración) del PDF ya subido a S3; null hasta que el plan termine de
+  // generarse. Nunca se persiste, se genera on-demand en cada solicitud (ver StorageService).
+  pdfUrl: string | null;
+}
+
+// Forma que se expone en GET /ordenes: un ítem por cada orden con plan generado y PDF
+// disponible, del usuario autenticado.
+export interface OrderSummaryDto {
+  orderId: string;
+  creationDate: Date;
+  pdfUrl: string;
 }
