@@ -56,6 +56,14 @@ export class NutritionalConsultationRepositoryImpl
     );
   }
 
+  getLatestNutritionalConsultationWithDetailsByPatientId(
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity | null> {
+    return this.datasource.getLatestNutritionalConsultationWithDetailsByPatientId(
+      patientId,
+    );
+  }
+
   countNutritionalConsultationsByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number> {

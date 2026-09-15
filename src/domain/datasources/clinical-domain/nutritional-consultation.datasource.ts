@@ -30,6 +30,12 @@ export abstract class NutritionalConsultationDatasource {
     orderId: string,
   ): Promise<NutritionalConsultationEntity | null>;
 
+  // Lectura enriquecida (patient, anamneses.goals, nutritionalPlans) de la consulta más reciente
+  // de un paciente — usada por el panel del usuario (presentation/panel).
+  abstract getLatestNutritionalConsultationWithDetailsByPatientId(
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity | null>;
+
   abstract countNutritionalConsultationsByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number>;

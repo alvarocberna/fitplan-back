@@ -250,7 +250,11 @@ Esta migración conecta **solo** lo que necesita el flujo comercial:
   `DietaryRecall24hMeal`, `FoodPreference`, `FoodPreferenceGroup`, `Lifestyle`, `SportsSession`,
   `SportsStrategy`), `Measurements` y `BasicMeasurements`. El resto de `clinical-domain`
   (`AnamnesisPsychosocial`, `Supplements`, `Skinfolds`, `Circumferences`, `Diameters`,
-  `MeasurementResults`, `NutritionalPlan` y sus hijas) sigue sin consumidor real.
+  `MeasurementResults`, `NutritionalPlan` y sus hijas) sigue sin consumidor real **al cierre de esta
+  migración** — una migración posterior (`presentation/panel/`, `GET /panel/resumen`) le agregó a
+  `NutritionalPlan` un consumidor de lectura vía un nuevo método del repository
+  (`getLatestNutritionalConsultationWithDetailsByPatientId`, `PANEL_DETAILS_INCLUDE`), pero sigue sin
+  ningún consumidor de escritura — ver `doc/technical-debt.md`.
 - `commercial-domain`: `Order`, `Product` (vía `findOrCreateActiveGeneratedProduct`). `Payment` sigue
   sin consumidor.
 

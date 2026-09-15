@@ -106,6 +106,18 @@ junto con los imports que quedaron sin uso.
 | `OpenaiService` | `openai.service.spec.ts` | el SDK `openai` (`jest.mock('openai', ...)`) |
 | `EmailService` | `email.service.spec.ts` | `PdfService` |
 | `HttpExceptionFilter` | `http-exception.filter.spec.ts` | `ArgumentsHost` construido a mano |
+| `UserService` | `user.service.spec.ts` | `AuthIdentityService`, `UserRepository` |
+| `UserController` | `user.controller.spec.ts` | `UserService` |
+| `PanelService` | `panel.service.spec.ts` | `AuthIdentityService`, `NutritionalConsultationRepository` — cubre además el caso "paciente sin ninguna consulta todavía" (repositorio devuelve `null`, `goal`/`nutritionalPlan` deben quedar `null` sin lanzar) y el caso de consulta con `anamneses`/`nutritionalPlans` vacíos |
+| `PanelController` | `panel.controller.spec.ts` | `PanelService` |
+
+`NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId` (y su
+delegación en `infrastructure/repositories/clinical-domain/` + su implementación Prisma en
+`infrastructure/datasources/clinical-domain/`, usada por `PanelService`) se dejó **sin spec propio**,
+igual que el resto de `infrastructure/datasources/**`/`infrastructure/repositories/**`: ningún
+archivo de esa capa (para ninguna entidad) tiene test hoy — es pura delegación/Prisma sin lógica de
+negocio, fuera del alcance de esta fase (ver §1). `PanelService.spec.ts` sí mockea el repositorio en
+ese límite, igual que `OrdersService` mockea sus 5 repositorios.
 
 ## 5. Patrones usados que vale la pena conocer antes de tocar estos tests
 

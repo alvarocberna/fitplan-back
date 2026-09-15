@@ -9,12 +9,14 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 
 > Estado actual: el proyecto cubre el flujo completo **anamnesis (chat) → creación de orden → pago
 > (simulado) → generación del plan con IA en background → consulta de estado/plan → envío por
-> correo (stub)**. La persistencia (Prisma + **Postgres**) está conectada para el dominio comercial
-> completo (`User`, `ClinicalRecord`, `NutritionalConsultation`/`Anamnesis`/`Measurements`,
-> `Order`, `Product`) — ver [Base de datos](#base-de-datos-prisma) y
-> [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md). No hay todavía módulo de
-> autenticación/login real conectado (el `User` se resuelve por email vía find-or-create, sin
-> credenciales).
+> correo (stub)**, más un endpoint dedicado de perfil (`GET`/`PATCH /user/me`) y uno de resumen para
+> un panel del usuario (`GET /panel/resumen`). La persistencia (Prisma + **Postgres**) está conectada
+> para el dominio comercial completo (`User`, `ClinicalRecord`,
+> `NutritionalConsultation`/`Anamnesis`/`Measurements`, `Order`, `Product`) — ver
+> [Base de datos](#base-de-datos-prisma) y
+> [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md). La autenticación es real,
+> vía Amazon Cognito (`presentation/auth/`, `CognitoAuthGuard`) — ver **[doc/auth.md](./doc/auth.md)**
+> — el `User` se resuelve por el `sub` del token validado, no por email suelto.
 
 ## Índice
 
@@ -28,6 +30,8 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
   - [`GET /ordenes/obtener-estado/:id`](#get-ordenesobtener-estadoid)
   - [`POST /webhooks/pago` y `POST /webhooks/ordenes/:id/simular-pago`](#post-webhookspago-y-post-webhooksordenesidsimular-pago)
   - [Generación del plan (background)](#generación-del-plan-background)
+  - [`GET /user/me` y `PATCH /user/me`](#get-userme-y-patch-userme)
+  - [`GET /panel/resumen`](#get-panelresumen)
 - [Capa de dominio](#capa-de-dominio)
   - [Fórmulas de requerimientos energéticos](#fórmulas-de-requerimientos-energéticos)
   - [Porciones de alimentos](#porciones-de-alimentos)
@@ -71,6 +75,9 @@ src/
 │   └── repositories/       # *RepositoryImpl que delegan 1:1 en el datasource de su misma entidad
 │
 ├── presentation/           # Módulos NestJS (controllers, services, DTOs con validación)
+│   ├── auth/               # Guard JWT de Cognito + endpoints de identidad/perfil (ver doc/auth.md)
+│   ├── user/               # Endpoint dedicado de perfil para la pantalla /perfil del frontend
+│   ├── panel/              # Resumen de usuario/objetivo/plan para la pantalla /panel del frontend
 │   ├── consultation/       # Chat conversacional de recopilación de la anamnesis
 │   ├── orders/             # Creación/consulta de la orden de cobro + job de retención de datos
 │   ├── webhooks/           # Webhook de pago (real y simulado) → dispara la generación del plan
@@ -98,10 +105,18 @@ src/
 Postgres (`IdentityAuthDatasourcesModule`/`IdentityAuthRepositoriesModule`,
 `ClinicalDomainDatasourcesModule`/`ClinicalDomainRepositoriesModule`,
 `CommercialDomainDatasourcesModule`/`CommercialDomainRepositoriesModule` — ver
-[Base de datos](#base-de-datos-prisma)), `OrdersModule` y `WebhooksModule` (este último importa
-`PlanGenerationModule`, que a su vez importa `NotificationsModule` → `PdfModule`). En conjunto forman
-la cadena: pago confirmado → generación del plan → PDF → correo. `OrdersModule` importa los tres
+[Base de datos](#base-de-datos-prisma)), `OrdersModule`, `WebhooksModule` (este último importa
+`PlanGenerationModule`, que a su vez importa `NotificationsModule` → `PdfModule`), `UserModule` y
+`PanelModule`. En conjunto, `OrdersModule`/`WebhooksModule`/`PlanGenerationModule` forman la cadena:
+pago confirmado → generación del plan → PDF → correo. `OrdersModule` importa los tres
 `*RepositoriesModule` para poder inyectar los repositories que usa `OrdersService`.
+
+`AuthModule` (`presentation/auth/`, guard `CognitoAuthGuard` + `AuthIdentityService` — ver
+[doc/auth.md](./doc/auth.md)) no está en la lista de arriba porque no se importa directo en
+`AppModule`: lo importan `ConsultationModule`, `OrdersModule`, `UserModule` y `PanelModule`, cada uno
+para las rutas propias que exigen sesión de Cognito. `UserModule` importa además
+`IdentityAuthRepositoriesModule` (para `UserRepository`) y `PanelModule`
+`ClinicalDomainRepositoriesModule` (para `NutritionalConsultationRepository`).
 
 ## Puesta en marcha
 
@@ -297,6 +312,65 @@ Resumen:
    plan en la orden (`generationStatus='completado'`) y llama a `EmailService.sendPlanByEmail`. Si
    agota los reintentos, marca `generationStatus='error'` y registra el evento.
 
+### `GET /user/me` y `PATCH /user/me`
+
+Endpoint dedicado de perfil para la pantalla `/perfil` del frontend (edición del perfil ya
+existente, fuera del wizard de onboarding). Ambas rutas están en `presentation/user/`
+(`UserController` → `UserService`), protegidas por `CognitoAuthGuard`, y resuelven el `User` vía
+`@CognitoUser()` + `AuthIdentityService.getUserBySub` (igual patrón que `PATCH /auth/perfil`, ver
+[doc/auth.md](./doc/auth.md)).
+
+- **`GET /user/me`** (`UserService.getProfile`)
+  - **Response** (`UserProfileResponseDto`, todos los campos nullable):
+    ```ts
+    { firstName: string | null, paternalLastName: string | null, dateOfBirth: Date | null, email: string | null }
+    ```
+- **`PATCH /user/me`** (`UserService.updateProfile`)
+  - **Request** (`UpdateUserProfileDtoImpl`): `{ firstName, paternalLastName, dateOfBirth }`, los
+    tres obligatorios (`class-validator`: `@IsString`/`@IsNotEmpty`, `dateOfBirth` con
+    `@IsDateString`).
+  - Actualiza solo esos tres campos vía `UserRepository.updateUserById`. **`email` es de solo
+    lectura y no se acepta en el body** — misma razón que en `PATCH /auth/perfil`: siempre viene de
+    la sesión de Cognito (`syncUser`), nunca de un formulario.
+  - **Response**: el mismo `UserProfileResponseDto` actualizado.
+
+Distinto de `PATCH /auth/perfil` (que completa el perfil durante el onboarding y además exige
+`gender`): este endpoint es la edición posterior desde `/perfil` y no toca `gender`.
+
+### `GET /panel/resumen`
+
+Endpoint de resumen para la pantalla `/panel` del frontend (dashboard con datos básicos del usuario
++ objetivo y macros de su último plan). `presentation/panel/` (`PanelController` → `PanelService`),
+protegido por `CognitoAuthGuard`.
+
+- **Response** (`PanelSummaryDto`):
+  ```ts
+  {
+    firstName: string | null,
+    paternalLastName: string | null,
+    age: number | null,
+    goal: string | null,
+    nutritionalPlan: { calorieIntake, proteinIntake, carbohydrateIntake, lipidIntake } | null,
+  }
+  ```
+- Lógica de `PanelService.getSummary`:
+  1. Resuelve el `User` vía `AuthIdentityService.getUserBySub`.
+  2. Llama a
+     `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId(user.id)`
+     (nuevo método, ver [Base de datos](#base-de-datos-prisma)) para traer la
+     `NutritionalConsultation` más reciente del paciente, con `patient`, `anamneses.goals` y
+     `nutritionalPlans` incluidos en una sola consulta.
+  3. `goal` sale de `consultation.anamneses[0]?.goals[0]?.mainGoal`; `nutritionalPlan` sale de
+     `consultation.nutritionalPlans[0]`, tomando **solo los campos `*Intake`** (`calorieIntake`,
+     `proteinIntake`, `carbohydrateIntake`, `lipidIntake`), nunca los `*Requirement`. `age` se
+     calcula con `calculateAge()` (`domain/services/utils/age.service.ts`) a partir de
+     `user.dateOfBirth`.
+  4. Todo es null-safe: si el usuario no tiene ninguna consulta o ningún plan, `goal` y
+     `nutritionalPlan` vuelven `null` en vez de fallar.
+- Una futura vista previa del PDF del plan en esta misma pantalla queda **deliberadamente pendiente**
+  hasta que exista un bucket S3 para almacenar los PDFs (hoy el PDF solo se genera al vuelo para el
+  correo y para la descarga client-side, no se persiste en ningún lado).
+
 ## Capa de dominio
 
 ### Fórmulas de requerimientos energéticos
@@ -379,9 +453,9 @@ Modelos que participan directamente en el flujo comercial hoy:
 
 | Modelo | Rol |
 |---|---|
-| `User` (`identity-auth`) | Resuelto por `personalInfo.email` vía find-or-create (`UserRepository.findOrCreateUserByEmail`); no hay login/credenciales reales detrás |
+| `User` (`identity-auth`) | Resuelto por el `sub` del Access Token de Cognito vía `AuthIdentityService.getUserBySub` (ver [doc/auth.md](./doc/auth.md)); `GET`/`PATCH /user/me` leen/actualizan sus campos de perfil |
 | `ClinicalRecord` (`clinical-domain`) | Uno por paciente (`patientId` `@unique`), find-or-create |
-| `NutritionalConsultation` (`clinical-domain`) | Una por cada `POST /ordenes/crear`; vinculada 1:1 a la `Order` vía `orderId`; contiene el árbol `Anamnesis`+hijas y `Measurements`+hija que antes viajaba como `payload_json` |
+| `NutritionalConsultation` (`clinical-domain`) | Una por cada `POST /ordenes/crear`; vinculada 1:1 a la `Order` vía `orderId`; contiene el árbol `Anamnesis`+hijas y `Measurements`+hija que antes viajaba como `payload_json`. `NutritionalConsultationRepository` expone dos formas de traerla con detalle: `getNutritionalConsultationWithDetailsByOrderId` (`FULL_DETAILS_INCLUDE`, usado por la generación del plan) y la nueva `getLatestNutritionalConsultationWithDetailsByPatientId` (`PANEL_DETAILS_INCLUDE`: `patient`, `anamneses.goals`, `nutritionalPlans` — `findFirst` ordenado por `consultationNumber: 'desc'`, usada por `GET /panel/resumen`); son includes deliberadamente distintos para no alterar el comportamiento del lookup existente por orden |
 | `Product` (`commercial-domain`) | Producto `type='GENERATED' active=true`, find-or-create con valores placeholder (ver deuda técnica) |
 | `Order` (`commercial-domain`) | Reemplaza al modelo `Order` legacy de SQLite (ya no existe en el schema); ver campos abajo |
 
@@ -398,11 +472,17 @@ Campos relevantes de `Order` (tabla `order`):
 | `attempts` | Contador de intentos fallidos de generación |
 | `nutritionalConsultation` | Relación inversa 1:1 hacia la `NutritionalConsultation` con los datos de la anamnesis/mediciones de esta orden |
 
-No hay todavía módulo de autenticación/login real conectado a ningún endpoint (el `User` se resuelve
-solo por email, sin credenciales) — ver `doc/orders-postgres-migration.md` y `doc/technical-debt.md`.
-Buena parte del resto del dominio (`AuthIdentity`, `Payment`, `NutritionalPlan` y sus hijas, la
+La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
+[doc/auth.md](./doc/auth.md)) — ver `doc/orders-postgres-migration.md` y `doc/technical-debt.md` para
+el detalle de esa migración y su deuda pendiente. Buena parte del resto del dominio (`Payment`, la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
-consumidor real — no asumir que "todo" el dominio Postgres está conectado.
+consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` es un
+caso intermedio: `GET /panel/resumen` ya lo **lee** (`nutritionalPlans` incluido en
+`getLatestNutritionalConsultationWithDetailsByPatientId`), pero nada todavía **escribe** filas ahí —
+la generación del plan (`PlanGenerationService`) sigue persistiendo el plan solo como
+`Order.planJson`, no como árbol `NutritionalPlan`/hijas, así que en la práctica
+`consultation.nutritionalPlans` viene vacío para cualquier usuario hoy y el panel siempre devuelve
+`nutritionalPlan: null` (ver deuda técnica).
 
 Un job de retención (`RetentionService`, cron diario a las 03:00) anonimiza `Order.planJson` (lo pone
 en `null`) de órdenes con más de 45 días, conservando la fila para auditoría/estadística — ver
@@ -435,8 +515,13 @@ datasources/repositories que ya no existe en el código actual).
 - No hay pasarela de pago real integrada (`WebhooksService.verifyWebhookSignature` siempre devuelve
   `true`) ni proveedor de correo real conectado (`EmailService.sendRealEmail` es un stub que solo
   logea).
-- No hay módulo de autenticación/login real conectado a los endpoints actuales — el `User` (Postgres)
-  se resuelve solo por email vía find-or-create, sin credenciales ni sesión.
+- `GET /panel/resumen` ya lee la relación `nutritionalPlans` de `NutritionalConsultation`, pero nada
+  escribe ahí todavía: `PlanGenerationService` solo persiste el plan como `Order.planJson`, no como
+  filas `NutritionalPlan`/hijas. Hasta que se conecte ese lado de escritura, el panel siempre devuelve
+  `nutritionalPlan: null` en la práctica.
+- La vista previa del PDF del plan en `/panel` queda pendiente hasta que exista un bucket S3 donde
+  almacenarlo (hoy el PDF no se persiste, solo se genera al vuelo para el correo y la descarga
+  client-side).
 - `notifyGenerationFailure` (cuando la generación del plan agota sus reintentos) solo deja un log
   estructurado; falta integrarlo con un canal de alertas/soporte real.
 - El `Product` que usa hoy el flujo comercial (`findOrCreateActiveGeneratedProduct`) tiene su precio y

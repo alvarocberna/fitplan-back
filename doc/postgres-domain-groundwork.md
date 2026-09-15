@@ -15,8 +15,12 @@ entidades, DTOs, contratos, datasources y repositories.
 > **[doc/orders-postgres-migration.md](./orders-postgres-migration.md)**. El resto de este documento
 > sigue describiendo con precisión la arquitectura general de la capa (entidades, DTOs, datasources,
 > repositories) tal como se construyó; **no generalizar** — partes de ella (`AuthIdentity`, `Payment`,
-> la mayoría de `clinical-domain` fuera de `Anamnesis`/`Measurements` básicos, como `NutritionalPlan`
-> y sus hijas) siguen sin ningún consumidor real, ver §7 y §9 más abajo.
+> la mayoría de `clinical-domain` fuera de `Anamnesis`/`Measurements` básicos) siguen sin ningún
+> consumidor real, ver §7 y §9 más abajo. `NutritionalPlan` y sus hijas son un caso aparte desde
+> `presentation/panel/` (`GET /panel/resumen`): tienen un consumidor de **lectura** vía
+> `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId`, pero
+> ningún consumidor de **escritura** todavía (`PlanGenerationService` solo persiste en
+> `Order.planJson`) — ver `doc/technical-debt.md`.
 
 Si estás buscando cómo funciona el producto en producción hoy, ver el README principal y
 `doc/flow-happy-path.md`. Este documento sigue siendo la única fuente de verdad sobre las decisiones
