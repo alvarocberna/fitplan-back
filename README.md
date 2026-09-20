@@ -265,9 +265,14 @@ saber si el plan ya está listo.
     paymentStatus: 'pendiente' | 'pagado',
     generationStatus: 'no_iniciado' | 'generando' | 'completado' | 'error',
     planJson: NutritionPlanDto | null,
-    pdfUrl: string | null, // URL firmada de S3 (10 min), null hasta que el plan termine de generarse
+    pdfUrl: string | null, // URL firmada de S3 (10 min) para DESCARGAR el PDF (attachment), null hasta que el plan termine de generarse
+    thumbnailUrl: string | null, // URL firmada de S3 (10 min) de la miniatura WebP de la página 1; null si aún no hay plan o si no tiene miniatura
   }
   ```
+  El `pdfUrl` se firma igual que en `GET /ordenes` (`Content-Disposition: attachment` con nombre
+  `plan-nutricional-<YYYY-MM-DD>.pdf`), porque el frontend ya no incrusta el PDF en un `<iframe>`: muestra la
+  miniatura y un botón "Descargar". La miniatura ya está disponible cuando `generationStatus` pasa a
+  `completado` (`thumbnailKey` se persiste en la misma escritura que el estado).
 - Valida que la orden pertenezca al usuario del token (`order.userId` contra el `User` resuelto vía
   `AuthIdentityService.getUserBySub`); si no coincide, responde `404` igual que si la orden no
   existiera, para no filtrar cuál de los dos casos ocurrió. Esto corrige un gap de BOLA (Broken
@@ -283,8 +288,15 @@ frontend para mostrar el historial de planes descargables.
 - **Controller**: `OrdersController.list` → `OrdersService.getOrdersForUser`
 - **Response** (`OrderSummaryDto[]`), ordenado por `creationDate` descendente:
   ```ts
-  { orderId: string, creationDate: Date, pdfUrl: string }[]
+  { orderId: string, creationDate: Date, pdfUrl: string, thumbnailUrl: string | null }[]
   ```
+  - `pdfUrl`: URL firmada (600 s) para **descargar** el PDF. Se firma con
+    `ResponseContentDisposition: attachment; filename="plan-nutricional-<YYYY-MM-DD>.pdf"`, así que el
+    navegador lo descarga en vez de abrirlo (el atributo `download` de un `<a>` se ignora en
+    cross-origin). Por eso **no sirve para un `<iframe>`** (ningún endpoint sirve ya el PDF inline).
+  - `thumbnailUrl`: URL firmada de la miniatura WebP de la página 1 del plan, o `null` si la orden no
+    tiene miniatura (plan generado antes de esta función, o falló su rasterización). El frontend
+    muestra un placeholder en ese caso.
 - Solo incluye órdenes con `generationStatus='completado'` y `pdfKey` no nulo
   (`OrderRepository.getPaidOrdersWithPdfByUserId`, `Prisma.findMany`). Filtra siempre por el usuario
   del token y nunca recibe un id externo, por lo que no hay BOLA posible acá (a diferencia de
@@ -340,8 +352,12 @@ Resumen:
 6. Reintenta hasta 4 veces con backoff exponencial ante cualquier error, incluyendo fallos al generar
    el PDF o al subirlo a S3 (caen en el mismo loop de reintentos). Si tiene éxito: genera el PDF una
    sola vez (`PdfService.generateBuffer`), lo sube a S3 (`StorageService.uploadPdf`, key
-   `productos-personalizados/<orderId>.pdf`) y persiste el plan junto al `pdfKey` en la orden en la
-   misma llamada (`generationStatus='completado'`) — luego llama a `EmailService.sendPlanByEmail`
+   `productos-personalizados/<orderId>.pdf`), rasteriza su página 1 a una miniatura WebP
+   (`ThumbnailService.generateFirstPage`) y la sube a
+   `productos-personalizados/miniaturas/<orderId>.webp` (**best-effort**: si falla, se registra un
+   warning, `thumbnailKey` queda `null` y **no** consume un reintento ni falla el plan), y persiste el
+   plan junto al `pdfKey`/`thumbnailKey` en la orden en la misma llamada
+   (`generationStatus='completado'`) — luego llama a `EmailService.sendPlanByEmail`
    reutilizando el mismo buffer del PDF para el adjunto, sin regenerarlo. Si agota los reintentos,
    marca `generationStatus='error'` y registra el evento.
 
@@ -461,13 +477,17 @@ sus propios prompts (`consulta.service.ts` y `generacion-plan.prompts.ts` respec
   mismo componente de documento se reutiliza en el frontend para la descarga client-side del plan
   (pantalla `/ordenes/[id]`), sin duplicar el layout.
 - **`StorageModule` (`presentation/storage/`)**: `StorageService` envuelve `@aws-sdk/client-s3` +
-  `@aws-sdk/s3-request-presigner` y expone dos métodos:
+  `@aws-sdk/s3-request-presigner` y expone estos métodos:
   - `uploadPdf(buffer, key)`: sube el PDF al bucket privado `nutricionista-virtual-planes-pdfs`.
-  - `getSignedDownloadUrl(key, ttlSeconds = 600)`: como el bucket no tiene acceso público, esta URL
-    firmada es la única forma de leer el objeto; expira en `ttlSeconds` y nunca se persiste, se
-    genera on-demand en cada request.
+  - `uploadImage(buffer, key, contentType = 'image/webp')`: sube la miniatura del plan.
+  - `getSignedDownloadUrl(key, ttlSeconds = 600, { downloadFilename }?)`: como el bucket no tiene acceso
+    público, esta URL firmada es la única forma de leer el objeto; expira en `ttlSeconds` y nunca se
+    persiste, se genera on-demand en cada request. Con `downloadFilename` firma además
+    `Content-Disposition: attachment` (fuerza la descarga con ese nombre); sin él, el objeto se sirve
+    inline.
   El bucket tiene dos carpetas: `productos-personalizados/` (planes generados por consulta, en uso —
-  key `<orderId>.pdf` vía el helper `buildPersonalizedPlanKey`) y `productos-estandarizados/` (planes
+  key `<orderId>.pdf` vía el helper `buildPersonalizedPlanKey`, y sus miniaturas en
+  `miniaturas/<orderId>.webp` vía `buildPlanThumbnailKey`) y `productos-estandarizados/` (planes
   predefinidos fijos subidos manualmente, pendiente — ver
   [Deuda técnica](#deuda-técnica-y-pendientes)). Lee
   `AWS_REGION`/`AWS_S3_BUCKET_NAME`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` de `ConfigService`
@@ -476,6 +496,18 @@ sus propios prompts (`consulta.service.ts` y `generacion-plan.prompts.ts` respec
   (`PdfService.generateBuffer`), lo sube a S3 y persiste su key en `Order.pdfKey`; el mismo buffer se
   reutiliza para el adjunto del correo, sin regenerarlo (ver
   [Generación del plan](#generación-del-plan-background)).
+- **Miniatura (`ThumbnailService`, en `PdfModule`)**: `generateFirstPage(pdfBuffer)` rasteriza la
+  página 1 del PDF a WebP (800 px de ancho, calidad 80, ~30 KB) con `pdfjs-dist` (build `legacy`,
+  cargado con `import()` dinámico porque es ESM puro y el build de Nest es CJS) sobre
+  `@napi-rs/canvas` (binarios precompilados; no requiere instalar nada en el sistema). Puntos a
+  tener en cuenta:
+  - pdfjs necesita las fuentes estándar (`node_modules/pdfjs-dist/standard_fonts/`) para dibujar el
+    texto Helvetica del PDF; se le pasan como **ruta del sistema de archivos con `/` final** (también en
+    Windows), no como URL `file://`. Sin ellas el texto sale con una fuente sustituta deformada.
+  - Como Jest corre en CJS, `import()` de un ESM falla sin `--experimental-vm-modules`, por lo que este
+    servicio **no tiene spec unitario**: los specs que lo consumen lo mockean, y su funcionamiento real
+    se verifica con el build compilado (`nest build`).
+  - En Linux, `@napi-rs/canvas` usa el binario `linux-x64-gnu` (o `musl` en Alpine), que `npm ci` resuelve.
 - **`NotificationsModule` (`presentation/notifications/`)**: `EmailService.sendPlanByEmail(email,
   plan, attachment)` recibe el PDF ya generado como `Buffer` — **ya no depende de `PdfService`** —
   arma el asunto/cuerpo del correo y llama a `sendRealEmail` — **hoy un stub** que solo deja un log
@@ -521,6 +553,7 @@ Campos relevantes de `Order` (tabla `order`):
 | `generationStatus` | `'no_iniciado'` \| `'generando'` \| `'completado'` \| `'error'` |
 | `planJson` | `NutritionPlanDto` resultante serializado, `null` hasta que se genera |
 | `pdfKey` | Key del PDF del plan en el bucket S3 (`productos-personalizados/<orderId>.pdf`), `null` hasta que se genera — ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3) |
+| `thumbnailKey` | Key de la miniatura WebP de la página 1 del PDF (`productos-personalizados/miniaturas/<orderId>.webp`); `null` si aún no se genera, si falló (es best-effort) o si el plan es anterior a esta función (sin backfill) |
 | `attempts` | Contador de intentos fallidos de generación |
 | `nutritionalConsultation` | Relación inversa 1:1 hacia la `NutritionalConsultation` con los datos de la anamnesis/mediciones de esta orden |
 

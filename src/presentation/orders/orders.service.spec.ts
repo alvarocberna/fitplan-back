@@ -135,6 +135,7 @@ describe('OrdersService', () => {
           generationStatus: 'no_iniciado',
           planJson: null,
           pdfKey: null,
+          thumbnailKey: null,
           attempts: 0,
         }),
       );
@@ -156,7 +157,7 @@ describe('OrdersService', () => {
   describe('getStatus / findById / findByIdWithUser / getConsultationForOrder', () => {
     const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
 
-    it('getStatus devuelve el estado público, parseando planJson si existe, y la URL firmada del PDF', async () => {
+    it('getStatus devuelve el estado público, parseando planJson si existe, con la URL firmada de descarga del PDF y la de la miniatura', async () => {
       authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
         userId: 'user-1',
@@ -164,21 +165,55 @@ describe('OrdersService', () => {
         generationStatus: 'completado',
         planJson: JSON.stringify({ prescription: { goal: 'volumen' } }),
         pdfKey: 'productos-personalizados/order-1.pdf',
+        thumbnailKey: 'productos-personalizados/miniaturas/order-1.webp',
+        creationDate: new Date('2026-01-01T00:00:00.000Z'),
       } as any);
-      storageService.getSignedDownloadUrl.mockResolvedValue('https://signed-url.example/plan.pdf');
+      // firma distinto según la key para poder contrastar qué URL corresponde a qué objeto
+      storageService.getSignedDownloadUrl.mockImplementation(
+        async (key: string) => `https://signed-url.example/${key}`,
+      );
 
       const status = await service.getStatus('order-1', cognitoUser);
 
       expect(status.paymentStatus).toBe('pagado');
       expect(status.generationStatus).toBe('completado');
       expect((status.planJson as any).prescription.goal).toBe('volumen');
-      expect(status.pdfUrl).toBe('https://signed-url.example/plan.pdf');
+      expect(status.pdfUrl).toBe('https://signed-url.example/productos-personalizados/order-1.pdf');
+      expect(status.thumbnailUrl).toBe(
+        'https://signed-url.example/productos-personalizados/miniaturas/order-1.webp',
+      );
+      // solo el PDF se firma como descarga, con nombre de archivo basado en la fecha de creación
       expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
         'productos-personalizados/order-1.pdf',
+        undefined,
+        { downloadFilename: 'plan-nutricional-2026-01-01.pdf' },
+      );
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
+        'productos-personalizados/miniaturas/order-1.webp',
       );
     });
 
-    it('getStatus devuelve planJson y pdfUrl null si aún no hay plan', async () => {
+    it('getStatus devuelve thumbnailUrl null (y firma solo el PDF) si el plan está listo pero no tiene miniatura', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      orderRepository.getOrderById.mockResolvedValue({
+        userId: 'user-1',
+        paymentStatus: 'pagado',
+        generationStatus: 'completado',
+        planJson: JSON.stringify({ prescription: { goal: 'volumen' } }),
+        pdfKey: 'productos-personalizados/order-1.pdf',
+        thumbnailKey: null,
+        creationDate: new Date('2026-01-01T00:00:00.000Z'),
+      } as any);
+      storageService.getSignedDownloadUrl.mockResolvedValue('https://signed-url.example/plan.pdf');
+
+      const status = await service.getStatus('order-1', cognitoUser);
+
+      expect(status.pdfUrl).toBe('https://signed-url.example/plan.pdf');
+      expect(status.thumbnailUrl).toBeNull();
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it('getStatus devuelve planJson, pdfUrl y thumbnailUrl null si aún no hay plan', async () => {
       authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
         userId: 'user-1',
@@ -186,11 +221,14 @@ describe('OrdersService', () => {
         generationStatus: 'no_iniciado',
         planJson: null,
         pdfKey: null,
+        thumbnailKey: null,
+        creationDate: new Date('2026-01-01T00:00:00.000Z'),
       } as any);
 
       const status = await service.getStatus('order-1', cognitoUser);
       expect(status.planJson).toBeNull();
       expect(status.pdfUrl).toBeNull();
+      expect(status.thumbnailUrl).toBeNull();
       expect(storageService.getSignedDownloadUrl).not.toHaveBeenCalled();
     });
 
@@ -250,15 +288,31 @@ describe('OrdersService', () => {
   });
 
   describe('completeGeneration / recordFailedAttempt', () => {
-    it('completeGeneration serializa el plan a JSON, marca generationStatus completado y persiste pdfKey', async () => {
+    it('completeGeneration serializa el plan a JSON, marca generationStatus completado y persiste pdfKey y thumbnailKey', async () => {
       const plan = { prescription: { goal: 'definicion' } } as unknown as NutritionPlanDto;
-      await service.completeGeneration('order-1', plan, 'productos-personalizados/order-1.pdf');
+      await service.completeGeneration(
+        'order-1',
+        plan,
+        'productos-personalizados/order-1.pdf',
+        'productos-personalizados/miniaturas/order-1.webp',
+      );
 
       expect(orderRepository.updateOrderById).toHaveBeenCalledWith('order-1', {
         generationStatus: 'completado',
         planJson: JSON.stringify(plan),
         pdfKey: 'productos-personalizados/order-1.pdf',
+        thumbnailKey: 'productos-personalizados/miniaturas/order-1.webp',
       });
+    });
+
+    it('completeGeneration persiste thumbnailKey null si la miniatura no se pudo generar', async () => {
+      const plan = { prescription: { goal: 'definicion' } } as unknown as NutritionPlanDto;
+      await service.completeGeneration('order-1', plan, 'productos-personalizados/order-1.pdf', null);
+
+      expect(orderRepository.updateOrderById).toHaveBeenCalledWith(
+        'order-1',
+        expect.objectContaining({ generationStatus: 'completado', thumbnailKey: null }),
+      );
     });
 
     it('recordFailedAttempt delega en el repositorio', async () => {
@@ -268,14 +322,26 @@ describe('OrdersService', () => {
   });
 
   describe('getOrdersForUser', () => {
-    it('devuelve las órdenes del usuario con su URL firmada, tal como las entrega el repositorio', async () => {
-      const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
+    const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
+    const creationDate = new Date('2026-01-01T00:00:00.000Z');
+
+    beforeEach(() => {
       authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
-      const creationDate = new Date('2026-01-01T00:00:00.000Z');
+      // firma distinto según la key para poder contrastar qué URL corresponde a qué objeto
+      storageService.getSignedDownloadUrl.mockImplementation(
+        async (key: string) => `https://signed-url.example/${key}`,
+      );
+    });
+
+    it('devuelve las órdenes del usuario con la URL firmada de descarga del PDF (attachment) y la de la miniatura', async () => {
       orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([
-        { id: 'order-1', creationDate, pdfKey: 'productos-personalizados/order-1.pdf' } as any,
+        {
+          id: 'order-1',
+          creationDate,
+          pdfKey: 'productos-personalizados/order-1.pdf',
+          thumbnailKey: 'productos-personalizados/miniaturas/order-1.webp',
+        } as any,
       ]);
-      storageService.getSignedDownloadUrl.mockResolvedValue('https://signed-url.example/order-1.pdf');
 
       const summaries = await service.getOrdersForUser(cognitoUser);
 
@@ -284,9 +350,31 @@ describe('OrdersService', () => {
         {
           orderId: 'order-1',
           creationDate,
-          pdfUrl: 'https://signed-url.example/order-1.pdf',
+          pdfUrl: 'https://signed-url.example/productos-personalizados/order-1.pdf',
+          thumbnailUrl: 'https://signed-url.example/productos-personalizados/miniaturas/order-1.webp',
         },
       ]);
+      // solo el PDF se firma como descarga, con nombre de archivo basado en la fecha de creación
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
+        'productos-personalizados/order-1.pdf',
+        undefined,
+        { downloadFilename: 'plan-nutricional-2026-01-01.pdf' },
+      );
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
+        'productos-personalizados/miniaturas/order-1.webp',
+      );
+    });
+
+    it('thumbnailUrl es null (y no se firma nada) si la orden no tiene miniatura', async () => {
+      orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([
+        { id: 'order-1', creationDate, pdfKey: 'productos-personalizados/order-1.pdf', thumbnailKey: null } as any,
+      ]);
+
+      const [summary] = await service.getOrdersForUser(cognitoUser);
+
+      expect(summary.thumbnailUrl).toBeNull();
+      expect(summary.pdfUrl).toBe('https://signed-url.example/productos-personalizados/order-1.pdf');
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledTimes(1);
     });
   });
 

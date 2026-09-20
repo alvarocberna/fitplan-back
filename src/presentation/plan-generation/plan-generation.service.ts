@@ -42,8 +42,13 @@ import { OrdersService } from '../orders/orders.service';
 import { EmailService } from '../notifications/email.service';
 //presentation - modulo pdf
 import { PdfService } from '../pdf/pdf.service';
+import { ThumbnailService } from '../pdf/thumbnail.service';
 //presentation - modulo storage
-import { StorageService, buildPersonalizedPlanKey } from '../storage/storage.service';
+import {
+  StorageService,
+  buildPersonalizedPlanKey,
+  buildPlanThumbnailKey,
+} from '../storage/storage.service';
 //presentation - modulo plan-generation (actual)
 import {
   buildExtractInfoPromptUserMessage,
@@ -131,6 +136,7 @@ export class PlanGenerationService {
     private readonly openaiService: OpenaiService,
     private readonly emailService: EmailService,
     private readonly pdfService: PdfService,
+    private readonly thumbnailService: ThumbnailService,
     private readonly storageService: StorageService,
   ) {}
 
@@ -170,8 +176,14 @@ export class PlanGenerationService {
         const pdfBuffer = await this.pdfService.generateBuffer(plan);
         const pdfKey = buildPersonalizedPlanKey(orderId);
         await this.storageService.uploadPdf(pdfBuffer, pdfKey);
+        const thumbnailKey = await this.tryUploadThumbnail(orderId, pdfBuffer);
 
-        await this.ordersService.completeGeneration(orderId, plan, pdfKey);
+        await this.ordersService.completeGeneration(
+          orderId,
+          plan,
+          pdfKey,
+          thumbnailKey,
+        );
         const totalDurationMs = Date.now() - totalStart;
         this.logger.log(
           `Orden ${orderId}: plan generado con éxito (intento ${attempt}/${MAX_ATTEMPTS}, ` +
@@ -210,6 +222,27 @@ export class PlanGenerationService {
 
         await this.sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
       }
+    }
+  }
+
+  //miniatura (página 1 del PDF) para el panel del frontend. Es best-effort: cualquier fallo se
+  //registra y devuelve null, porque no debe fallar el plan ya pagado ni consumir un reintento (que
+  //volvería a llamar a OpenAI). Sin miniatura el frontend muestra un placeholder con el botón de descarga.
+  private async tryUploadThumbnail(
+    orderId: string,
+    pdfBuffer: Buffer,
+  ): Promise<string | null> {
+    try {
+      const thumbnail = await this.thumbnailService.generateFirstPage(pdfBuffer);
+      const thumbnailKey = buildPlanThumbnailKey(orderId);
+      await this.storageService.uploadImage(thumbnail, thumbnailKey);
+      return thumbnailKey;
+    } catch (error) {
+      this.logger.warn(
+        `Orden ${orderId}: no se pudo generar/subir la miniatura del plan, se continúa sin ella ` +
+          `(${(error as Error).message})`,
+      );
+      return null;
     }
   }
 

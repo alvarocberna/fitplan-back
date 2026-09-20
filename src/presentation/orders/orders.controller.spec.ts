@@ -43,6 +43,7 @@ describe('OrdersController', () => {
       generationStatus: 'completado',
       planJson: null,
       pdfUrl: null,
+      thumbnailUrl: null,
     });
 
     const result = await controller.getStatus(
@@ -60,7 +61,12 @@ describe('OrdersController', () => {
   it('list() delega en OrdersService.getOrdersForUser con el usuario recibido', async () => {
     const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
     service.getOrdersForUser.mockResolvedValue([
-      { orderId: 'order-1', creationDate: new Date('2026-01-01'), pdfUrl: 'https://signed.example' },
+      {
+        orderId: 'order-1',
+        creationDate: new Date('2026-01-01'),
+        pdfUrl: 'https://signed.example',
+        thumbnailUrl: 'https://signed.example/thumb',
+      },
     ]);
 
     const result = await controller.list(cognitoUser);

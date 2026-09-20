@@ -25,6 +25,12 @@ import {
   mapMeasurementsDtoToDetails,
 } from './orders.mapper';
 
+// Nombre con el que el navegador guarda el PDF al descargarlo desde el panel (solo dígitos y
+// guiones en la parte variable, así que es seguro dentro del header Content-Disposition).
+function buildPlanDownloadFilename(creationDate: Date): string {
+  return `plan-nutricional-${creationDate.toISOString().slice(0, 10)}.pdf`;
+}
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -75,6 +81,7 @@ export class OrdersService {
       generationStatus: 'no_iniciado',
       planJson: null,
       pdfKey: null,
+      thumbnailKey: null,
       attempts: 0,
       creationDate: new Date(),
       paymentDate: null,
@@ -119,15 +126,25 @@ export class OrdersService {
       throw new NotFoundException(`Orden ${id} no encontrada`);
     }
 
+    const [pdfUrl, thumbnailUrl] = await Promise.all([
+      order.pdfKey
+        ? this.storageService.getSignedDownloadUrl(order.pdfKey, undefined, {
+            downloadFilename: buildPlanDownloadFilename(order.creationDate),
+          })
+        : null,
+      order.thumbnailKey
+        ? this.storageService.getSignedDownloadUrl(order.thumbnailKey)
+        : null,
+    ]);
+
     return {
       paymentStatus: order.paymentStatus,
       generationStatus: order.generationStatus as GenerationStatus,
       planJson: order.planJson
         ? (JSON.parse(order.planJson) as NutritionPlanDto)
         : null,
-      pdfUrl: order.pdfKey
-        ? await this.storageService.getSignedDownloadUrl(order.pdfKey)
-        : null,
+      pdfUrl,
+      thumbnailUrl,
     };
   }
 
@@ -143,13 +160,24 @@ export class OrdersService {
     );
 
     return Promise.all(
-      orders.map(async (order) => ({
-        orderId: order.id,
-        creationDate: order.creationDate,
-        pdfUrl: await this.storageService.getSignedDownloadUrl(
-          order.pdfKey!,
-        ),
-      })),
+      orders.map(async (order) => {
+        const [pdfUrl, thumbnailUrl] = await Promise.all([
+          this.storageService.getSignedDownloadUrl(
+            order.pdfKey!,
+            undefined,
+            { downloadFilename: buildPlanDownloadFilename(order.creationDate) },
+          ),
+          order.thumbnailKey
+            ? this.storageService.getSignedDownloadUrl(order.thumbnailKey)
+            : null,
+        ]);
+        return {
+          orderId: order.id,
+          creationDate: order.creationDate,
+          pdfUrl,
+          thumbnailUrl,
+        };
+      }),
     );
   }
 
@@ -195,11 +223,13 @@ export class OrdersService {
     id: string,
     plan: NutritionPlanDto,
     pdfKey: string,
+    thumbnailKey: string | null,
   ): Promise<void> {
     await this.orderRepository.updateOrderById(id, {
       generationStatus: 'completado',
       planJson: JSON.stringify(plan),
       pdfKey,
+      thumbnailKey,
     });
   }
 

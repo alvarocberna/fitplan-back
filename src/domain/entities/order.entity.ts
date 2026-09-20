@@ -37,6 +37,9 @@ export interface OrderEntity {
   generationStatus: OrderGenerationStatus;
   planJson: string | null;
   pdfKey: string | null;
+  // Miniatura (página 1 del PDF) en S3; null si aún no se generó o si la rasterización falló
+  // (es best-effort: no bloquea la entrega del plan).
+  thumbnailKey: string | null;
   attempts: number;
 
   creationDate: Date;

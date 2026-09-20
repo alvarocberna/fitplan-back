@@ -87,7 +87,8 @@ sequenceDiagram
         BE->>AI: generación del plan (NUTRITIONIST_SYSTEM_PROMPT)
         AI-->>BE: GeneratedNutritionPlan
         Note over BE: genera el PDF y lo sube a S3 (productos-personalizados/<orderId>.pdf)
-        BE->>DB: UPDATE Order planJson, pdfKey, generationStatus='completado'
+        Note over BE: rasteriza la página 1 a WebP y la sube a S3 (productos-personalizados/miniaturas/<orderId>.webp), best-effort
+        BE->>DB: UPDATE Order planJson, pdfKey, thumbnailKey, generationStatus='completado'
         Note over BE: "envía" el correo con el mismo PDF ya generado como adjunto (stub)
     and polling del frontend
         loop cada 4s hasta 'completado' o 'error'
@@ -222,7 +223,9 @@ directamente (`PlanGenerationService.generatePlan`):
    en el mismo loop: un fallo ahí también cuenta como intento fallido.
    - Si tiene éxito: genera el PDF del plan server-side una sola vez (`PdfService.generateBuffer`,
      `@react-pdf/renderer`), lo sube a S3 (`StorageService.uploadPdf`, key
-     `productos-personalizados/<orderId>.pdf`), guarda `planJson` y `pdfKey` en la orden y marca
+     `productos-personalizados/<orderId>.pdf`), rasteriza su página 1 a una miniatura WebP y la sube
+     (`productos-personalizados/miniaturas/<orderId>.webp`; best-effort, su fallo no falla el plan ni
+     consume un reintento), guarda `planJson`, `pdfKey` y `thumbnailKey` en la orden y marca
      `generationStatus: 'completado'` — luego llama a `EmailService.sendPlanByEmail` reutilizando el
      mismo buffer del PDF como adjunto (ya no lo regenera) y "envía" el correo (hoy es un stub que
      solo logea; no hay proveedor de email real conectado todavía).
@@ -236,9 +239,11 @@ Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 s
 - **`GET /ordenes/obtener-estado/:id`** (`OrdersController.getStatus` → `OrdersService.getStatus`,
   `CognitoAuthGuard` — exige sesión válida y valida que la orden pertenezca al usuario del token,
   ver `doc/auth.md`)
-  - Response: `{ paymentStatus, generationStatus, planJson, pdfUrl }` (sin la
+  - Response: `{ paymentStatus, generationStatus, planJson, pdfUrl, thumbnailUrl }` (sin la
     `NutritionalConsultation` ni datos del `User`, que son información interna del pipeline).
-    `pdfUrl` es una URL firmada de S3 (10 min), `null` hasta que el plan termina de generarse.
+    `pdfUrl` es una URL firmada de S3 (10 min) para descargar el PDF (`Content-Disposition: attachment`),
+    `null` hasta que el plan termina de generarse; `thumbnailUrl` es la URL firmada de la miniatura WebP
+    de la página 1 (`null` si aún no hay plan o si no tiene miniatura).
 - Mientras `generationStatus` sea `'no_iniciado'` o `'generando'`, se muestra un spinner (y, pasados
   45s sin terminar, un aviso de demora que tranquiliza al paciente: el pago ya quedó registrado).
 - Cuando `generationStatus === 'completado'`, se muestra el plan y un botón de descarga que genera el
@@ -258,7 +263,7 @@ Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 s
 | 2 | `POST /ordenes/crear` | Sí | `/consulta/generar-orden` | 1 vez | Resuelve el `User` (ya tiene que existir y estar completo), find-or-create `ClinicalRecord`/`Product`, crea la `Order` (`paymentStatus='pendiente'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
 | 3 | `POST /webhooks/ordenes/:id/simular-pago` | No | `/pago/[ordenId]` | 1 vez | Marca la orden como pagada y dispara la generación del plan en background |
 | — | *(sin request del frontend)* | — | — | — | `PlanGenerationService.generatePlan`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + generación/subida del PDF a S3 + envío de correo (stub) |
-| 4 | `GET /ordenes/obtener-estado/:id` | Sí (valida dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `completado`/`error` | Polling del estado de pago/generación y, al terminar, del plan generado y su `pdfUrl` |
+| 4 | `GET /ordenes/obtener-estado/:id` | Sí (valida dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `completado`/`error` | Polling del estado de pago/generación y, al terminar, del plan generado, su `pdfUrl` (descarga) y su `thumbnailUrl` (miniatura) |
 
 Endpoint equivalente no usado en este flujo (queda para cuando se integre una pasarela real):
 **`POST /webhooks/pago`** — mismo efecto que el endpoint #3, pero pensado para ser llamado por la

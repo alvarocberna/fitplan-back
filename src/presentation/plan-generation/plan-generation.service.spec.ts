@@ -4,6 +4,7 @@ import { OrdersService } from '../orders/orders.service';
 import { OpenaiService } from '../openai/openai.service';
 import { EmailService } from '../notifications/email.service';
 import { PdfService } from '../pdf/pdf.service';
+import { ThumbnailService } from '../pdf/thumbnail.service';
 import { StorageService } from '../storage/storage.service';
 import { calculateAge } from '../../domain/services/utils/age.service';
 import { calculateRequirements } from '../../domain/services/formulas/requirements.service';
@@ -70,6 +71,7 @@ describe('PlanGenerationService', () => {
   let openaiService: jest.Mocked<OpenaiService>;
   let emailService: jest.Mocked<EmailService>;
   let pdfService: jest.Mocked<PdfService>;
+  let thumbnailService: jest.Mocked<ThumbnailService>;
   let storageService: jest.Mocked<StorageService>;
 
   const dateOfBirth = new Date('1996-01-01');
@@ -166,7 +168,11 @@ describe('PlanGenerationService', () => {
         { provide: OpenaiService, useValue: { chatJson: jest.fn() } },
         { provide: EmailService, useValue: { sendPlanByEmail: jest.fn() } },
         { provide: PdfService, useValue: { generateBuffer: jest.fn() } },
-        { provide: StorageService, useValue: { uploadPdf: jest.fn(), getSignedDownloadUrl: jest.fn() } },
+        { provide: ThumbnailService, useValue: { generateFirstPage: jest.fn() } },
+        {
+          provide: StorageService,
+          useValue: { uploadPdf: jest.fn(), uploadImage: jest.fn(), getSignedDownloadUrl: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -175,25 +181,21 @@ describe('PlanGenerationService', () => {
     openaiService = module.get(OpenaiService);
     emailService = module.get(EmailService);
     pdfService = module.get(PdfService);
+    thumbnailService = module.get(ThumbnailService);
     storageService = module.get(StorageService);
 
     ordersService.tryStartGeneration.mockResolvedValue(true);
     ordersService.findByIdWithUser.mockResolvedValue(orderEntity);
     ordersService.getConsultationForOrder.mockResolvedValue(consultationEntity);
     pdfService.generateBuffer.mockResolvedValue(Buffer.from('contenido-pdf'));
+    thumbnailService.generateFirstPage.mockResolvedValue(Buffer.from('contenido-miniatura'));
     storageService.uploadPdf.mockResolvedValue(undefined);
+    storageService.uploadImage.mockResolvedValue(undefined);
   });
 
-  it('si tryStartGeneration devuelve false (ya en curso/completado), no hace nada más', async () => {
-    ordersService.tryStartGeneration.mockResolvedValue(false);
-
-    await service.generatePlan('order-1');
-
-    expect(ordersService.findByIdWithUser).not.toHaveBeenCalled();
-    expect(openaiService.chatJson).not.toHaveBeenCalled();
-  });
-
-  it('éxito en el primer intento: completa la orden y envía el correo con el plan calculado', async () => {
+  // Deja al mock de OpenAI respondiendo "perfecto" (calza con las porciones calculadas por el
+  // código) y devuelve lo calculado para que cada test pueda contrastarlo con el plan resultante.
+  function mockMatchingAiResponses() {
     const age = calculateAge(dateOfBirth);
     const requirements = calculateRequirements({
       weight,
@@ -220,11 +222,26 @@ describe('PlanGenerationService', () => {
         sportsRecommendations: {},
       }); // prompt principal
 
+    return { requirements, portionAdequacyResult, totalIntake, adequacy };
+  }
+
+  it('si tryStartGeneration devuelve false (ya en curso/completado), no hace nada más', async () => {
+    ordersService.tryStartGeneration.mockResolvedValue(false);
+
+    await service.generatePlan('order-1');
+
+    expect(ordersService.findByIdWithUser).not.toHaveBeenCalled();
+    expect(openaiService.chatJson).not.toHaveBeenCalled();
+  });
+
+  it('éxito en el primer intento: completa la orden y envía el correo con el plan calculado', async () => {
+    const { requirements, portionAdequacyResult, totalIntake, adequacy } = mockMatchingAiResponses();
+
     await service.generatePlan('order-1');
 
     expect(openaiService.chatJson).toHaveBeenCalledTimes(2);
     expect(ordersService.completeGeneration).toHaveBeenCalledTimes(1);
-    const [, plan, pdfKey] = ordersService.completeGeneration.mock.calls[0];
+    const [, plan, pdfKey, thumbnailKey] = ordersService.completeGeneration.mock.calls[0];
 
     expect(plan.prescription).toMatchObject({
       regimen: 'Plan personalizado',
@@ -247,7 +264,43 @@ describe('PlanGenerationService', () => {
     expect(storageService.uploadPdf).toHaveBeenCalledWith(pdfBuffer, pdfKey);
     expect(emailService.sendPlanByEmail).toHaveBeenCalledWith('ana@example.com', plan, pdfBuffer);
     expect(ordersService.recordFailedAttempt).not.toHaveBeenCalled();
+
+    // la miniatura se rasteriza desde ese mismo buffer, se sube a S3 y su key se persiste en la orden.
+    expect(thumbnailKey).toBe('productos-personalizados/miniaturas/order-1.webp');
+    expect(thumbnailService.generateFirstPage).toHaveBeenCalledWith(pdfBuffer);
+    expect(storageService.uploadImage).toHaveBeenCalledWith(
+      Buffer.from('contenido-miniatura'),
+      thumbnailKey,
+    );
   });
+
+  it.each([
+    [
+      'falla la rasterización',
+      () => thumbnailService.generateFirstPage.mockRejectedValue(new Error('pdfjs roto')),
+    ],
+    [
+      'falla la subida de la miniatura a S3',
+      () => storageService.uploadImage.mockRejectedValue(new Error('S3 no disponible')),
+    ],
+  ])(
+    'si %s, el plan igual se completa (thumbnailKey null), sin reintentar ni volver a llamar a la IA',
+    async (_caso, breakThumbnail) => {
+      mockMatchingAiResponses();
+      breakThumbnail();
+
+      await service.generatePlan('order-1');
+
+      // 2 llamadas = un solo intento (extract + plan): la miniatura no consume reintentos.
+      expect(openaiService.chatJson).toHaveBeenCalledTimes(2);
+      expect(ordersService.completeGeneration).toHaveBeenCalledTimes(1);
+      const [, , pdfKey, thumbnailKey] = ordersService.completeGeneration.mock.calls[0];
+      expect(pdfKey).toBe('productos-personalizados/order-1.pdf');
+      expect(thumbnailKey).toBeNull();
+      expect(emailService.sendPlanByEmail).toHaveBeenCalledTimes(1);
+      expect(ordersService.recordFailedAttempt).not.toHaveBeenCalled();
+    },
+  );
 
   it('reintenta con backoff si la IA no calza con las porciones calculadas, y agota los 4 intentos', async () => {
     jest.useFakeTimers();

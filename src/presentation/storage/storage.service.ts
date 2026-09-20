@@ -17,6 +17,11 @@ export function buildPersonalizedPlanKey(orderId: string): string {
   return `${PERSONALIZED_PLANS_PREFIX}/${orderId}.pdf`;
 }
 
+// Miniatura WebP de la página 1 del PDF de una Order (vista previa del panel del frontend).
+export function buildPlanThumbnailKey(orderId: string): string {
+  return `${PERSONALIZED_PLANS_PREFIX}/miniaturas/${orderId}.webp`;
+}
+
 const DEFAULT_SIGNED_URL_TTL_SECONDS = 600;
 
 @Injectable()
@@ -49,14 +54,39 @@ export class StorageService {
     );
   }
 
+  async uploadImage(
+    buffer: Buffer,
+    key: string,
+    contentType = 'image/webp',
+  ): Promise<void> {
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      }),
+    );
+  }
+
   // El bucket es privado (sin acceso público): esta URL firmada es la única forma de leer el
   // objeto, expira en `ttlSeconds` y nunca se persiste (se genera on-demand en cada solicitud, ver
   // doc/security/deployment-security.md sección 10).
+  // Con `downloadFilename`, S3 responde con `Content-Disposition: attachment`, lo que fuerza la
+  // descarga (el atributo `download` de un <a> se ignora en cross-origin) y fija el nombre del
+  // archivo. Sin él, el objeto se sirve inline (p. ej. para el <iframe> de /ordenes/[id]).
   async getSignedDownloadUrl(
     key: string,
     ttlSeconds = DEFAULT_SIGNED_URL_TTL_SECONDS,
+    options: { downloadFilename?: string } = {},
   ): Promise<string> {
-    const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ...(options.downloadFilename && {
+        ResponseContentDisposition: `attachment; filename="${options.downloadFilename}"`,
+      }),
+    });
     return getSignedUrl(this.s3, command, { expiresIn: ttlSeconds });
   }
 }
