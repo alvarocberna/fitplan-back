@@ -34,19 +34,23 @@ describe('PanelService', () => {
   });
 
   describe('getSummary', () => {
-    it('arma el resumen con edad, objetivo y plan cuando hay una consulta con goals y nutritionalPlans', async () => {
+    it('arma el resumen con nombre completo, edad, fecha de consulta, objetivo y plan cuando hay una consulta con goals y nutritionalPlans', async () => {
       const dateOfBirth = new Date('1995-01-01');
       authIdentityService.getUserBySub.mockResolvedValue({
         id: 'user-1',
         firstName: 'Ana',
+        middleName: 'María',
         paternalLastName: 'Pérez',
+        maternalLastName: 'Soto',
         dateOfBirth,
       } as any);
       nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
         {
+          consultationDate: new Date('2026-03-15T12:00:00.000Z'),
           anamneses: [{ goals: [{ mainGoal: 'bajar de peso' }] }],
           nutritionalPlans: [
             {
+              dietRegimen: 'Régimen hipocalórico hiperproteico.',
               calorieIntake: 2000,
               proteinIntake: 150,
               carbohydrateIntake: 200,
@@ -64,10 +68,14 @@ describe('PanelService', () => {
       ).toHaveBeenCalledWith('user-1');
       expect(result).toEqual({
         firstName: 'Ana',
+        middleName: 'María',
         paternalLastName: 'Pérez',
+        maternalLastName: 'Soto',
         age: calculateAge(dateOfBirth),
+        lastConsultationDate: '2026-03-15T12:00:00.000Z',
         goal: 'bajar de peso',
         nutritionalPlan: {
+          dietRegimen: 'Régimen hipocalórico hiperproteico.',
           calorieIntake: 2000,
           proteinIntake: 150,
           carbohydrateIntake: 200,
@@ -99,7 +107,9 @@ describe('PanelService', () => {
       authIdentityService.getUserBySub.mockResolvedValue({
         id: 'user-1',
         firstName: 'Ana',
+        middleName: null,
         paternalLastName: 'Pérez',
+        maternalLastName: null,
         dateOfBirth: null,
       } as any);
       nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
@@ -110,8 +120,11 @@ describe('PanelService', () => {
 
       expect(result).toEqual({
         firstName: 'Ana',
+        middleName: null,
         paternalLastName: 'Pérez',
+        maternalLastName: null,
         age: null,
+        lastConsultationDate: null,
         goal: null,
         nutritionalPlan: null,
       });

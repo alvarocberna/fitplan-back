@@ -251,10 +251,11 @@ Esta migración conecta **solo** lo que necesita el flujo comercial:
   `SportsStrategy`), `Measurements` y `BasicMeasurements`. El resto de `clinical-domain`
   (`AnamnesisPsychosocial`, `Supplements`, `Skinfolds`, `Circumferences`, `Diameters`,
   `MeasurementResults`, `NutritionalPlan` y sus hijas) sigue sin consumidor real **al cierre de esta
-  migración** — una migración posterior (`presentation/panel/`, `GET /panel/resumen`) le agregó a
-  `NutritionalPlan` un consumidor de lectura vía un nuevo método del repository
-  (`getLatestNutritionalConsultationWithDetailsByPatientId`, `PANEL_DETAILS_INCLUDE`), pero sigue sin
-  ningún consumidor de escritura — ver `doc/technical-debt.md`.
+  migración** — migraciones posteriores le agregaron a `NutritionalPlan` (solo la fila principal, no
+  las hijas) un consumidor de lectura (`presentation/panel/`, `GET /panel/resumen`, vía
+  `getLatestNutritionalConsultationWithDetailsByPatientId`/`PANEL_DETAILS_INCLUDE`) y uno de escritura
+  (`PlanGenerationService` → `NutritionalPlanRepository.upsertNutritionalPlanByOrderId`) — ver
+  `doc/technical-debt.md`.
 - `commercial-domain`: `Order`, `Product` (vía `findOrCreateActiveGeneratedProduct`). `Payment` sigue
   sin consumidor.
 
@@ -280,6 +281,7 @@ Ver también [technical-debt.md](./technical-debt.md).
 - `personalInfo.dateOfBirth` no se transforma a `Date` en el DTO de consulta (`@IsDateString()` sin
   `@Type(() => Date)`) — cualquier otro consumidor futuro de ese campo debe convertirlo
   explícitamente, como se hizo en `orders.service.ts` (ver §9).
-- El job de retención (`OrdersService.cleanupOldOrders` / `RetentionService`) hoy solo anonimiza
-  `Order.planJson`; anonimizar los datos clínicos de `NutritionalConsultation`/`Anamnesis`/`Measurements`
-  de órdenes antiguas queda pendiente.
+- El job de retención de 45 días (`RetentionService`, que anonimizaba `Order.planJson`) se eliminó:
+  los datos de salud se conservan sin límite. Si se vuelve a necesitar una política de
+  retención/anonimización, debe cubrir `NutritionalConsultation`/`Anamnesis`/`Measurements` y
+  `NutritionalPlan`.

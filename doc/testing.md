@@ -60,14 +60,8 @@ lógica de negocio, sino con que Jest no podía ni siquiera **cargar** ciertos m
   el paquete completo por componentes inertes + un `renderToBuffer` mockeado (`jest.fn()`
   resuelto a un `Buffer` vacío) — los tests nunca necesitan un PDF real, solo verificar que se
   invoque con los datos correctos.
-- **`cron` deja un timer real vivo**: `RetentionService.onModuleInit()` (ver
-  `presentation/orders/retention.service.ts`) programa un `CronJob` real (disparo diario 03:00).
-  En el e2e, que levanta la app completa, esto dejaría un handle abierto que impide que Jest
-  cierre el proceso limpio. Se agregó otro `moduleNameMapper` (`^cron$` →
-  `test/mocks/cron.ts`) con un `CronJob` stub cuyo `start()`/`stop()` son no-ops. (El unit test de
-  `RetentionService` resuelve el mismo problema con `jest.mock('cron', ...)` local, ver §4.)
 
-Ambos stubs viven en `test/mocks/` y se referencian desde los dos jest config (`package.json` para
+El stub vive en `test/mocks/` y se referencia desde los dos jest config (`package.json` para
 unitarios, `test/jest-e2e.json` para e2e) con rutas relativas a cada `rootDir` respectivo.
 
 Como parte de esto también se eliminó código muerto que interfería con testear
@@ -97,10 +91,10 @@ junto con los imports que quedaron sin uso.
 | `OrdersService` | `orders.service.spec.ts` | `AuthIdentityService`, `ClinicalRecordRepository`, `NutritionalConsultationRepository`, `ProductRepository`, `OrderRepository`, `StorageService` (esta última para firmar `pdfUrl` en `getStatus`/`getOrdersForUser`) |
 | `orders.mapper.ts` | `orders.mapper.spec.ts` | nada (funciones puras) |
 | `OrdersController` | `orders.controller.spec.ts` | `OrdersService` |
-| `RetentionService` | `retention.service.spec.ts` | `OrdersService` + `cron` (local `jest.mock`) |
 | `WebhooksService` | `webhooks.service.spec.ts` | `OrdersService`, `PlanGenerationService` |
 | `WebhooksController` | `webhooks.controller.spec.ts` | `WebhooksService` |
-| `PlanGenerationService` | `plan-generation.service.spec.ts` | `OrdersService`/`OpenaiService`/`EmailService`/`PdfService`/`StorageService` — **las fórmulas de dominio corren de verdad** (test híbrido unit+integración); ver §5 |
+| `plan-generation.mapper.ts` | `plan-generation.mapper.spec.ts` | nada (función pura `NutritionPlanDto` → `NutritionalPlan`) |
+| `PlanGenerationService` | `plan-generation.service.spec.ts` | `OrdersService`/`OpenaiService`/`EmailService`/`PdfService`/`StorageService`/`NutritionalPlanRepository` (verifica el upsert de `NutritionalPlan` antes de `completeGeneration` y que un fallo ahí reintenta) — **las fórmulas de dominio corren de verdad** (test híbrido unit+integración); ver §5 |
 | `ConsultationService` | `consultation.service.spec.ts` | `OpenaiService` |
 | `ConsultationController` | `consultation.controller.spec.ts` | `ConsultationService` |
 | `OpenaiService` | `openai.service.spec.ts` | el SDK `openai` (`jest.mock('openai', ...)`) |
@@ -108,7 +102,7 @@ junto con los imports que quedaron sin uso.
 | `HttpExceptionFilter` | `http-exception.filter.spec.ts` | `ArgumentsHost` construido a mano |
 | `UserService` | `user.service.spec.ts` | `AuthIdentityService`, `UserRepository` |
 | `UserController` | `user.controller.spec.ts` | `UserService` |
-| `PanelService` | `panel.service.spec.ts` | `AuthIdentityService`, `NutritionalConsultationRepository` — cubre además el caso "paciente sin ninguna consulta todavía" (repositorio devuelve `null`, `goal`/`nutritionalPlan` deben quedar `null` sin lanzar) y el caso de consulta con `anamneses`/`nutritionalPlans` vacíos |
+| `PanelService` | `panel.service.spec.ts` | `AuthIdentityService`, `NutritionalConsultationRepository` — cubre nombre completo, `lastConsultationDate` y `dietRegimen`, además del caso "paciente sin ninguna consulta todavía" (repositorio devuelve `null`, `goal`/`nutritionalPlan` deben quedar `null` sin lanzar) y el caso de consulta con `anamneses`/`nutritionalPlans` vacíos |
 | `PanelController` | `panel.controller.spec.ts` | `PanelService` |
 
 `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId` (y su

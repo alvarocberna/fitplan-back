@@ -46,8 +46,4 @@ export class OrderRepositoryImpl implements OrderRepository {
   incrementOrderFailedAttempt(id: string): Promise<void> {
     return this.datasource.incrementOrderFailedAttempt(id);
   }
-
-  anonymizeOldOrders(cutoffDate: Date): Promise<number> {
-    return this.datasource.anonymizeOldOrders(cutoffDate);
-  }
 }

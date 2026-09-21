@@ -89,12 +89,4 @@ export class OrderDatasourceImpl implements OrderDatasource {
       data: { generationStatus: 'error', attempts: { increment: 1 } },
     });
   }
-
-  async anonymizeOldOrders(cutoffDate: Date): Promise<number> {
-    const { count } = await this.prisma.order.updateMany({
-      where: { creationDate: { lt: cutoffDate }, planJson: { not: null } },
-      data: { planJson: null },
-    });
-    return count;
-  }
 }

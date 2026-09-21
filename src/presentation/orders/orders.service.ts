@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -33,8 +32,6 @@ function buildPlanDownloadFilename(creationDate: Date): string {
 
 @Injectable()
 export class OrdersService {
-  private readonly logger = new Logger(OrdersService.name);
-
   constructor(
     private readonly authIdentityService: AuthIdentityService,
     private readonly clinicalRecordRepository: ClinicalRecordRepository,
@@ -235,16 +232,5 @@ export class OrdersService {
 
   async recordFailedAttempt(id: string): Promise<void> {
     await this.orderRepository.incrementOrderFailedAttempt(id);
-  }
-
-  //job de retención: anula el contenido sensible de órdenes antiguas, conservando el resto de la fila
-  async cleanupOldOrders(retentionDays: number): Promise<number> {
-    const limit = new Date();
-    limit.setDate(limit.getDate() - retentionDays);
-
-    const count = await this.orderRepository.anonymizeOldOrders(limit);
-    if (count > 0)
-      this.logger.log(`Limpieza de retención: ${count} orden(es) anonimizadas`);
-    return count;
   }
 }

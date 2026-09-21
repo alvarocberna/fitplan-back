@@ -24,7 +24,4 @@ export abstract class OrderDatasource {
   abstract tryTransitionOrderToGenerating(id: string): Promise<boolean>;
 
   abstract incrementOrderFailedAttempt(id: string): Promise<void>;
-
-  // job de retención: anula planJson de órdenes anteriores a cutoffDate, conservando la fila.
-  abstract anonymizeOldOrders(cutoffDate: Date): Promise<number>;
 }

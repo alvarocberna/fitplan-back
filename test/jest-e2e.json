@@ -7,7 +7,6 @@
     "^.+\\.(t|j)sx?$": "ts-jest"
   },
   "moduleNameMapper": {
-    "^@react-pdf/renderer$": "<rootDir>/mocks/react-pdf-renderer.ts",
-    "^cron$": "<rootDir>/mocks/cron.ts"
+    "^@react-pdf/renderer$": "<rootDir>/mocks/react-pdf-renderer.ts"
   }
 }

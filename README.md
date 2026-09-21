@@ -55,7 +55,6 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 - **PDF**: `@react-pdf/renderer` (corre tanto server-side como client-side)
 - **Almacenamiento**: AWS SDK v3 (`@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`) para
   persistir el PDF de cada plan en un bucket S3 privado y servirlo vía URL firmada
-- **Jobs programados**: `cron` (job de retención de datos)
 - **Testing**: Jest (`.spec.ts` unitarios) + Supertest (e2e)
 
 ## Arquitectura
@@ -82,7 +81,7 @@ src/
 │   ├── user/               # Endpoint dedicado de perfil para la pantalla /perfil del frontend
 │   ├── panel/              # Resumen de usuario/objetivo/plan para la pantalla /panel del frontend
 │   ├── consultation/       # Chat conversacional de recopilación de la anamnesis
-│   ├── orders/             # Creación/consulta de la orden de cobro + job de retención de datos
+│   ├── orders/             # Creación/consulta de la orden de cobro
 │   ├── webhooks/           # Webhook de pago (real y simulado) → dispara la generación del plan
 │   ├── plan-generation/    # Worker que genera el plan con IA (disparado por el webhook de pago)
 │   ├── pdf/                # Generación del PDF del plan (@react-pdf/renderer)
@@ -561,25 +560,21 @@ La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
 [doc/auth.md](./doc/auth.md)) — ver `doc/orders-postgres-migration.md` y `doc/technical-debt.md` para
 el detalle de esa migración y su deuda pendiente. Buena parte del resto del dominio (`Payment`, la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
-consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` es un
-caso intermedio: `GET /panel/resumen` ya lo **lee** (`nutritionalPlans` incluido en
-`getLatestNutritionalConsultationWithDetailsByPatientId`), pero nada todavía **escribe** filas ahí —
-la generación del plan (`PlanGenerationService`) sigue persistiendo el plan solo como
-`Order.planJson`, no como árbol `NutritionalPlan`/hijas, así que en la práctica
-`consultation.nutritionalPlans` viene vacío para cualquier usuario hoy y el panel siempre devuelve
-`nutritionalPlan: null` (ver deuda técnica).
+consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
+la fila principal, no sus tablas hijas) sí está conectado: `PlanGenerationService` la **escribe**
+(`NutritionalPlanRepository.upsertNutritionalPlanByOrderId`, idempotente por `orderId`) justo antes de
+marcar la orden como `completado`, y `GET /panel/resumen` la **lee** (`nutritionalPlans` incluido en
+`getLatestNutritionalConsultationWithDetailsByPatientId`, que solo considera consultas que ya tienen
+plan). Las órdenes completadas antes de este cambio no tienen fila `NutritionalPlan` (sin backfill).
 
-Un job de retención (`RetentionService`, cron diario a las 03:00) anonimiza `Order.planJson` (lo pone
-en `null`) de órdenes con más de 45 días, conservando la fila para auditoría/estadística — ver
-`OrdersService.cleanupOldOrders`. **No** anonimiza todavía los datos clínicos de la
-`NutritionalConsultation`/`Anamnesis`/`Measurements` asociada (ver deuda técnica).
+No hay job de retención: `Order.planJson` (y el resto de la orden) se conserva sin límite de tiempo.
 
 ## Testing
 
 Cada módulo de `presentation` y de `domain/services` trae su(s) `.spec.ts` co-localizado(s) junto
 al archivo que testea. Comandos: `npm run test` (unitarios), `npm run test:e2e`, `npm run
 test:cov`. Ver **[doc/testing.md](./doc/testing.md)** para el detalle de qué cubre cada test, las
-decisiones de infraestructura (stubs de `@react-pdf/renderer`/`cron`), y la deuda pendiente
+decisiones de infraestructura (stub de `@react-pdf/renderer`), y la deuda pendiente
 (fórmulas sin consumidor sin testear, e2e sin verificar en CI).
 
 ## Deuda técnica y pendientes
@@ -600,10 +595,10 @@ datasources/repositories que ya no existe en el código actual).
 - No hay pasarela de pago real integrada (`WebhooksService.verifyWebhookSignature` siempre devuelve
   `true`) ni proveedor de correo real conectado (`EmailService.sendRealEmail` es un stub que solo
   logea).
-- `GET /panel/resumen` ya lee la relación `nutritionalPlans` de `NutritionalConsultation`, pero nada
-  escribe ahí todavía: `PlanGenerationService` solo persiste el plan como `Order.planJson`, no como
-  filas `NutritionalPlan`/hijas. Hasta que se conecte ese lado de escritura, el panel siempre devuelve
-  `nutritionalPlan: null` en la práctica.
+- `PlanGenerationService` persiste la fila `NutritionalPlan` pero no sus hijas (`PlanMealTime`,
+  `PlanSupplement`, `PlanSportsRecommendation`): el detalle del plan sigue viviendo solo en
+  `Order.planJson`. Tampoco se hizo backfill de las órdenes completadas antes de que existiera la
+  escritura de `NutritionalPlan`.
 - El bucket S3 para los PDFs de planes ya existe y está en uso
   (`productos-personalizados/`, ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)); la
   carpeta `productos-estandarizados/` (planes predefinidos fijos) sigue sin ningún flujo de subida
@@ -620,5 +615,6 @@ datasources/repositories que ya no existe en el código actual).
   `mealHour` siempre `''`, `somatotype` guardado como texto libre en `Measurements.description`,
   `AnamnesisPsychosocial`/`Supplements` sin poblar) — ver `doc/orders-postgres-migration.md § 12` y
   `doc/technical-debt.md` para el detalle completo.
-- El job de retención solo anonimiza `Order.planJson`; los datos clínicos de la
-  `NutritionalConsultation` asociada a órdenes antiguas no se anonimizan todavía.
+- Los datos de salud (`Order.planJson`, `NutritionalConsultation` y `NutritionalPlan`) se conservan
+  sin límite de tiempo: se eliminó el job de retención de 45 días. Si más adelante se necesita una
+  política de retención/anonimización, hay que definirla también para `NutritionalPlan`.

@@ -1,6 +1,7 @@
 // Solo los campos básicos del último plan nutricional (los de ingesta real, nunca los de
 // requerimiento) — ver NutritionalPlanEntity en domain/entities/nutritional-plan.entity.ts.
 export interface PanelNutritionalPlanDto {
+  dietRegimen: string | null;
   calorieIntake: number;
   proteinIntake: number;
   carbohydrateIntake: number;
@@ -9,8 +10,13 @@ export interface PanelNutritionalPlanDto {
 
 export interface PanelSummaryDto {
   firstName: string | null;
+  middleName: string | null;
   paternalLastName: string | null;
+  maternalLastName: string | null;
   age: number | null;
+  // Fecha (ISO) de la última consulta con plan generado — misma consulta de la que salen
+  // goal y nutritionalPlan.
+  lastConsultationDate: string | null;
   goal: string | null;
   nutritionalPlan: PanelNutritionalPlanDto | null;
 }

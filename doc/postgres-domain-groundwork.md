@@ -16,11 +16,12 @@ entidades, DTOs, contratos, datasources y repositories.
 > sigue describiendo con precisión la arquitectura general de la capa (entidades, DTOs, datasources,
 > repositories) tal como se construyó; **no generalizar** — partes de ella (`AuthIdentity`, `Payment`,
 > la mayoría de `clinical-domain` fuera de `Anamnesis`/`Measurements` básicos) siguen sin ningún
-> consumidor real, ver §7 y §9 más abajo. `NutritionalPlan` y sus hijas son un caso aparte desde
-> `presentation/panel/` (`GET /panel/resumen`): tienen un consumidor de **lectura** vía
-> `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId`, pero
-> ningún consumidor de **escritura** todavía (`PlanGenerationService` solo persiste en
-> `Order.planJson`) — ver `doc/technical-debt.md`.
+> consumidor real, ver §7 y §9 más abajo. `NutritionalPlan` (solo la fila principal; sus hijas siguen
+> sin poblarse) es un caso aparte: tiene un consumidor de **escritura** (`PlanGenerationService` →
+> `NutritionalPlanRepository.upsertNutritionalPlanByOrderId`) y uno de **lectura** desde
+> `presentation/panel/` (`GET /panel/resumen`, vía
+> `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId`) — ver
+> `doc/technical-debt.md`.
 
 Si estás buscando cómo funciona el producto en producción hoy, ver el README principal y
 `doc/flow-happy-path.md`. Este documento sigue siendo la única fuente de verdad sobre las decisiones

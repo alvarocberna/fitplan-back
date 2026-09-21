@@ -14,6 +14,7 @@ import {
 import { OrderEntity } from '../../domain/entities/order.entity';
 import { UserEntity } from '../../domain/entities/user.entity';
 import { NutritionalConsultationEntity } from '../../domain/entities/clinical-record.entity';
+import { NutritionalPlanRepository } from '../../domain/repositories/clinical-domain/nutritional-plan.repository';
 import { AnamnesisEntity } from '../../domain/entities/anamnesis.entity';
 import { MeasurementsEntity } from '../../domain/entities/measurements.entity';
 import { calculateAge } from '../../domain/services/utils/age.service';
@@ -56,6 +57,7 @@ import {
   EXTRACT_INFO_SYSTEM_PROMPT,
   NUTRITIONIST_SYSTEM_PROMPT,
 } from './plan-generation.prompts';
+import { mapPlanToNutritionalPlanDto } from './plan-generation.mapper';
 
 const MAX_ATTEMPTS = 4;
 const BACKOFF_BASE_MS = 1000;
@@ -138,6 +140,7 @@ export class PlanGenerationService {
     private readonly pdfService: PdfService,
     private readonly thumbnailService: ThumbnailService,
     private readonly storageService: StorageService,
+    private readonly nutritionalPlanRepository: NutritionalPlanRepository,
   ) {}
 
   //se dispara (sin await, "fire and forget") desde el webhook de pago una vez confirmado el cobro
@@ -177,6 +180,13 @@ export class PlanGenerationService {
         const pdfKey = buildPersonalizedPlanKey(orderId);
         await this.storageService.uploadPdf(pdfBuffer, pdfKey);
         const thumbnailKey = await this.tryUploadThumbnail(orderId, pdfBuffer);
+
+        // Se persiste el NutritionalPlan ANTES de marcar la orden como 'completado', así una orden
+        // completada siempre tiene su plan normalizado. Es un upsert por orderId, por lo que un
+        // reintento del loop (ej. si falla el correo más abajo) no duplica ni rompe el @unique.
+        await this.nutritionalPlanRepository.upsertNutritionalPlanByOrderId(
+          mapPlanToNutritionalPlanDto(plan, consultation.id, orderId, pdfKey),
+        );
 
         await this.ordersService.completeGeneration(
           orderId,

@@ -23,8 +23,11 @@ describe('PanelController', () => {
   it('getResumen() delega en PanelService.getSummary con los claims de Cognito', async () => {
     const summary: PanelSummaryDto = {
       firstName: 'Ana',
+      middleName: null,
       paternalLastName: 'Pérez',
+      maternalLastName: null,
       age: 30,
+      lastConsultationDate: null,
       goal: 'bajar de peso',
       nutritionalPlan: null,
     };

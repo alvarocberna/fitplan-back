@@ -36,7 +36,6 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "cors": "^2.8.5",
-    "cron": "^4.3.3",
     "dotenv": "^17.2.1",
     "env-var": "^7.5.0",
     "helmet": "^8.3.0",

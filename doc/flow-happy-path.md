@@ -295,7 +295,10 @@ pasarela de pago real en vez de por el frontend.
   (`StorageService`, ver `doc/technical-debt.md`) y reutilizado tanto para el adjunto del correo
   como para el `pdfUrl` firmado que expone `GET /ordenes/obtener-estado/:id`; también se sigue
   generando client-side (mismo documento react-pdf) para la descarga manual desde el navegador.
-- **Retención de datos**: un cron diario (`RetentionService`, 03:00) anonimiza (`Order.planJson` →
-  `null`) las órdenes con más de 45 días, conservando la fila para auditoría/estadística. Los datos
-  clínicos de la `NutritionalConsultation` asociada no se anonimizan todavía (ver
-  `doc/technical-debt.md`).
+- **Retención de datos**: no hay job de retención — las órdenes (`Order.planJson`), las consultas y
+  las filas `NutritionalPlan` se conservan sin límite de tiempo. (El antiguo cron de 45 días,
+  `RetentionService`, se eliminó.)
+- **`NutritionalPlan`**: al generar el plan con éxito, `PlanGenerationService` hace un upsert por
+  `orderId` de la fila `NutritionalPlan` (objetivo, régimen, requerimientos e ingesta de
+  calorías/macros, key del PDF) justo antes de `OrdersService.completeGeneration`. Solo la fila
+  principal: las tablas hijas no se pueblan.

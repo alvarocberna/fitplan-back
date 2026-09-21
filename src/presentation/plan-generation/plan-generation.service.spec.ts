@@ -6,6 +6,7 @@ import { EmailService } from '../notifications/email.service';
 import { PdfService } from '../pdf/pdf.service';
 import { ThumbnailService } from '../pdf/thumbnail.service';
 import { StorageService } from '../storage/storage.service';
+import { NutritionalPlanRepository } from '../../domain/repositories/clinical-domain/nutritional-plan.repository';
 import { calculateAge } from '../../domain/services/utils/age.service';
 import { calculateRequirements } from '../../domain/services/formulas/requirements.service';
 import { determineMealTimes } from '../../domain/services/alimentos/meal-times.service';
@@ -73,6 +74,7 @@ describe('PlanGenerationService', () => {
   let pdfService: jest.Mocked<PdfService>;
   let thumbnailService: jest.Mocked<ThumbnailService>;
   let storageService: jest.Mocked<StorageService>;
+  let nutritionalPlanRepository: jest.Mocked<NutritionalPlanRepository>;
 
   const dateOfBirth = new Date('1996-01-01');
   const weight = 70;
@@ -118,6 +120,7 @@ describe('PlanGenerationService', () => {
   } as any;
 
   const consultationEntity = {
+    id: 'consultation-1',
     athlete: false,
     anamneses: [
       {
@@ -173,6 +176,7 @@ describe('PlanGenerationService', () => {
           provide: StorageService,
           useValue: { uploadPdf: jest.fn(), uploadImage: jest.fn(), getSignedDownloadUrl: jest.fn() },
         },
+        { provide: NutritionalPlanRepository, useValue: { upsertNutritionalPlanByOrderId: jest.fn() } },
       ],
     }).compile();
 
@@ -183,7 +187,9 @@ describe('PlanGenerationService', () => {
     pdfService = module.get(PdfService);
     thumbnailService = module.get(ThumbnailService);
     storageService = module.get(StorageService);
+    nutritionalPlanRepository = module.get(NutritionalPlanRepository);
 
+    nutritionalPlanRepository.upsertNutritionalPlanByOrderId.mockResolvedValue({} as any);
     ordersService.tryStartGeneration.mockResolvedValue(true);
     ordersService.findByIdWithUser.mockResolvedValue(orderEntity);
     ordersService.getConsultationForOrder.mockResolvedValue(consultationEntity);
@@ -272,6 +278,49 @@ describe('PlanGenerationService', () => {
       Buffer.from('contenido-miniatura'),
       thumbnailKey,
     );
+  });
+
+  it('persiste el NutritionalPlan (por orderId) con los datos del plan, antes de marcar la orden como completada', async () => {
+    const { requirements, totalIntake } = mockMatchingAiResponses();
+
+    await service.generatePlan('order-1');
+
+    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId).toHaveBeenCalledTimes(1);
+    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId).toHaveBeenCalledWith({
+      consultationId: 'consultation-1',
+      orderId: 'order-1',
+      goal,
+      dietRegimen: 'Plan personalizado',
+      calorieRequirement: requirements.calories,
+      proteinRequirement: requirements.protein,
+      carbohydrateRequirement: requirements.carbohydrate,
+      lipidRequirement: requirements.fat,
+      calorieIntake: totalIntake.calories,
+      proteinIntake: totalIntake.protein,
+      carbohydrateIntake: totalIntake.carbohydrate,
+      lipidIntake: totalIntake.fat,
+      pdfUrl: 'productos-personalizados/order-1.pdf',
+    });
+    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId.mock.invocationCallOrder[0]).toBeLessThan(
+      ordersService.completeGeneration.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('si falla la persistencia del NutritionalPlan, la orden no se completa en ese intento y el reintento la completa', async () => {
+    jest.useFakeTimers();
+    mockMatchingAiResponses(); // 1er intento
+    mockMatchingAiResponses(); // 2do intento (encola 2 respuestas más de la IA)
+    nutritionalPlanRepository.upsertNutritionalPlanByOrderId.mockRejectedValueOnce(new Error('DB caída'));
+
+    const resultPromise = service.generatePlan('order-1');
+    await jest.advanceTimersByTimeAsync(60000);
+    await resultPromise;
+
+    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId).toHaveBeenCalledTimes(2);
+    expect(ordersService.completeGeneration).toHaveBeenCalledTimes(1);
+    expect(ordersService.recordFailedAttempt).not.toHaveBeenCalled();
+
+    jest.useRealTimers();
   });
 
   it.each([

@@ -205,7 +205,9 @@ export class NutritionalConsultationDatasourceImpl
   ): Promise<NutritionalConsultationEntity | null> {
     const consultation: NutritionalConsultationWithPanelDetails | null =
       await this.prisma.nutritionalConsultation.findFirst({
-        where: { patientId },
+        // Solo consultas con plan generado: la consulta se crea antes del pago, así que la más
+        // reciente puede no tener plan todavía y el panel mostraría datos sin su plan.
+        where: { patientId, nutritionalPlans: { some: {} } },
         orderBy: { consultationNumber: 'desc' },
         include: PANEL_DETAILS_INCLUDE,
       });

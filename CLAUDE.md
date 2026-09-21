@@ -65,7 +65,7 @@ src/
 ├── presentation/                # NestJS modules (controllers, services, validated DTOs)
 │   ├── auth/                       # Cognito JWT Guard + identity/profile endpoints (see doc/auth.md)
 │   ├── consultation/              # Conversational anamnesis-collection chat
-│   ├── orders/                     # Order creation/status + data-retention cron job
+│   ├── orders/                     # Order creation/status
 │   ├── webhooks/                   # Payment webhook (real + simulated) → triggers plan generation
 │   ├── plan-generation/            # Background worker that generates the plan with AI
 │   ├── pdf/                         # Plan PDF rendering (@react-pdf/renderer)
@@ -173,8 +173,10 @@ at the application layer (`domain/entities/*.entity.ts`).
 
 Only part of this schema has a real consumer today — the `orders`/`webhooks`/`plan-generation`
 pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamnesis`/`Measurements`
-children), `Order`, and `Product`; `AuthIdentity` is used by `presentation/auth/` (see below). The
-rest (`Payment`, `NutritionalPlan` and its children, several `clinical-domain` leaf entities)
+children), `NutritionalPlan` (main row only — `PlanGenerationService` upserts it by `orderId` before
+marking the order `completado`; its child tables are not populated), `Order`, and `Product`;
+`AuthIdentity` is used by `presentation/auth/` (see below). The
+rest (`Payment`, the `NutritionalPlan` children, several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
 the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. See
 `doc/postgres-domain-groundwork.md` for the full architecture of that layer and
@@ -192,9 +194,9 @@ reason) separately, since Cognito never provides those fields. `JWT_ACCESS_SECRE
 unrelated, removed local-auth module — `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID` are the ones
 actually used by the Guard.
 
-A daily cron (`RetentionService`, 03:00) anonymizes `Order.planJson` on orders older than 45 days
-while keeping the row (`OrdersService.cleanupOldOrders`) — it does not yet anonymize the clinical
-data in `NutritionalConsultation`/`Anamnesis`/`Measurements` (see `doc/technical-debt.md`).
+There is no data-retention job: orders (`Order.planJson`), consultations and `NutritionalPlan` rows
+are kept indefinitely (the former 45-day `RetentionService` cron was removed). If a retention policy
+is needed later, it must cover `NutritionalPlan` too.
 
 ## Keeping documentation in sync
 

@@ -55,7 +55,6 @@ describe('OrdersService', () => {
             tryTransitionOrderToGenerating: jest.fn(),
             updateOrderById: jest.fn(),
             incrementOrderFailedAttempt: jest.fn(),
-            anonymizeOldOrders: jest.fn(),
           },
         },
         {
@@ -375,19 +374,6 @@ describe('OrdersService', () => {
       expect(summary.thumbnailUrl).toBeNull();
       expect(summary.pdfUrl).toBe('https://signed-url.example/productos-personalizados/order-1.pdf');
       expect(storageService.getSignedDownloadUrl).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('cleanupOldOrders', () => {
-    it('devuelve la cantidad anonimizada por el repositorio', async () => {
-      orderRepository.anonymizeOldOrders.mockResolvedValue(3);
-      await expect(service.cleanupOldOrders(45)).resolves.toBe(3);
-      expect(orderRepository.anonymizeOldOrders).toHaveBeenCalledWith(expect.any(Date));
-    });
-
-    it('no falla si no hay órdenes que limpiar (count 0)', async () => {
-      orderRepository.anonymizeOldOrders.mockResolvedValue(0);
-      await expect(service.cleanupOldOrders(45)).resolves.toBe(0);
     });
   });
 });

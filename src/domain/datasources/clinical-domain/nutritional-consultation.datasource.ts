@@ -31,7 +31,8 @@ export abstract class NutritionalConsultationDatasource {
   ): Promise<NutritionalConsultationEntity | null>;
 
   // Lectura enriquecida (patient, anamneses.goals, nutritionalPlans) de la consulta más reciente
-  // de un paciente — usada por el panel del usuario (presentation/panel).
+  // de un paciente QUE YA TIENE un plan generado (las consultas pendientes de pago/generación se
+  // ignoran) — usada por el panel del usuario (presentation/panel).
   abstract getLatestNutritionalConsultationWithDetailsByPatientId(
     patientId: string,
   ): Promise<NutritionalConsultationEntity | null>;

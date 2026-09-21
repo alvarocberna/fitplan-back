@@ -52,7 +52,6 @@ describe('App (e2e)', () => {
         tryTransitionOrderToGenerating: jest.fn(),
         updateOrderById: jest.fn(),
         incrementOrderFailedAttempt: jest.fn(),
-        anonymizeOldOrders: jest.fn(),
       })
       .overrideProvider(OpenaiService)
       .useValue({ chatJson: jest.fn() })
