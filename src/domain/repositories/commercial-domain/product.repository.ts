@@ -11,5 +11,8 @@ export abstract class ProductRepository {
     updateProductDto: UpdateProductDto,
   ): Promise<ProductEntity>;
   abstract deleteProductById(id: string): Promise<void>;
+  abstract getActivePredefinedProductByCode(
+    code: string,
+  ): Promise<ProductEntity | null>;
   abstract findOrCreateActiveGeneratedProduct(): Promise<ProductEntity>;
 }

@@ -22,14 +22,19 @@ export class WebhooksService {
   // disparar la generación. La respuesta no espera a que termine la generación (esta corre
   // en segundo plano) para no bloquear al webhook.
   async processPayment(orderId: string): Promise<{ status: 'procesado' | 'ya_procesado' }> {
-    //busca la orden, 404 si la orden no existe
-    await this.ordersService.findById(orderId);
-
-    //marca el paymentStatus de pendiente -> pagado
-    const markedNow = await this.ordersService.markAsPaid(orderId);
+    //marca el paymentStatus de pendiente -> pagado y crea el payment (404 si la orden no existe).
+    //para un plan predefinido también deja lista la orden (copia el PDF del producto).
+    const { markedNow, productType } = await this.ordersService.markAsPaid(orderId);
     if (!markedNow) {
       this.logger.log(`Orden ${orderId}: webhook de pago recibido pero ya estaba pagada (ignorado)`);
       return { status: 'ya_procesado' };
+    }
+
+    // un plan predefinido ya viene con su PDF (se copió desde el producto al marcar el pago): no hay
+    // consulta ni nada que generar, así que solo los productos GENERATED disparan el pipeline.
+    if (productType !== 'GENERATED') {
+      this.logger.log(`Orden ${orderId}: pago confirmado (producto ${productType}, sin generación)`);
+      return { status: 'procesado' };
     }
 
     // fire-and-forget: el worker maneja sus propios reintentos y estados de error internamente,

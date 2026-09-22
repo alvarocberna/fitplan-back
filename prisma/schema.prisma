@@ -514,9 +514,7 @@ model NutritionalPlan {
   carbohydrateIntake Float @map("carbohydrate_intake")
   lipidIntake        Float @map("lipid_intake")
 
-  pdfUrl String? @map("pdf_url") // ubicación del PDF final generado y entregado al paciente
-
-  mealTimes             PlanMealTime[]
+  mealTimes            PlanMealTime[]
   supplement            PlanSupplement?
   sportsRecommendations PlanSportsRecommendation[]
 
@@ -635,7 +633,16 @@ model Product {
   price    Decimal @db.Decimal(12, 2)
   currency String
 
-  pdfUrl String? @map("pdf_url") // archivo estático; solo aplica si type = PREDEFINED
+  // Identificador legible de la versión de un plan predefinido, p. ej. 'plan-volumen-50-60-m-joven'
+  // (<plan>-<pesoMin>-<pesoMax>-<sexo>-<edad>). Es también el nombre de los archivos en S3. Null para
+  // productos GENERATED, que no tienen versiones.
+  code String? @unique
+
+  // Object key en S3 (carpeta productos-estandarizados/) del PDF estático y de su miniatura WebP;
+  // solo aplican si type = PREDEFINED. Al confirmarse el pago se copian a order.pdf_key /
+  // order.thumbnail_key.
+  pdfKey       String? @map("pdf_key")
+  thumbnailKey String? @map("thumbnail_key")
 
   active Boolean
 

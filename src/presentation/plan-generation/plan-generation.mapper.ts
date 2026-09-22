@@ -11,7 +11,6 @@ export function mapPlanToNutritionalPlanDto(
   plan: NutritionPlanDto,
   consultationId: string,
   orderId: string,
-  pdfKey: string,
 ): CreateNutritionalPlanDto & { orderId: string } {
   const { prescription, planIntake } = plan;
 
@@ -28,7 +27,5 @@ export function mapPlanToNutritionalPlanDto(
     proteinIntake: planIntake.totalIntake.protein,
     carbohydrateIntake: planIntake.totalIntake.carbohydrate,
     lipidIntake: planIntake.totalIntake.fat,
-    // Se guarda la key de S3 (no una URL firmada, que expira); mismo valor que Order.pdfKey.
-    pdfUrl: pdfKey,
   };
 }

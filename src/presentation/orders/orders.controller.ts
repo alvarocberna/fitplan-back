@@ -14,6 +14,7 @@ import { OrderStatusDto, OrderSummaryDto } from '../../domain';
 import { OrdersService } from './orders.service';
 //presentation - consultation
 import { CompleteConsultationDtoImpl } from '../consultation/dto/consultation.dto';
+import { CreatePredefinedOrderDtoImpl } from './dto/create-predefined-order.dto';
 //presentation - auth
 import { CognitoAuthGuard } from '../auth/cognito-auth.guard';
 import { CognitoUser } from '../auth/cognito-user.decorator';
@@ -31,6 +32,17 @@ export class OrdersController {
     @CognitoUser() cognitoUser: CognitoUserClaims,
   ): Promise<{ orderId: string }> {
     return this.ordersService.createOrder(body, cognitoUser);
+  }
+
+  //crea la orden (paymentStatus='pendiente') de un plan predefinido, sin consulta previa: recibe solo el
+  //code de la versión elegida y el precio/archivos salen de la base de datos, nunca del frontend.
+  @UseGuards(CognitoAuthGuard)
+  @Post('crear-predefinido')
+  createPredefined(
+    @Body() body: CreatePredefinedOrderDtoImpl,
+    @CognitoUser() cognitoUser: CognitoUserClaims,
+  ): Promise<{ orderId: string }> {
+    return this.ordersService.createPredefinedOrder(body.code, cognitoUser);
   }
 
   //el frontend hace polling a este endpoint desde /consulta/resultado

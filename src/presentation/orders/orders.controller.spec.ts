@@ -16,6 +16,7 @@ describe('OrdersController', () => {
           provide: OrdersService,
           useValue: {
             createOrder: jest.fn(),
+            createPredefinedOrder: jest.fn(),
             getStatus: jest.fn(),
             getOrdersForUser: jest.fn(),
           },
@@ -34,6 +35,19 @@ describe('OrdersController', () => {
 
     await expect(controller.create(dto, cognitoUser)).resolves.toEqual({ orderId: 'order-1' });
     expect(service.createOrder).toHaveBeenCalledWith(dto, cognitoUser);
+  });
+
+  it('createPredefined() delega en OrdersService.createPredefinedOrder con el code y el usuario recibidos', async () => {
+    const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
+    service.createPredefinedOrder.mockResolvedValue({ orderId: 'order-2' });
+
+    await expect(
+      controller.createPredefined({ code: 'plan-gimnasio-volumen-50-60-m-joven' }, cognitoUser),
+    ).resolves.toEqual({ orderId: 'order-2' });
+    expect(service.createPredefinedOrder).toHaveBeenCalledWith(
+      'plan-gimnasio-volumen-50-60-m-joven',
+      cognitoUser,
+    );
   });
 
   it('getStatus() delega en OrdersService.getStatus con el id y el usuario recibidos', async () => {

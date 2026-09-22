@@ -38,9 +38,6 @@ export interface NutritionalPlanEntity {
   carbohydrateIntake: number;
   lipidIntake: number;
 
-  // Ubicación del PDF final generado y entregado al paciente.
-  pdfUrl: string | null;
-
   mealTimes?: PlanMealTimeEntity[];
   supplement?: PlanSupplementEntity | null;
   sportsRecommendations?: PlanSportsRecommendationEntity[];

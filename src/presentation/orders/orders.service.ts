@@ -17,6 +17,8 @@ import { NutritionalConsultationRepository } from '../../domain/repositories/cli
 import { ProductRepository } from '../../domain/repositories/commercial-domain/product.repository';
 import { OrderRepository } from '../../domain/repositories/commercial-domain/order.repository';
 import { OrderEntity } from '../../domain/entities/order.entity';
+import { ProductType } from '../../domain/entities/product.entity';
+import type { OrderPaidExtras } from '../../domain/datasources/commercial-domain/order.datasource';
 import { NutritionalConsultationEntity } from '../../domain/entities/clinical-record.entity';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -105,6 +107,42 @@ export class OrdersService {
         measurements: mapMeasurementsDtoToDetails(dto.measurements),
       },
     );
+
+    return { orderId: order.id };
+  }
+
+  //crea la orden de un plan predefinido en paymentStatus='pendiente'. A diferencia de createOrder no hay
+  //consulta ni ficha clínica: la orden solo vincula al usuario (userId) con el producto que eligió, y el
+  //monto sale siempre de product.price. Tampoco se exige perfil completo, basta con tener sesión.
+  //la orden nace SIN pdfKey/thumbnailKey: se copian desde el producto recién al confirmarse el pago
+  //(markAsPaid), porque getStatus entrega el PDF de cualquier orden que ya lo tenga.
+  async createPredefinedOrder(
+    code: string,
+    cognitoUser: CognitoUserClaims,
+  ): Promise<{ orderId: string }> {
+    const user = await this.authIdentityService.getUserBySub(cognitoUser);
+
+    const product =
+      await this.productRepository.getActivePredefinedProductByCode(code);
+    if (!product?.pdfKey) {
+      throw new NotFoundException(`Plan ${code} no disponible`);
+    }
+
+    const order = await this.orderRepository.createOrder({
+      userId: user.id,
+      productId: product.id,
+      amount: product.price,
+      currency: product.currency,
+      paymentStatus: 'pendiente',
+      generationStatus: 'no_iniciado',
+      planJson: null,
+      pdfKey: null,
+      thumbnailKey: null,
+      attempts: 0,
+      creationDate: new Date(),
+      paymentDate: null,
+      expirationDate: null,
+    });
 
     return { orderId: order.id };
   }
@@ -204,10 +242,51 @@ export class OrdersService {
     return consultation;
   }
 
-  //idempotente: si ya estaba pagada, no vuelve a marcarla ni dispara nada.
-  //devuelve true si esta llamada fue la que efectivamente marcó el pago.
-  async markAsPaid(id: string): Promise<boolean> {
-    return this.orderRepository.markOrderAsPaidIfPending(id);
+  //idempotente: si ya estaba pagada, no vuelve a marcarla ni crea otro payment.
+  //en UNA transacción marca order.paymentStatus='pagado' y crea la fila payment (status AUTHORIZED),
+  //para que ambas entidades queden consistentes. Devuelve markedNow=true si esta llamada fue la que
+  //efectivamente marcó el pago, y el tipo del producto para que el webhook decida si hay que generar.
+  //para un producto PREDEFINED, en el mismo instante copia su pdfKey/thumbnailKey a la orden y la deja
+  //'completado': recién ahora que está pagada la orden puede exponer el PDF (getStatus / GET /ordenes).
+  async markAsPaid(
+    id: string,
+  ): Promise<{ markedNow: boolean; productType: ProductType }> {
+    const order = await this.orderRepository.getOrderWithProductById(id);
+    if (!order?.product) throw new NotFoundException(`Orden ${id} no encontrada`);
+    const { product } = order;
+
+    let extras: OrderPaidExtras | undefined;
+    if (product.type === 'PREDEFINED') {
+      if (!product.pdfKey) {
+        throw new Error(
+          `Producto ${product.id} (PREDEFINED) sin pdfKey: no se puede entregar la orden ${id}`,
+        );
+      }
+      extras = {
+        pdfKey: product.pdfKey,
+        thumbnailKey: product.thumbnailKey,
+        generationStatus: 'completado',
+      };
+    }
+
+    //el pago hoy es simulado: los campos de detalle son placeholders hasta integrar una pasarela real
+    //(que los entregaría en su webhook).
+    const markedNow = await this.orderRepository.markOrderAsPaidWithPayment(
+      id,
+      {
+        provider: 'SIMULATED',
+        paymentIdentifier: `SIM-${id}`,
+        authorizationCode: 'SIMULATED',
+        amount: order.amount,
+        installmentCount: 1,
+        status: 'AUTHORIZED',
+        transactionDate: new Date(),
+        movementType: 'SIMULATED',
+        cardType: 'SIMULATED',
+      },
+      extras,
+    );
+    return { markedNow, productType: product.type };
   }
 
   //guard de estado: solo entra a 'generando' si no estaba ya en ese estado,

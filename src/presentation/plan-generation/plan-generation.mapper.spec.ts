@@ -18,7 +18,7 @@ describe('mapPlanToNutritionalPlanDto', () => {
   } as unknown as NutritionPlanDto;
 
   it('mapea prescription a los campos *Requirement y planIntake.totalIntake a los *Intake (fat → lipid)', () => {
-    const result = mapPlanToNutritionalPlanDto(plan, 'consultation-1', 'order-1', 'plans/order-1.pdf');
+    const result = mapPlanToNutritionalPlanDto(plan, 'consultation-1', 'order-1');
 
     expect(result).toEqual({
       consultationId: 'consultation-1',
@@ -33,7 +33,6 @@ describe('mapPlanToNutritionalPlanDto', () => {
       proteinIntake: 148.5,
       carbohydrateIntake: 194,
       lipidIntake: 60.6,
-      pdfUrl: 'plans/order-1.pdf',
     });
   });
 });

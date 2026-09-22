@@ -299,7 +299,6 @@ describe('PlanGenerationService', () => {
       proteinIntake: totalIntake.protein,
       carbohydrateIntake: totalIntake.carbohydrate,
       lipidIntake: totalIntake.fat,
-      pdfUrl: 'productos-personalizados/order-1.pdf',
     });
     expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId.mock.invocationCallOrder[0]).toBeLessThan(
       ordersService.completeGeneration.mock.invocationCallOrder[0],

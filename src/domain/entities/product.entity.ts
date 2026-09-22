@@ -16,8 +16,14 @@ export interface ProductEntity {
   price: number;
   currency: string;
 
-  // Archivo estático; solo aplica si type = 'PREDEFINED'.
-  pdfUrl: string | null;
+  // Identificador de la versión de un plan predefinido (p. ej. 'plan-gimnasio-volumen-50-60-m-joven'); es
+  // también el nombre de sus archivos en S3. Null para productos GENERATED.
+  code: string | null;
+
+  // Object keys en S3 (productos-estandarizados/) del PDF estático y de su miniatura; solo aplican
+  // si type = 'PREDEFINED'. Se copian a Order.pdfKey / Order.thumbnailKey al confirmarse el pago.
+  pdfKey: string | null;
+  thumbnailKey: string | null;
 
   active: boolean;
 

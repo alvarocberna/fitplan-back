@@ -66,7 +66,8 @@ src/
 │   ├── auth/                       # Cognito JWT Guard + identity/profile endpoints (see doc/auth.md)
 │   ├── consultation/              # Conversational anamnesis-collection chat
 │   ├── orders/                     # Order creation/status
-│   ├── webhooks/                   # Payment webhook (real + simulated) → triggers plan generation
+│   ├── webhooks/                   # Payment webhook (real + simulated) → creates payment; triggers plan generation for GENERATED products
+│   ├── products/                   # Public catalog of predefined plans (GET /productos/predefinidos/:code)
 │   ├── plan-generation/            # Background worker that generates the plan with AI
 │   ├── pdf/                         # Plan PDF rendering (@react-pdf/renderer)
 │   ├── notifications/               # Emails the plan (stub — logs only, no real provider wired)
@@ -176,11 +177,22 @@ pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamne
 children), `NutritionalPlan` (main row only — `PlanGenerationService` upserts it by `orderId` before
 marking the order `completado`; its child tables are not populated), `Order`, and `Product`;
 `AuthIdentity` is used by `presentation/auth/` (see below). The
-rest (`Payment`, the `NutritionalPlan` children, several `clinical-domain` leaf entities)
+rest (the `NutritionalPlan` children, several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
-the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. See
+the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
+written by the payment webhook (`OrderRepository.markOrderAsPaidWithPayment`, same transaction that
+marks the order paid; `provider = 'SIMULATED'` while the gateway is simulated). See
 `doc/postgres-domain-groundwork.md` for the full architecture of that layer and
 `doc/orders-postgres-migration.md` for exactly what got connected and why.
+
+**Predefined plans** (a second product type, `Product.type = 'PREDEFINED'`, 112 versions identified by
+`Product.code` — `<plan>-<minKg>-<maxKg>-<m|f>-<joven|adulto>`, see
+`domain/services/utils/predefined-plan-code.ts`): the PDF already exists in S3
+(`productos-estandarizados/<code>.pdf`), uploaded by hand, and `npm run seed:predefined` loads/activates
+the catalog. `POST /ordenes/crear-predefinido` creates the order **without** `pdfKey`; the webhook copies
+`Product.pdfKey`/`thumbnailKey` to the order (and marks it `completado`) only when payment is confirmed,
+so an unpaid order never exposes the PDF, and it does **not** run plan generation for these. Full flow:
+`../doc/flows/purchase-flow-predefined-plan.md`.
 
 **Login/registration is implemented** with Amazon Cognito (Hosted UI, native + Google as a
 federated Identity Provider) — see `doc/auth.md` for the full picture. `presentation/auth/`

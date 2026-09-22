@@ -18,7 +18,9 @@ const DEFAULT_GENERATED_PRODUCT: CreateProductDto = {
     'Plan nutricional generado automáticamente a partir de la consulta del paciente.',
   price: 19990,
   currency: 'CLP',
-  pdfUrl: null,
+  code: null,
+  pdfKey: null,
+  thumbnailKey: null,
   active: true,
 };
 
@@ -61,6 +63,15 @@ export class ProductDatasourceImpl implements ProductDatasource {
 
   async deleteProductById(id: string): Promise<void> {
     await this.prisma.product.delete({ where: { id } });
+  }
+
+  async getActivePredefinedProductByCode(
+    code: string,
+  ): Promise<ProductEntity | null> {
+    const product = await this.prisma.product.findFirst({
+      where: { code, type: 'PREDEFINED', active: true },
+    });
+    return product ? this.toEntity(product) : null;
   }
 
   async findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {

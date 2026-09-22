@@ -1,8 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
-import { OrderDatasource } from '../../../domain/datasources/commercial-domain/order.datasource';
+import {
+  OrderDatasource,
+  OrderPaidExtras,
+} from '../../../domain/datasources/commercial-domain/order.datasource';
 import { OrderEntity } from '../../../domain/entities/order.entity';
-import { CreateOrderDto, UpdateOrderDto } from '../../../domain';
+import {
+  CreateOrderDto,
+  CreatePaymentDto,
+  UpdateOrderDto,
+} from '../../../domain';
 
 @Injectable()
 export class OrderRepositoryImpl implements OrderRepository {
@@ -31,12 +38,24 @@ export class OrderRepositoryImpl implements OrderRepository {
     return this.datasource.getOrderWithUserById(id);
   }
 
+  getOrderWithProductById(id: string): Promise<OrderEntity | null> {
+    return this.datasource.getOrderWithProductById(id);
+  }
+
   getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]> {
     return this.datasource.getPaidOrdersWithPdfByUserId(userId);
   }
 
   markOrderAsPaidIfPending(id: string): Promise<boolean> {
     return this.datasource.markOrderAsPaidIfPending(id);
+  }
+
+  markOrderAsPaidWithPayment(
+    id: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+    extras?: OrderPaidExtras,
+  ): Promise<boolean> {
+    return this.datasource.markOrderAsPaidWithPayment(id, payment, extras);
   }
 
   tryTransitionOrderToGenerating(id: string): Promise<boolean> {

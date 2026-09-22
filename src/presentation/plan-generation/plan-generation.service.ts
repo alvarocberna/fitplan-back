@@ -185,7 +185,7 @@ export class PlanGenerationService {
         // completada siempre tiene su plan normalizado. Es un upsert por orderId, por lo que un
         // reintento del loop (ej. si falla el correo más abajo) no duplica ni rompe el @unique.
         await this.nutritionalPlanRepository.upsertNutritionalPlanByOrderId(
-          mapPlanToNutritionalPlanDto(plan, consultation.id, orderId, pdfKey),
+          mapPlanToNutritionalPlanDto(plan, consultation.id, orderId),
         );
 
         await this.ordersService.completeGeneration(

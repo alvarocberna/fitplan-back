@@ -3,7 +3,9 @@
 
 import type { OrderEntity } from './order.entity';
 
-export type PaymentProvider = 'TRANSBANK';
+// 'SIMULATED' es el pago simulado (POST /webhooks/ordenes/:id/simular-pago) mientras no haya una
+// pasarela real integrada: sus campos de detalle (identificador, autorización, tarjeta) son placeholders.
+export type PaymentProvider = 'TRANSBANK' | 'SIMULATED';
 export type PaymentTransactionStatus = 'AUTHORIZED' | 'REJECTED' | 'CANCELLED';
 
 export interface PaymentEntity {

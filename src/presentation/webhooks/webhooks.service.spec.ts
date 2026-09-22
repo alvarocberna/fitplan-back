@@ -14,7 +14,7 @@ describe('WebhooksService', () => {
         WebhooksService,
         {
           provide: OrdersService,
-          useValue: { findById: jest.fn(), markAsPaid: jest.fn() },
+          useValue: { markAsPaid: jest.fn() },
         },
         {
           provide: PlanGenerationService,
@@ -33,20 +33,28 @@ describe('WebhooksService', () => {
   });
 
   describe('processPayment', () => {
-    it('caso feliz: marca la orden como pagada y dispara generatePlan sin esperarlo', async () => {
-      ordersService.findById.mockResolvedValue({ id: 'order-1' } as any);
-      ordersService.markAsPaid.mockResolvedValue(true);
+    it('plan GENERATED: marca la orden como pagada y dispara generatePlan sin esperarlo', async () => {
+      ordersService.markAsPaid.mockResolvedValue({ markedNow: true, productType: 'GENERATED' });
       planGenerationService.generatePlan.mockResolvedValue(undefined);
 
       const result = await service.processPayment('order-1');
 
       expect(result).toEqual({ status: 'procesado' });
+      expect(ordersService.markAsPaid).toHaveBeenCalledWith('order-1');
       expect(planGenerationService.generatePlan).toHaveBeenCalledWith('order-1');
     });
 
+    it('plan PREDEFINED: marca la orden como pagada pero NO dispara generatePlan (no hay nada que generar)', async () => {
+      ordersService.markAsPaid.mockResolvedValue({ markedNow: true, productType: 'PREDEFINED' });
+
+      const result = await service.processPayment('order-1');
+
+      expect(result).toEqual({ status: 'procesado' });
+      expect(planGenerationService.generatePlan).not.toHaveBeenCalled();
+    });
+
     it('idempotente: si la orden ya estaba pagada, no dispara generatePlan', async () => {
-      ordersService.findById.mockResolvedValue({ id: 'order-1' } as any);
-      ordersService.markAsPaid.mockResolvedValue(false);
+      ordersService.markAsPaid.mockResolvedValue({ markedNow: false, productType: 'GENERATED' });
 
       const result = await service.processPayment('order-1');
 
@@ -54,17 +62,16 @@ describe('WebhooksService', () => {
       expect(planGenerationService.generatePlan).not.toHaveBeenCalled();
     });
 
-    it('propaga el error de OrdersService.findById si la orden no existe (404)', async () => {
+    it('propaga el error de OrdersService.markAsPaid si la orden no existe (404)', async () => {
       const notFound = new Error('no encontrada');
-      ordersService.findById.mockRejectedValue(notFound);
+      ordersService.markAsPaid.mockRejectedValue(notFound);
 
       await expect(service.processPayment('missing')).rejects.toBe(notFound);
-      expect(ordersService.markAsPaid).not.toHaveBeenCalled();
+      expect(planGenerationService.generatePlan).not.toHaveBeenCalled();
     });
 
     it('un error inesperado en generatePlan queda contenido (no rechaza processPayment)', async () => {
-      ordersService.findById.mockResolvedValue({ id: 'order-1' } as any);
-      ordersService.markAsPaid.mockResolvedValue(true);
+      ordersService.markAsPaid.mockResolvedValue({ markedNow: true, productType: 'GENERATED' });
       planGenerationService.generatePlan.mockRejectedValue(new Error('fallo inesperado'));
 
       await expect(service.processPayment('order-1')).resolves.toEqual({ status: 'procesado' });

@@ -1,5 +1,11 @@
 import { OrderEntity } from '../../entities/order.entity';
-import { CreateOrderDto, UpdateOrderDto } from '../..';
+import { CreateOrderDto, CreatePaymentDto, UpdateOrderDto } from '../..';
+
+// Campos de la orden que se fijan en el mismo instante en que se confirma el pago (hoy: la copia
+// del PDF/miniatura de un producto predefinido y su paso a 'completado').
+export type OrderPaidExtras = Partial<
+  Pick<UpdateOrderDto, 'pdfKey' | 'thumbnailKey' | 'generationStatus'>
+>;
 
 export abstract class OrderDatasource {
   abstract createOrder(createOrderDto: CreateOrderDto): Promise<OrderEntity>;
@@ -12,12 +18,25 @@ export abstract class OrderDatasource {
 
   abstract getOrderWithUserById(id: string): Promise<OrderEntity | null>;
 
+  // orden con su producto incluido (usado por el webhook de pago para decidir qué hacer según
+  // product.type).
+  abstract getOrderWithProductById(id: string): Promise<OrderEntity | null>;
+
   // órdenes con plan generado y PDF ya subido a S3, de un usuario, más nuevas primero (usado por
   // el listado del panel/GET /ordenes).
   abstract getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]>;
 
   // idempotente: devuelve true solo si esta llamada fue la que efectivamente marcó el pago.
   abstract markOrderAsPaidIfPending(id: string): Promise<boolean>;
+
+  // Igual que markOrderAsPaidIfPending, pero en UNA transacción también crea la fila `payment` de la
+  // orden y aplica `extras` sobre ella, para que order.payment_status y payment.status no queden
+  // desalineados. Si la orden ya estaba pagada devuelve false y no crea nada (idempotente).
+  abstract markOrderAsPaidWithPayment(
+    id: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+    extras?: OrderPaidExtras,
+  ): Promise<boolean>;
 
   // guard de estado: solo entra a 'generando' si no estaba ya en ese estado (evita que dos
   // disparos concurrentes generen el plan dos veces).

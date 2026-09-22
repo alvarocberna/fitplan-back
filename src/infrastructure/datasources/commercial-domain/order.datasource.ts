@@ -1,13 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { Order as PrismaOrder } from '../../../../generated/prisma';
 import { PrismaService } from '../../orm/prisma/prisma.service';
-import { OrderDatasource } from '../../../domain/datasources/commercial-domain/order.datasource';
+import {
+  OrderDatasource,
+  OrderPaidExtras,
+} from '../../../domain/datasources/commercial-domain/order.datasource';
 import {
   OrderEntity,
   OrderStatus,
   OrderGenerationStatus,
 } from '../../../domain/entities/order.entity';
-import { CreateOrderDto, UpdateOrderDto } from '../../../domain';
+import { ProductType } from '../../../domain/entities/product.entity';
+import {
+  CreateOrderDto,
+  CreatePaymentDto,
+  UpdateOrderDto,
+} from '../../../domain';
 
 @Injectable()
 export class OrderDatasourceImpl implements OrderDatasource {
@@ -59,6 +67,23 @@ export class OrderDatasourceImpl implements OrderDatasource {
     return order ? this.toEntity(order) : null;
   }
 
+  async getOrderWithProductById(id: string): Promise<OrderEntity | null> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      include: { product: true },
+    });
+    return order
+      ? {
+          ...this.toEntity(order),
+          product: {
+            ...order.product,
+            price: order.product.price.toNumber(),
+            type: order.product.type as ProductType,
+          },
+        }
+      : null;
+  }
+
   async getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]> {
     const orders = await this.prisma.order.findMany({
       where: { userId, generationStatus: 'completado', pdfKey: { not: null } },
@@ -73,6 +98,24 @@ export class OrderDatasourceImpl implements OrderDatasource {
       data: { paymentStatus: 'pagado' },
     });
     return count > 0;
+  }
+
+  async markOrderAsPaidWithPayment(
+    id: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+    extras: OrderPaidExtras = {},
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      // mismo guard de idempotencia que markOrderAsPaidIfPending: solo la primera llamada avanza.
+      const { count } = await tx.order.updateMany({
+        where: { id, paymentStatus: 'pendiente' },
+        data: { ...extras, paymentStatus: 'pagado', paymentDate: new Date() },
+      });
+      if (count === 0) return false;
+
+      await tx.payment.create({ data: { ...payment, orderId: id } });
+      return true;
+    });
   }
 
   async tryTransitionOrderToGenerating(id: string): Promise<boolean> {

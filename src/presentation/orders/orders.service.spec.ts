@@ -42,7 +42,10 @@ describe('OrdersService', () => {
         },
         {
           provide: ProductRepository,
-          useValue: { findOrCreateActiveGeneratedProduct: jest.fn() },
+          useValue: {
+            findOrCreateActiveGeneratedProduct: jest.fn(),
+            getActivePredefinedProductByCode: jest.fn(),
+          },
         },
         {
           provide: OrderRepository,
@@ -50,8 +53,9 @@ describe('OrdersService', () => {
             createOrder: jest.fn(),
             getOrderById: jest.fn(),
             getOrderWithUserById: jest.fn(),
+            getOrderWithProductById: jest.fn(),
             getPaidOrdersWithPdfByUserId: jest.fn(),
-            markOrderAsPaidIfPending: jest.fn(),
+            markOrderAsPaidWithPayment: jest.fn(),
             tryTransitionOrderToGenerating: jest.fn(),
             updateOrderById: jest.fn(),
             incrementOrderFailedAttempt: jest.fn(),
@@ -150,6 +154,72 @@ describe('OrdersService', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('createPredefinedOrder', () => {
+    const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
+    const code = 'plan-gimnasio-volumen-50-60-m-joven';
+    const product = {
+      id: 'product-2',
+      code,
+      price: 14990,
+      currency: 'CLP',
+      pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
+    };
+
+    it('crea una orden pendiente con el monto del producto y SIN pdfKey/thumbnailKey, sin crear consulta ni exigir perfil completo', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      productRepository.getActivePredefinedProductByCode.mockResolvedValue(product as any);
+      orderRepository.createOrder.mockResolvedValue({ id: 'order-2' } as any);
+
+      await expect(service.createPredefinedOrder(code, cognitoUser)).resolves.toEqual({
+        orderId: 'order-2',
+      });
+
+      expect(productRepository.getActivePredefinedProductByCode).toHaveBeenCalledWith(code);
+      expect(orderRepository.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-1',
+          productId: 'product-2',
+          amount: 14990,
+          currency: 'CLP',
+          paymentStatus: 'pendiente',
+          generationStatus: 'no_iniciado',
+          planJson: null,
+          pdfKey: null,
+          thumbnailKey: null,
+          attempts: 0,
+        }),
+      );
+      expect(authIdentityService.isProfileComplete).not.toHaveBeenCalled();
+      expect(clinicalRecordRepository.findOrCreateClinicalRecordByPatientId).not.toHaveBeenCalled();
+      expect(
+        nutritionalConsultationRepository.createNutritionalConsultationWithDetails,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException si la versión no existe o está inactiva', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      productRepository.getActivePredefinedProductByCode.mockResolvedValue(null);
+
+      await expect(service.createPredefinedOrder(code, cognitoUser)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(orderRepository.createOrder).not.toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException si el producto está activo pero aún no tiene PDF (no se puede vender)', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      productRepository.getActivePredefinedProductByCode.mockResolvedValue({
+        ...product,
+        pdfKey: null,
+      } as any);
+
+      await expect(service.createPredefinedOrder(code, cognitoUser)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(orderRepository.createOrder).not.toHaveBeenCalled();
     });
   });
 
@@ -272,12 +342,89 @@ describe('OrdersService', () => {
   });
 
   describe('markAsPaid / tryStartGeneration', () => {
-    it('markAsPaid delega el booleano del repositorio', async () => {
-      orderRepository.markOrderAsPaidIfPending.mockResolvedValue(true);
-      await expect(service.markAsPaid('order-1')).resolves.toBe(true);
+    const generatedOrder = {
+      id: 'order-1',
+      amount: 19990,
+      product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
+    } as any;
+    const predefinedOrder = {
+      id: 'order-2',
+      amount: 14990,
+      product: {
+        id: 'product-2',
+        type: 'PREDEFINED',
+        pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
+        thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
+      },
+    } as any;
 
-      orderRepository.markOrderAsPaidIfPending.mockResolvedValue(false);
-      await expect(service.markAsPaid('order-1')).resolves.toBe(false);
+    it('markAsPaid lanza NotFoundException si la orden no existe', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue(null);
+
+      await expect(service.markAsPaid('missing')).rejects.toBeInstanceOf(NotFoundException);
+      expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+    });
+
+    it('markAsPaid (GENERATED) crea el payment AUTHORIZED con el monto de la orden, sin tocar pdfKey ni generationStatus', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue(generatedOrder);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
+
+      await expect(service.markAsPaid('order-1')).resolves.toEqual({
+        markedNow: true,
+        productType: 'GENERATED',
+      });
+
+      expect(orderRepository.markOrderAsPaidWithPayment).toHaveBeenCalledWith(
+        'order-1',
+        expect.objectContaining({
+          provider: 'SIMULATED',
+          paymentIdentifier: 'SIM-order-1',
+          amount: 19990,
+          status: 'AUTHORIZED',
+          transactionDate: expect.any(Date),
+        }),
+        undefined,
+      );
+    });
+
+    it('markAsPaid (PREDEFINED) copia pdfKey y thumbnailKey del producto a la orden y la deja completada', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue(predefinedOrder);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
+
+      await expect(service.markAsPaid('order-2')).resolves.toEqual({
+        markedNow: true,
+        productType: 'PREDEFINED',
+      });
+
+      expect(orderRepository.markOrderAsPaidWithPayment).toHaveBeenCalledWith(
+        'order-2',
+        expect.objectContaining({ amount: 14990, status: 'AUTHORIZED' }),
+        {
+          pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
+          thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
+          generationStatus: 'completado',
+        },
+      );
+    });
+
+    it('markAsPaid (PREDEFINED) falla sin marcar el pago si el producto no tiene pdfKey', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue({
+        ...predefinedOrder,
+        product: { ...predefinedOrder.product, pdfKey: null },
+      });
+
+      await expect(service.markAsPaid('order-2')).rejects.toThrow(/sin pdfKey/);
+      expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+    });
+
+    it('markAsPaid devuelve markedNow=false (idempotente) si la orden ya estaba pagada', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue(generatedOrder);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(false);
+
+      await expect(service.markAsPaid('order-1')).resolves.toEqual({
+        markedNow: false,
+        productType: 'GENERATED',
+      });
     });
 
     it('tryStartGeneration delega el booleano del repositorio', async () => {

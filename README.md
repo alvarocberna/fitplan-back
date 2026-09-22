@@ -110,7 +110,8 @@ Postgres (`IdentityAuthDatasourcesModule`/`IdentityAuthRepositoriesModule`,
 `CommercialDomainDatasourcesModule`/`CommercialDomainRepositoriesModule` — ver
 [Base de datos](#base-de-datos-prisma)), `OrdersModule`, `WebhooksModule` (este último importa
 `PlanGenerationModule`, que a su vez importa `OrdersModule`, `OpenaiModule`, `NotificationsModule`,
-`PdfModule` y `StorageModule` directamente), `UserModule` y `PanelModule`. En conjunto,
+`PdfModule` y `StorageModule` directamente), `UserModule`, `PanelModule` y `ProductsModule` (catálogo
+público de planes predefinidos). En conjunto,
 `OrdersModule`/`WebhooksModule`/`PlanGenerationModule` forman la cadena: pago confirmado →
 generación del plan → PDF → subida a S3 → correo (con el mismo PDF ya generado como adjunto).
 `OrdersModule` importa los tres `*RepositoriesModule` (para los repositories que usa
@@ -251,6 +252,32 @@ en este paso.
   del mapeo en [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md). Requiere que
   el body incluya `personalInfo.email` (400 si falta).
 
+### `POST /ordenes/crear-predefinido`
+
+Crea la orden de un **plan predefinido** (PDF ya hecho, sin consulta previa). Ver
+[doc/flows/purchase-flow-predefined-plan.md](../doc/flows/purchase-flow-predefined-plan.md).
+
+- **Controller**: `OrdersController.createPredefined` → `OrdersService.createPredefinedOrder`. Requiere
+  sesión (`CognitoAuthGuard`), pero **no** exige perfil completo.
+- **Request** (`CreatePredefinedOrderDtoImpl`): `{ code: string }`, con el formato
+  `<plan>-<pesoMin>-<pesoMax>-<sexo>-<edad>` (p. ej. `plan-gimnasio-volumen-50-60-m-joven`; validado con
+  `PREDEFINED_PLAN_CODE_REGEX`, ver `domain/services/utils/predefined-plan-code.ts`). Un código con otro
+  formato responde 400.
+- **Response**: `{ orderId: string }`
+- Busca el `Product` activo `PREDEFINED` con ese `code` (404 si no existe, está inactivo o no tiene
+  `pdfKey`) y crea la `Order` (`paymentStatus='pendiente'`, `amount = product.price`) **sin**
+  `pdfKey`/`thumbnailKey`: se copian desde el producto recién al confirmarse el pago, para que una orden
+  impaga nunca exponga el PDF. No crea `ClinicalRecord` ni `NutritionalConsultation`.
+
+### `GET /productos/predefinidos/:code`
+
+Ficha **pública** (sin sesión) de una versión de plan predefinido, para mostrar precio y vista previa
+antes de comprar. `ProductsController` → `ProductsService.getPredefinedProduct`.
+
+- **Response** (`PredefinedProductDto`): `{ code, name, description, price, currency, thumbnailUrl }`, con
+  `thumbnailUrl` firmada (10 min) o `null`. **No expone `pdfKey` ni `thumbnailKey`.**
+- 404 si el código tiene un formato inválido o si la versión no existe / está inactiva.
+
 ### `GET /ordenes/obtener-estado/:id`
 
 Endpoint de **polling** que consume el frontend desde la pantalla de resultado (`/ordenes/[id]`) para
@@ -316,12 +343,17 @@ es quién los llama:
 
 Lógica de `WebhooksService.processPayment(orderId)`:
 
-1. Busca la orden (404 si no existe).
-2. Marca `paymentStatus: 'pendiente' → 'pagado'` de forma **idempotente**: si ya estaba pagada, no la
-   reprocesa y responde `{ status: 'ya_procesado' }`.
-3. Si la marcó recién, dispara `PlanGenerationService.generatePlan(orderId)` **fire-and-forget** (sin
-   `await`) y responde de inmediato `{ status: 'procesado' }` — el webhook no espera a que el plan
-   termine de generarse.
+1. `OrdersService.markAsPaid` carga la orden con su producto (404 si no existe).
+2. `OrderRepository.markOrderAsPaidWithPayment` ejecuta, **en una sola transacción**: marca
+   `paymentStatus: 'pendiente' → 'pagado'` (y `paymentDate`) de forma **idempotente**, y crea la fila
+   `payment` (`status: 'AUTHORIZED'`). Si la orden ya estaba pagada no crea otro `payment`, no la reprocesa
+   y responde `{ status: 'ya_procesado' }`. Mientras el pago es simulado, `payment.provider = 'SIMULATED'`
+   y sus campos de detalle son placeholders.
+3. Solo para productos `PREDEFINED`, en esa misma transacción copia `product.pdfKey`/`thumbnailKey` a la
+   orden y la deja `generationStatus: 'completado'` (el plan ya viene hecho). No se genera nada.
+4. Solo para productos `GENERATED`, si la marcó recién, dispara `PlanGenerationService.generatePlan(orderId)`
+   **fire-and-forget** (sin `await`) y responde de inmediato `{ status: 'procesado' }` — el webhook no
+   espera a que el plan termine de generarse.
 
 ### Generación del plan (background)
 
@@ -487,8 +519,9 @@ sus propios prompts (`consulta.service.ts` y `generacion-plan.prompts.ts` respec
   El bucket tiene dos carpetas: `productos-personalizados/` (planes generados por consulta, en uso —
   key `<orderId>.pdf` vía el helper `buildPersonalizedPlanKey`, y sus miniaturas en
   `miniaturas/<orderId>.webp` vía `buildPlanThumbnailKey`) y `productos-estandarizados/` (planes
-  predefinidos fijos subidos manualmente, pendiente — ver
-  [Deuda técnica](#deuda-técnica-y-pendientes)). Lee
+  predefinidos, subidos a mano: PDF en `<code>.pdf` vía `buildPredefinedPlanKey` y miniatura en
+  `miniaturas/<code>.webp` vía `buildPredefinedPlanThumbnailKey`; el catálogo se carga con
+  `npm run seed:predefined`, ver [doc/flows/purchase-flow-predefined-plan.md](../doc/flows/purchase-flow-predefined-plan.md)). Lee
   `AWS_REGION`/`AWS_S3_BUCKET_NAME`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` de `ConfigService`
   (`.env.template`).
   `PlanGenerationService` genera el PDF **una sola vez** por generación exitosa
@@ -538,7 +571,7 @@ Modelos que participan directamente en el flujo comercial hoy:
 | `User` (`identity-auth`) | Resuelto por el `sub` del Access Token de Cognito vía `AuthIdentityService.getUserBySub` (ver [doc/auth.md](./doc/auth.md)); `GET`/`PATCH /user/me` leen/actualizan sus campos de perfil |
 | `ClinicalRecord` (`clinical-domain`) | Uno por paciente (`patientId` `@unique`), find-or-create |
 | `NutritionalConsultation` (`clinical-domain`) | Una por cada `POST /ordenes/crear`; vinculada 1:1 a la `Order` vía `orderId`; contiene el árbol `Anamnesis`+hijas y `Measurements`+hija que antes viajaba como `payload_json`. `NutritionalConsultationRepository` expone dos formas de traerla con detalle: `getNutritionalConsultationWithDetailsByOrderId` (`FULL_DETAILS_INCLUDE`, usado por la generación del plan) y la nueva `getLatestNutritionalConsultationWithDetailsByPatientId` (`PANEL_DETAILS_INCLUDE`: `patient`, `anamneses.goals`, `nutritionalPlans` — `findFirst` ordenado por `consultationNumber: 'desc'`, usada por `GET /panel/resumen`); son includes deliberadamente distintos para no alterar el comportamiento del lookup existente por orden |
-| `Product` (`commercial-domain`) | Producto `type='GENERATED' active=true`, find-or-create con valores placeholder (ver deuda técnica) |
+| `Product` (`commercial-domain`) | Dos usos: el producto `type='GENERATED' active=true` (uno solo, find-or-create con valores placeholder, ver deuda técnica) y las 112 versiones de plan `type='PREDEFINED'` (`code` único, `pdfKey`/`thumbnailKey` en `productos-estandarizados/`, cargadas con `npm run seed:predefined`) |
 | `Order` (`commercial-domain`) | Reemplaza al modelo `Order` legacy de SQLite (ya no existe en el schema); ver campos abajo |
 
 Campos relevantes de `Order` (tabla `order`):
@@ -551,14 +584,14 @@ Campos relevantes de `Order` (tabla `order`):
 | `paymentStatus` | `'pendiente'` \| `'pagado'` |
 | `generationStatus` | `'no_iniciado'` \| `'generando'` \| `'completado'` \| `'error'` |
 | `planJson` | `NutritionPlanDto` resultante serializado, `null` hasta que se genera |
-| `pdfKey` | Key del PDF del plan en el bucket S3 (`productos-personalizados/<orderId>.pdf`), `null` hasta que se genera — ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3) |
+| `pdfKey` | Key del PDF del plan en el bucket S3. `GENERATED`: `productos-personalizados/<orderId>.pdf`, `null` hasta que se genera. `PREDEFINED`: copia de `Product.pdfKey`, solo desde que se confirma el pago — ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3) |
 | `thumbnailKey` | Key de la miniatura WebP de la página 1 del PDF (`productos-personalizados/miniaturas/<orderId>.webp`); `null` si aún no se genera, si falló (es best-effort) o si el plan es anterior a esta función (sin backfill) |
 | `attempts` | Contador de intentos fallidos de generación |
 | `nutritionalConsultation` | Relación inversa 1:1 hacia la `NutritionalConsultation` con los datos de la anamnesis/mediciones de esta orden |
 
 La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
 [doc/auth.md](./doc/auth.md)) — ver `doc/orders-postgres-migration.md` y `doc/technical-debt.md` para
-el detalle de esa migración y su deuda pendiente. Buena parte del resto del dominio (`Payment`, la
+el detalle de esa migración y su deuda pendiente. `Payment` sí está conectado: el webhook de pago crea su fila (`AUTHORIZED`, hoy con datos simulados) en la misma transacción que marca la orden pagada. Buena parte del resto del dominio (la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
 la fila principal, no sus tablas hijas) sí está conectado: `PlanGenerationService` la **escribe**
@@ -599,11 +632,13 @@ datasources/repositories que ya no existe en el código actual).
   `PlanSupplement`, `PlanSportsRecommendation`): el detalle del plan sigue viviendo solo en
   `Order.planJson`. Tampoco se hizo backfill de las órdenes completadas antes de que existiera la
   escritura de `NutritionalPlan`.
-- El bucket S3 para los PDFs de planes ya existe y está en uso
-  (`productos-personalizados/`, ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)); la
-  carpeta `productos-estandarizados/` (planes predefinidos fijos) sigue sin ningún flujo de subida
-  automatizado y el `Product` tipo `PREDEFINIDO` que los usaría no está implementado — fuera de
-  alcance de este cambio.
+- El bucket S3 para los PDFs de planes ya existe y está en uso (`productos-personalizados/` y
+  `productos-estandarizados/`, ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)). Los
+  archivos predefinidos se suben **a mano** (no hay un flujo de subida automatizado): tras subirlos hay
+  que correr `npm run seed:predefined`, que activa las versiones cuyo PDF existe. Los precios de las
+  112 versiones son placeholders (`predefined-products.seed-data.ts`).
+- El pago sigue siendo simulado: la fila `payment` del webhook usa `provider = 'SIMULATED'` con campos de
+  detalle placeholder hasta integrar una pasarela real.
 - `notifyGenerationFailure` (cuando la generación del plan agota sus reintentos) solo deja un log
   estructurado; falta integrarlo con un canal de alertas/soporte real.
 - El `Product` que usa hoy el flujo comercial (`findOrCreateActiveGeneratedProduct`) tiene su precio y

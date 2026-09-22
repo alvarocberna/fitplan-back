@@ -88,10 +88,14 @@ junto con los imports que quedaron sin uso.
 
 | Servicio | Test | Mockea |
 |---|---|---|
-| `OrdersService` | `orders.service.spec.ts` | `AuthIdentityService`, `ClinicalRecordRepository`, `NutritionalConsultationRepository`, `ProductRepository`, `OrderRepository`, `StorageService` (esta última para firmar `pdfUrl` en `getStatus`/`getOrdersForUser`) |
+| `OrdersService` | `orders.service.spec.ts` | `AuthIdentityService`, `ClinicalRecordRepository`, `NutritionalConsultationRepository`, `ProductRepository`, `OrderRepository`, `StorageService` (esta última para firmar `pdfUrl` en `getStatus`/`getOrdersForUser`). Cubre también `createPredefinedOrder` (orden sin `pdfKey`, sin consulta ni perfil completo, 404 si la versión no existe / está inactiva / sin PDF) y `markAsPaid` (crea el `payment` `AUTHORIZED`; para `PREDEFINED` copia `pdfKey`/`thumbnailKey` y deja `completado`; idempotente) |
 | `orders.mapper.ts` | `orders.mapper.spec.ts` | nada (funciones puras) |
 | `OrdersController` | `orders.controller.spec.ts` | `OrdersService` |
-| `WebhooksService` | `webhooks.service.spec.ts` | `OrdersService`, `PlanGenerationService` |
+| `WebhooksService` | `webhooks.service.spec.ts` | `OrdersService`, `PlanGenerationService` (solo un producto `GENERATED` dispara la generación; un `PREDEFINED` no) |
+| `ProductsService` | `products.service.spec.ts` | `ProductRepository`, `StorageService` (ficha pública de un plan predefinido: no expone `pdfKey`/`thumbnailKey`, 404 por código inválido o inactivo) |
+| `ProductsController` | `products.controller.spec.ts` | `ProductsService` |
+| `predefined-plan-code.ts` | `predefined-plan-code.spec.ts` | nada (regex, `buildPredefinedPlanCode`, las 112 combinaciones) |
+| `scripts/predefined-products.seed-data.ts` | `predefined-products.seed-data.spec.ts` | nada (las 112 filas del seed con keys de S3 únicas). El runner `seed-predefined-products.ts` (S3 + Prisma) no tiene test: se verificó a mano contra la BD de desarrollo |
 | `WebhooksController` | `webhooks.controller.spec.ts` | `WebhooksService` |
 | `plan-generation.mapper.ts` | `plan-generation.mapper.spec.ts` | nada (función pura `NutritionPlanDto` → `NutritionalPlan`) |
 | `PlanGenerationService` | `plan-generation.service.spec.ts` | `OrdersService`/`OpenaiService`/`EmailService`/`PdfService`/`StorageService`/`NutritionalPlanRepository` (verifica el upsert de `NutritionalPlan` antes de `completeGeneration` y que un fallo ahí reintenta) — **las fórmulas de dominio corren de verdad** (test híbrido unit+integración); ver §5 |
