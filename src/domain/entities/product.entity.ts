@@ -25,6 +25,16 @@ export interface ProductEntity {
   pdfKey: string | null;
   thumbnailKey: string | null;
 
+  // Resumen nutricional básico, espejo en inglés de NutritionalPlan (goal, dietRegimen, *Intake).
+  // Null hasta que se pueble a mano; permite mostrar algo cuando un plan predefinido —que no genera
+  // NutritionalPlan— se muestre en el perfil del usuario.
+  goal: string | null;
+  dietRegimen: string | null;
+  calorieIntake: number | null;
+  proteinIntake: number | null;
+  carbohydrateIntake: number | null;
+  lipidIntake: number | null;
+
   active: boolean;
 
   createdAt: Date;

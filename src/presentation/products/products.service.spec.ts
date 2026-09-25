@@ -29,7 +29,10 @@ describe('ProductsService', () => {
         ProductsService,
         {
           provide: ProductRepository,
-          useValue: { getActivePredefinedProductByCode: jest.fn() },
+          useValue: {
+            getActivePredefinedProductByCode: jest.fn(),
+            getActivePlanPreviews: jest.fn(),
+          },
         },
         { provide: StorageService, useValue: { getSignedDownloadUrl: jest.fn() } },
       ],
@@ -82,5 +85,71 @@ describe('ProductsService', () => {
       NotFoundException,
     );
     expect(productRepository.getActivePredefinedProductByCode).not.toHaveBeenCalled();
+  });
+
+  describe('getPlanPreviews', () => {
+    const previews = [
+      {
+        id: 'preview-1',
+        type: 'PREDEFINED',
+        code: 'plan-gimnasio-volumen',
+        name: 'Plan Gimnasio Volumen',
+        description: 'Plan nutricional para entrenamiento de gimnasio en periodo de volumen.',
+        price: 5990,
+        currency: 'CLP',
+        pdfKey: null,
+        thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen.webp',
+        active: true,
+      },
+      {
+        id: 'preview-2',
+        type: 'PREDEFINED',
+        code: 'plan-running',
+        name: 'Plan Running',
+        description: 'Plan nutricional para entrenamiento de running.',
+        price: 5990,
+        currency: 'CLP',
+        pdfKey: null,
+        thumbnailKey: null,
+        active: true,
+      },
+    ];
+
+    it('mapea cada fila a su ficha pública, firmando la miniatura y sin exponer pdfKey/thumbnailKey', async () => {
+      productRepository.getActivePlanPreviews.mockResolvedValue(previews as any);
+      storageService.getSignedDownloadUrl.mockResolvedValue('https://signed.example/preview.webp');
+
+      const result = await service.getPlanPreviews();
+
+      expect(result).toEqual([
+        {
+          code: 'plan-gimnasio-volumen',
+          name: 'Plan Gimnasio Volumen',
+          description: 'Plan nutricional para entrenamiento de gimnasio en periodo de volumen.',
+          thumbnailUrl: 'https://signed.example/preview.webp',
+        },
+        {
+          code: 'plan-running',
+          name: 'Plan Running',
+          description: 'Plan nutricional para entrenamiento de running.',
+          thumbnailUrl: null,
+        },
+      ]);
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledTimes(1);
+      expect(storageService.getSignedDownloadUrl).toHaveBeenCalledWith(
+        'productos-estandarizados/miniaturas/plan-gimnasio-volumen.webp',
+      );
+      result.forEach((item) => {
+        expect(item).not.toHaveProperty('pdfKey');
+        expect(item).not.toHaveProperty('thumbnailKey');
+      });
+    });
+
+    it('devuelve un arreglo vacío si no hay filas activas', async () => {
+      productRepository.getActivePlanPreviews.mockResolvedValue([]);
+
+      await expect(service.getPlanPreviews()).resolves.toEqual([]);
+      expect(storageService.getSignedDownloadUrl).not.toHaveBeenCalled();
+    });
   });
 });

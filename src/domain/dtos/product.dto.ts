@@ -10,3 +10,13 @@ export interface PredefinedProductDto {
   // URL firmada (corta duración) de la miniatura WebP de la versión; null si aún no tiene miniatura.
   thumbnailUrl: string | null;
 }
+
+// Forma pública de una fila "vista previa" de un plan predefinido (GET /productos/vista-previa),
+// una por familia (code = solo el slug del plan, sin peso/sexo/edad). Usado por el carrusel del home
+// para no depender de una imagen estática. No expone price/currency (no se muestran ahí) ni pdfKey.
+export interface PredefinedPlanPreviewDto {
+  code: string;
+  name: string;
+  description: string;
+  thumbnailUrl: string | null;
+}

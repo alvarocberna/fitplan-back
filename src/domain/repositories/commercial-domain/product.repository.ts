@@ -14,5 +14,6 @@ export abstract class ProductRepository {
   abstract getActivePredefinedProductByCode(
     code: string,
   ): Promise<ProductEntity | null>;
+  abstract getActivePlanPreviews(): Promise<ProductEntity[]>;
   abstract findOrCreateActiveGeneratedProduct(): Promise<ProductEntity>;
 }

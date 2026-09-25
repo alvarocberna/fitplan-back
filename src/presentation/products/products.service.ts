@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   isPredefinedPlanCode,
   PredefinedProductDto,
+  PredefinedPlanPreviewDto,
 } from '../../domain';
 import { ProductRepository } from '../../domain/repositories/commercial-domain/product.repository';
 import { StorageService } from '../storage/storage.service';
@@ -34,5 +35,24 @@ export class ProductsService {
         ? await this.storageService.getSignedDownloadUrl(product.thumbnailKey)
         : null,
     };
+  }
+
+  //vista previa por familia para el carrusel del home. Público a propósito, igual que
+  //getPredefinedProduct: no expone pdfKey/thumbnailKey, solo la URL ya firmada.
+  async getPlanPreviews(): Promise<PredefinedPlanPreviewDto[]> {
+    const products = await this.productRepository.getActivePlanPreviews();
+
+    return Promise.all(
+      products.map(async (product) => ({
+        code: product.code!,
+        name: product.name,
+        description: product.description,
+        thumbnailUrl: product.thumbnailKey
+          ? await this.storageService.getSignedDownloadUrl(
+              product.thumbnailKey,
+            )
+          : null,
+      })),
+    );
   }
 }

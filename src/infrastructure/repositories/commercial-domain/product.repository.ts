@@ -31,6 +31,10 @@ export class ProductRepositoryImpl implements ProductRepository {
     return this.datasource.getActivePredefinedProductByCode(code);
   }
 
+  getActivePlanPreviews(): Promise<ProductEntity[]> {
+    return this.datasource.getActivePlanPreviews();
+  }
+
   findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {
     return this.datasource.findOrCreateActiveGeneratedProduct();
   }

@@ -9,7 +9,12 @@ describe('ProductsController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProductsController],
-      providers: [{ provide: ProductsService, useValue: { getPredefinedProduct: jest.fn() } }],
+      providers: [
+        {
+          provide: ProductsService,
+          useValue: { getPredefinedProduct: jest.fn(), getPlanPreviews: jest.fn() },
+        },
+      ],
     }).compile();
 
     controller = module.get(ProductsController);
@@ -29,5 +34,20 @@ describe('ProductsController', () => {
 
     await expect(controller.getPredefinedProduct('plan-gimnasio-volumen-50-60-m-joven')).resolves.toEqual(dto);
     expect(service.getPredefinedProduct).toHaveBeenCalledWith('plan-gimnasio-volumen-50-60-m-joven');
+  });
+
+  it('getPlanPreviews() delega en ProductsService', async () => {
+    const previews = [
+      {
+        code: 'plan-gimnasio-volumen',
+        name: 'Plan Gimnasio Volumen',
+        description: 'd',
+        thumbnailUrl: null,
+      },
+    ];
+    service.getPlanPreviews.mockResolvedValue(previews);
+
+    await expect(controller.getPlanPreviews()).resolves.toEqual(previews);
+    expect(service.getPlanPreviews).toHaveBeenCalledWith();
   });
 });

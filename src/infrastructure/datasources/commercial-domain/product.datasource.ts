@@ -7,6 +7,10 @@ import {
   ProductType,
 } from '../../../domain/entities/product.entity';
 import { CreateProductDto, UpdateProductDto } from '../../../domain';
+import {
+  PREDEFINED_PLAN_FAMILIES,
+  PredefinedPlanFamily,
+} from '../../../domain/services/utils/predefined-plan-code';
 
 // Placeholder: no hay pricing real ni negociación comercial en el flujo actual (el pago se
 // simula/confirma vía webhook sin gateway real). Ajustar estos valores con negocio antes de
@@ -21,6 +25,12 @@ const DEFAULT_GENERATED_PRODUCT: CreateProductDto = {
   code: null,
   pdfKey: null,
   thumbnailKey: null,
+  goal: null,
+  dietRegimen: null,
+  calorieIntake: null,
+  proteinIntake: null,
+  carbohydrateIntake: null,
+  lipidIntake: null,
   active: true,
 };
 
@@ -72,6 +82,22 @@ export class ProductDatasourceImpl implements ProductDatasource {
       where: { code, type: 'PREDEFINED', active: true },
     });
     return product ? this.toEntity(product) : null;
+  }
+
+  // Las hasta 4 filas "vista previa" por familia (code = solo el slug del plan, sin peso/sexo/edad;
+  // ver product.entity.ts). Ordenadas según PREDEFINED_PLAN_FAMILIES (mismo orden que se muestra en
+  // el carrusel del home), no alfabéticamente.
+  async getActivePlanPreviews(): Promise<ProductEntity[]> {
+    const products = await this.prisma.product.findMany({
+      where: { code: { in: [...PREDEFINED_PLAN_FAMILIES] }, active: true },
+    });
+    return products
+      .map((product) => this.toEntity(product))
+      .sort(
+        (a, b) =>
+          PREDEFINED_PLAN_FAMILIES.indexOf(a.code as PredefinedPlanFamily) -
+          PREDEFINED_PLAN_FAMILIES.indexOf(b.code as PredefinedPlanFamily),
+      );
   }
 
   async findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {
