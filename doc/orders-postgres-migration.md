@@ -40,7 +40,8 @@ Y la relación inversa `nutritionalConsultation NutritionalConsultation?`.
 **Modelo `NutritionalConsultation`** (`clinical-domain`): se agregaron
 
 - `orderId String? @unique @map("order_id") @db.Uuid` + `order Order? @relation(...)` — vínculo
-  Order↔NutritionalConsultation, simétrico al patrón que ya existía en `NutritionalPlan.orderId`.
+  Order↔NutritionalConsultation. (Hoy la orden también se vincula al `Plan` resultante vía
+  `Plan.orderId`; `NutritionalPlan` ya no tiene `orderId` — ver migración `20260925120000_plan_entity`.)
 - `athlete Boolean?` — dato de `personalInfo.athlete` que no tenía hogar en ninguna entidad; se
   decidió que es un dato puntual de la consulta, no de la identidad del `User`.
 
@@ -254,7 +255,7 @@ Esta migración conecta **solo** lo que necesita el flujo comercial:
   migración** — migraciones posteriores le agregaron a `NutritionalPlan` (solo la fila principal, no
   las hijas) un consumidor de lectura (`presentation/panel/`, `GET /panel/resumen`, vía
   `getLatestNutritionalConsultationWithDetailsByPatientId`/`PANEL_DETAILS_INCLUDE`) y uno de escritura
-  (`PlanGenerationService` → `NutritionalPlanRepository.upsertNutritionalPlanByOrderId`) — ver
+  (`PlanGenerationService` → `PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`) — ver
   `doc/technical-debt.md`.
 - `commercial-domain`: `Order`, `Product` (vía `findOrCreateActiveGeneratedProduct`). `Payment` sigue
   sin consumidor.

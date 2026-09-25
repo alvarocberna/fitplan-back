@@ -93,6 +93,7 @@ export interface DietaryRecall24hMealEntity {
 
   mealTime: string;
   mealHour: string;
+  description: string;
   carbohydrate: string;
   freeConsumptionVegetable: string;
   generalConsumptionVegetable: string;

@@ -47,6 +47,10 @@ import { MeasurementResultsRepository } from '../../../domain/repositories/clini
 import { MeasurementResultsRepositoryImpl } from './measurement-results.repository';
 import { NutritionalPlanRepository } from '../../../domain/repositories/clinical-domain/nutritional-plan.repository';
 import { NutritionalPlanRepositoryImpl } from './nutritional-plan.repository';
+import { PlanRepository } from '../../../domain/repositories/clinical-domain/plan.repository';
+import { PlanRepositoryImpl } from './plan.repository';
+import { ProjectionRepository } from '../../../domain/repositories/clinical-domain/projection.repository';
+import { ProjectionRepositoryImpl } from './projection.repository';
 import { PlanMealTimeRepository } from '../../../domain/repositories/clinical-domain/plan-meal-time.repository';
 import { PlanMealTimeRepositoryImpl } from './plan-meal-time.repository';
 import { PlanMealTimeNoteRepository } from '../../../domain/repositories/clinical-domain/plan-meal-time-note.repository';
@@ -133,6 +137,14 @@ import { PlanSportsRecommendationRepositoryImpl } from './plan-sports-recommenda
       provide: NutritionalPlanRepository,
       useClass: NutritionalPlanRepositoryImpl,
     },
+    {
+      provide: PlanRepository,
+      useClass: PlanRepositoryImpl,
+    },
+    {
+      provide: ProjectionRepository,
+      useClass: ProjectionRepositoryImpl,
+    },
     { provide: PlanMealTimeRepository, useClass: PlanMealTimeRepositoryImpl },
     {
       provide: PlanMealTimeNoteRepository,
@@ -175,6 +187,8 @@ import { PlanSportsRecommendationRepositoryImpl } from './plan-sports-recommenda
     DiametersRepository,
     MeasurementResultsRepository,
     NutritionalPlanRepository,
+    PlanRepository,
+    ProjectionRepository,
     PlanMealTimeRepository,
     PlanMealTimeNoteRepository,
     PlanSupplementRepository,

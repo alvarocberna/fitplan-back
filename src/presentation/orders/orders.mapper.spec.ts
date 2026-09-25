@@ -30,6 +30,7 @@ describe('mapMealDtoToEntity', () => {
 
     expect(result.mealTime).toBe('desayuno');
     expect(result.mealHour).toBe('');
+    expect(result.description).toBe('');
     expect(result.carbohydrate).toBe('pan');
     expect(result.fruit).toBe('manzana');
     expect(result.lowFatProtein).toBe('huevo');

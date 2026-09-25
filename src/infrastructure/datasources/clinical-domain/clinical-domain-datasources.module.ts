@@ -46,6 +46,10 @@ import { MeasurementResultsDatasource } from '../../../domain/datasources/clinic
 import { MeasurementResultsDatasourceImpl } from './measurement-results.datasource';
 import { NutritionalPlanDatasource } from '../../../domain/datasources/clinical-domain/nutritional-plan.datasource';
 import { NutritionalPlanDatasourceImpl } from './nutritional-plan.datasource';
+import { PlanDatasource } from '../../../domain/datasources/clinical-domain/plan.datasource';
+import { PlanDatasourceImpl } from './plan.datasource';
+import { ProjectionDatasource } from '../../../domain/datasources/clinical-domain/projection.datasource';
+import { ProjectionDatasourceImpl } from './projection.datasource';
 import { PlanMealTimeDatasource } from '../../../domain/datasources/clinical-domain/plan-meal-time.datasource';
 import { PlanMealTimeDatasourceImpl } from './plan-meal-time.datasource';
 import { PlanMealTimeNoteDatasource } from '../../../domain/datasources/clinical-domain/plan-meal-time-note.datasource';
@@ -130,6 +134,14 @@ import { PlanSportsRecommendationDatasourceImpl } from './plan-sports-recommenda
       provide: NutritionalPlanDatasource,
       useClass: NutritionalPlanDatasourceImpl,
     },
+    {
+      provide: PlanDatasource,
+      useClass: PlanDatasourceImpl,
+    },
+    {
+      provide: ProjectionDatasource,
+      useClass: ProjectionDatasourceImpl,
+    },
     { provide: PlanMealTimeDatasource, useClass: PlanMealTimeDatasourceImpl },
     {
       provide: PlanMealTimeNoteDatasource,
@@ -172,6 +184,8 @@ import { PlanSportsRecommendationDatasourceImpl } from './plan-sports-recommenda
     DiametersDatasource,
     MeasurementResultsDatasource,
     NutritionalPlanDatasource,
+    PlanDatasource,
+    ProjectionDatasource,
     PlanMealTimeDatasource,
     PlanMealTimeNoteDatasource,
     PlanSupplementDatasource,

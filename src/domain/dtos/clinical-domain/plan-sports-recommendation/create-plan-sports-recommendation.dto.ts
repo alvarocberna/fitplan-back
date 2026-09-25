@@ -2,5 +2,5 @@ import { PlanSportsRecommendationEntity } from '../../../entities/nutritional-pl
 
 export type CreatePlanSportsRecommendationDto = Omit<
   PlanSportsRecommendationEntity,
-  'id' | 'plan'
+  'id' | 'nutritionalPlan'
 >;

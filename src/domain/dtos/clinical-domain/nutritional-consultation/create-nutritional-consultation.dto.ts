@@ -10,5 +10,5 @@ export type CreateNutritionalConsultationDto = Omit<
   | 'order'
   | 'anamneses'
   | 'measurements'
-  | 'nutritionalPlans'
+  | 'plans'
 >;

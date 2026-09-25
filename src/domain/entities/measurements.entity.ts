@@ -20,6 +20,7 @@ export interface MeasurementsEntity {
   circumferences?: CircumferencesEntity[];
   diameters?: DiametersEntity[];
   measurementResults?: MeasurementResultsEntity[];
+  projections?: ProjectionEntity[];
 }
 
 export interface BasicMeasurementsEntity {
@@ -84,20 +85,25 @@ export interface MeasurementResultsEntity {
   bmi: number | null;
   bmiClassification: string | null;
 
-  bfFormula: string | null;
   bfKg: number | null;
   bfPercentage: number | null;
   bfClassification: string | null;
+  bfMethod: string | null;
 
-  vfFormula: string | null;
   vfKg: number | null;
   vfPercentage: number | null;
   vfClassification: string | null;
+  vfMethod: string | null;
 
-  mmFormula: string | null;
   mmKg: number | null;
   mmPercentage: number | null;
   mmClassification: string | null;
+  mmMethod: string | null;
+
+  bmKg: number | null;
+  bmPercentage: number | null;
+  bmClassification: string | null;
+  bmMethod: string | null;
 
   mmi: number | null;
   mmiClassification: string | null;
@@ -124,4 +130,20 @@ export interface MeasurementResultsEntity {
   phaDiameterHumerus: number | null;
   phaDiameterBistyloid: number | null;
   phaDiameterFemur: number | null;
+}
+
+// Proyección de composición corporal asociada a una medición (aún no se puebla).
+export interface ProjectionEntity {
+  id: string;
+
+  measurementsId: string;
+  measurements?: MeasurementsEntity;
+
+  projectedDate: Date | null;
+  projectedWeight: number | null;
+  projectedBfKg: number | null;
+  projectedBfPercentage: number | null;
+  projectedMmKg: number | null;
+  projectedMmPercentage: number | null;
+  projectedBmi: number | null;
 }

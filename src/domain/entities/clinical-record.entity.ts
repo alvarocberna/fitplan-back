@@ -3,7 +3,7 @@
 import type { UserEntity } from './user.entity';
 import type { AnamnesisEntity } from './anamnesis.entity';
 import type { MeasurementsEntity } from './measurements.entity';
-import type { NutritionalPlanEntity } from './nutritional-plan.entity';
+import type { PlanEntity } from './plan.entity';
 import type { OrderEntity } from './order.entity';
 
 export interface ClinicalRecordEntity {
@@ -32,7 +32,7 @@ export interface NutritionalConsultationEntity {
   description: string | null;
 
   // Vínculo con la orden comercial que originó esta consulta (flujo consulta -> pago -> generación
-  // de plan). Simétrico al patrón ya usado por NutritionalPlan.orderId.
+  // de plan). La orden también queda vinculada al Plan resultante (Plan.orderId).
   orderId: string | null;
   order?: OrderEntity | null;
 
@@ -44,5 +44,5 @@ export interface NutritionalConsultationEntity {
 
   anamneses?: AnamnesisEntity[];
   measurements?: MeasurementsEntity[];
-  nutritionalPlans?: NutritionalPlanEntity[];
+  plans?: PlanEntity[];
 }

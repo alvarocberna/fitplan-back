@@ -1,22 +1,26 @@
 // Mapea el NutritionPlanDto (el plan que genera processPlan y se serializa en Order.planJson) hacia
-// el input de NutritionalPlanRepository.upsertNutritionalPlanByOrderId: la representación normalizada
-// del plan en el schema Postgres (ver NutritionalPlanEntity). Solo cubre los campos propios de
-// NutritionalPlan; las tablas hijas (PlanMealTime, PlanSupplement, PlanSportsRecommendation) no se
-// pueblan todavía.
+// el NutritionalPlan principal que PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId crea
+// dentro del Plan de la orden: la representación normalizada del plan en el schema Postgres (ver
+// NutritionalPlanEntity). Solo cubre los campos propios de NutritionalPlan; las tablas hijas
+// (PlanMealTime, PlanSupplement, PlanSportsRecommendation) no se pueblan todavía.
 
 import { NutritionPlanDto } from '../../domain/dtos/nutrition-plan.dto';
 import { CreateNutritionalPlanDto } from '../../domain/dtos/clinical-domain/nutritional-plan/create-nutritional-plan.dto';
 
 export function mapPlanToNutritionalPlanDto(
   plan: NutritionPlanDto,
-  consultationId: string,
-  orderId: string,
-): CreateNutritionalPlanDto & { orderId: string } {
+  planName: string | null,
+  startDate: Date = new Date(),
+): Omit<CreateNutritionalPlanDto, 'planId'> {
   const { prescription, planIntake } = plan;
 
   return {
-    consultationId,
-    orderId,
+    planName,
+    // La generación automática produce un único plan, sin periodización ni fecha de término.
+    period: null,
+    mainPlan: true,
+    startDate,
+    endDate: null,
     goal: prescription.goal,
     dietRegimen: prescription.regimen,
     calorieRequirement: prescription.calories,

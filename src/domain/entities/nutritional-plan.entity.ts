@@ -3,8 +3,7 @@
 // genera la IA y se persiste en el `orden` legacy (tabla SQLite `orden`, columna `plan_json`);
 // esta entidad es la representación normalizada en el nuevo schema Postgres.
 
-import type { NutritionalConsultationEntity } from './clinical-record.entity';
-import type { OrderEntity } from './order.entity';
+import type { PlanEntity } from './plan.entity';
 
 export type PlanMealTimeSlot =
   | 'BREAKFAST'
@@ -18,12 +17,16 @@ export type PlanSupplementNoteType = 'EFFECT' | 'CONSIDERATION';
 export interface NutritionalPlanEntity {
   id: string;
 
-  consultationId: string;
-  consultation?: NutritionalConsultationEntity;
+  // Plan (consulta + orden) al que pertenece; un Plan puede agrupar varios NutritionalPlan.
+  planId: string;
+  plan?: PlanEntity;
 
-  // Solo presente si el plan corresponde a un Product.type = 'GENERATED'.
-  orderId: string | null;
-  order?: OrderEntity | null;
+  planName: string | null;
+  period: string | null; // EVENTO | MICROCICLO | MESOCICLO | MACROCICLO
+  // Plan principal dentro de su Plan (hoy siempre true: la generación crea uno solo).
+  mainPlan: boolean;
+  startDate: Date | null;
+  endDate: Date | null;
 
   goal: string | null;
   dietRegimen: string | null;
@@ -48,7 +51,7 @@ export interface PlanMealTimeEntity {
   id: string;
 
   planId: string;
-  plan?: NutritionalPlanEntity;
+  nutritionalPlan?: NutritionalPlanEntity;
 
   time: PlanMealTimeSlot | null;
   hour: string | null;
@@ -91,7 +94,7 @@ export interface PlanSupplementEntity {
   id: string;
 
   planId: string;
-  plan?: NutritionalPlanEntity;
+  nutritionalPlan?: NutritionalPlanEntity;
 
   supplement: string;
   requirement: number | null;
@@ -122,7 +125,7 @@ export interface PlanSportsRecommendationEntity {
   id: string;
 
   planId: string;
-  plan?: NutritionalPlanEntity;
+  nutritionalPlan?: NutritionalPlanEntity;
 
   session: string | null;
   strategy: string | null;

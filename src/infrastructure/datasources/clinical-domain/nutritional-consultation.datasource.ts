@@ -35,11 +35,15 @@ type NutritionalConsultationWithDetails =
   }>;
 
 // Árbol reducido para el panel del usuario (presentation/panel): identidad del paciente, objetivo
-// (Anamnesis.Goals) y datos básicos del último plan nutricional generado.
+// (Anamnesis.Goals) y datos básicos del último plan nutricional generado (el NutritionalPlan
+// principal de cada Plan activo).
 const PANEL_DETAILS_INCLUDE = {
   patient: true,
   anamneses: { include: { goals: true } },
-  nutritionalPlans: true,
+  plans: {
+    where: { active: true },
+    include: { nutritionalPlans: { where: { mainPlan: true } } },
+  },
 } satisfies Prisma.NutritionalConsultationInclude;
 
 type NutritionalConsultationWithPanelDetails =
@@ -207,7 +211,15 @@ export class NutritionalConsultationDatasourceImpl
       await this.prisma.nutritionalConsultation.findFirst({
         // Solo consultas con plan generado: la consulta se crea antes del pago, así que la más
         // reciente puede no tener plan todavía y el panel mostraría datos sin su plan.
-        where: { patientId, nutritionalPlans: { some: {} } },
+        where: {
+          patientId,
+          plans: {
+            some: {
+              active: true,
+              nutritionalPlans: { some: { mainPlan: true } },
+            },
+          },
+        },
         orderBy: { consultationNumber: 'desc' },
         include: PANEL_DETAILS_INCLUDE,
       });

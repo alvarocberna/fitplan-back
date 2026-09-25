@@ -19,12 +19,6 @@ export class NutritionalPlanRepositoryImpl
     return this.datasource.createNutritionalPlan(createNutritionalPlanDto);
   }
 
-  upsertNutritionalPlanByOrderId(
-    dto: CreateNutritionalPlanDto & { orderId: string },
-  ): Promise<NutritionalPlanEntity> {
-    return this.datasource.upsertNutritionalPlanByOrderId(dto);
-  }
-
   getNutritionalPlanById(id: string): Promise<NutritionalPlanEntity | null> {
     return this.datasource.getNutritionalPlanById(id);
   }

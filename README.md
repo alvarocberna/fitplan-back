@@ -439,9 +439,9 @@ protegido por `CognitoAuthGuard`.
      `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId(user.id)`
      (nuevo método, ver [Base de datos](#base-de-datos-prisma)) para traer la
      `NutritionalConsultation` más reciente del paciente, con `patient`, `anamneses.goals` y
-     `nutritionalPlans` incluidos en una sola consulta.
+     `plans` activos (con su `nutritionalPlans` principal, `mainPlan = true`) incluidos en una sola consulta.
   3. `goal` sale de `consultation.anamneses[0]?.goals[0]?.mainGoal`; `nutritionalPlan` sale de
-     `consultation.nutritionalPlans[0]`, tomando **solo los campos `*Intake`** (`calorieIntake`,
+     `consultation.plans[0].nutritionalPlans[0]`, tomando **solo los campos `*Intake`** (`calorieIntake`,
      `proteinIntake`, `carbohydrateIntake`, `lipidIntake`), nunca los `*Requirement`. `age` se
      calcula con `calculateAge()` (`domain/services/utils/age.service.ts`) a partir de
      `user.dateOfBirth`.
@@ -555,7 +555,7 @@ path }`. Fuera de `NODE_ENV=production`, además incluye `exception: { name, res
 ## Base de datos (Prisma)
 
 `prisma/schema.prisma` corre sobre **PostgreSQL** y modela el dominio completo del producto
-(identidad/auth, historial clínico, comercial) — 33 modelos en total, organizados en tres secciones
+(identidad/auth, historial clínico, comercial) — 35 modelos en total, organizados en tres secciones
 del schema: `IDENTITY & AUTH`, `CLINICAL DOMAIN`, `COMMERCIAL DOMAIN`. El flujo comercial descrito en
 este README (`POST /ordenes/crear` → pago → generación del plan) persiste sobre este dominio real, no
 sobre una tabla plana con un payload JSON crudo. Ver el detalle completo de la arquitectura de esta
@@ -595,10 +595,14 @@ el detalle de esa migración y su deuda pendiente. `Payment` sí está conectado
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
 la fila principal, no sus tablas hijas) sí está conectado: `PlanGenerationService` la **escribe**
-(`NutritionalPlanRepository.upsertNutritionalPlanByOrderId`, idempotente por `orderId`) justo antes de
-marcar la orden como `completado`, y `GET /panel/resumen` la **lee** (`nutritionalPlans` incluido en
+(`PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`, idempotente por `orderId`: crea el `Plan` de la orden con su `NutritionalPlan` principal o reemplaza este último) justo antes de
+marcar la orden como `completado`, y `GET /panel/resumen` la **lee** (`plans` → `nutritionalPlans` incluido en
 `getLatestNutritionalConsultationWithDetailsByPatientId`, que solo considera consultas que ya tienen
 plan). Las órdenes completadas antes de este cambio no tienen fila `NutritionalPlan` (sin backfill).
+Desde la migración `20260925120000_plan_entity`, `NutritionalPlan` ya no cuelga directamente de la
+consulta ni de la orden: cuelga de `Plan` (`consultationId`, `orderId @unique`, `active`), que puede
+agrupar varios `NutritionalPlan` (hoy uno solo, `mainPlan = true`, con `planName` = nombre del
+producto y `startDate` = fecha de generación; `period`/`endDate` quedan en null).
 
 No hay job de retención: `Order.planJson` (y el resto de la orden) se conserva sin límite de tiempo.
 

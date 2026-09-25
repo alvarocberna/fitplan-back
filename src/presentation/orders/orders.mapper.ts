@@ -22,6 +22,8 @@ export function mapMealDtoToEntity(
     mealTime: meal.mealTime ?? '',
     // Sin fuente en el DTO de consulta (no se recolecta la hora exacta de cada comida hoy).
     mealHour: '',
+    // Tampoco se recolecta una descripción libre de la comida en el chat de consulta.
+    description: '',
     carbohydrate: meal.carbohydrate ?? '',
     freeConsumptionVegetable: meal.freeConsumptionVegetable ?? '',
     generalConsumptionVegetable: meal.generalConsumptionVegetable ?? '',

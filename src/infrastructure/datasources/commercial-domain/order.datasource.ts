@@ -59,12 +59,22 @@ export class OrderDatasourceImpl implements OrderDatasource {
     await this.prisma.order.delete({ where: { id } });
   }
 
+  // Incluye también `product`: plan-generation usa su nombre como NutritionalPlan.planName.
   async getOrderWithUserById(id: string): Promise<OrderEntity | null> {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { user: true },
+      include: { user: true, product: true },
     });
-    return order ? this.toEntity(order) : null;
+    return order
+      ? {
+          ...this.toEntity(order),
+          product: {
+            ...order.product,
+            price: order.product.price.toNumber(),
+            type: order.product.type as ProductType,
+          },
+        }
+      : null;
   }
 
   async getOrderWithProductById(id: string): Promise<OrderEntity | null> {

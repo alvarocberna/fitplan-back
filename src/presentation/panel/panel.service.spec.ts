@@ -34,7 +34,7 @@ describe('PanelService', () => {
   });
 
   describe('getSummary', () => {
-    it('arma el resumen con nombre completo, edad, fecha de consulta, objetivo y plan cuando hay una consulta con goals y nutritionalPlans', async () => {
+    it('arma el resumen con nombre completo, edad, fecha de consulta, objetivo y plan cuando hay una consulta con goals y un plan activo con su nutritionalPlan principal', async () => {
       const dateOfBirth = new Date('1995-01-01');
       authIdentityService.getUserBySub.mockResolvedValue({
         id: 'user-1',
@@ -48,13 +48,19 @@ describe('PanelService', () => {
         {
           consultationDate: new Date('2026-03-15T12:00:00.000Z'),
           anamneses: [{ goals: [{ mainGoal: 'bajar de peso' }] }],
-          nutritionalPlans: [
+          plans: [
             {
-              dietRegimen: 'Régimen hipocalórico hiperproteico.',
-              calorieIntake: 2000,
-              proteinIntake: 150,
-              carbohydrateIntake: 200,
-              lipidIntake: 60,
+              active: true,
+              nutritionalPlans: [
+                {
+                  mainPlan: true,
+                  dietRegimen: 'Régimen hipocalórico hiperproteico.',
+                  calorieIntake: 2000,
+                  proteinIntake: 150,
+                  carbohydrateIntake: 200,
+                  lipidIntake: 60,
+                },
+              ],
             },
           ],
         } as any,
@@ -94,7 +100,7 @@ describe('PanelService', () => {
       nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
         {
           anamneses: [{ goals: [{ mainGoal: 'bajar de peso' }] }],
-          nutritionalPlans: [],
+          plans: [{ active: true, nutritionalPlans: [] }],
         } as any,
       );
 
@@ -130,7 +136,7 @@ describe('PanelService', () => {
       });
     });
 
-    it('devuelve goal y nutritionalPlan null si la consulta existe pero sin anamneses/nutritionalPlans asociados', async () => {
+    it('devuelve goal y nutritionalPlan null si la consulta existe pero sin anamneses/plans asociados', async () => {
       authIdentityService.getUserBySub.mockResolvedValue({
         id: 'user-1',
         firstName: 'Ana',
@@ -138,7 +144,7 @@ describe('PanelService', () => {
         dateOfBirth: null,
       } as any);
       nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
-        { anamneses: [], nutritionalPlans: [] } as any,
+        { anamneses: [], plans: [] } as any,
       );
 
       const result = await service.getSummary(cognitoUser);

@@ -9,4 +9,5 @@ export type CreateMeasurementsDto = Omit<
   | 'circumferences'
   | 'diameters'
   | 'measurementResults'
+  | 'projections'
 >;

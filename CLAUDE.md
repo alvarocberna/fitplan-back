@@ -51,7 +51,7 @@ src/
 ├── domain/                    # Pure business rules, no NestJS dependencies
 │   ├── dtos/                   # Legacy: shared data interfaces (Anamnesis, Consulta, Plan, Orden)
 │   │                            # + identity-auth/clinical-domain/commercial-domain: Create*/Update*Dto per entity
-│   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (33 entities, *Entity suffix)
+│   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (35 entities, *Entity suffix)
 │   ├── datasources/              # Abstract classes, CRUD contracts per entity (identity-auth/clinical-domain/commercial-domain)
 │   ├── repositories/              # Same shape as datasources/, one layer up (services depend on these, not on datasources/)
 │   └── services/
@@ -165,7 +165,7 @@ the plan-generation prompt to tell the AI the nutritional value per portion of e
 
 ### Persistence
 
-**Postgres**, via a full domain schema (`prisma/schema.prisma`, 33 models across three sections —
+**Postgres**, via a full domain schema (`prisma/schema.prisma`, 35 models across three sections —
 `IDENTITY & AUTH`, `CLINICAL DOMAIN`, `COMMERCIAL DOMAIN`). The old single-model SQLite setup (one
 `Order`, tables `orden`) is gone — that legacy model is left commented out in the schema for
 reference only, and its table was dropped. Postgres has no native enums either, so "enum" columns
@@ -174,8 +174,10 @@ at the application layer (`domain/entities/*.entity.ts`).
 
 Only part of this schema has a real consumer today — the `orders`/`webhooks`/`plan-generation`
 pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamnesis`/`Measurements`
-children), `NutritionalPlan` (main row only — `PlanGenerationService` upserts it by `orderId` before
-marking the order `completado`; its child tables are not populated), `Order`, and `Product`;
+children), `Plan` + `NutritionalPlan` (`PlanGenerationService` upserts the order's `Plan` by `orderId`
+— `Plan.orderId` is `@unique`, 1 order → 1 plan — together with its main `NutritionalPlan`
+(`mainPlan = true`) before marking the order `completado`; a `Plan` can hold N `NutritionalPlan`s,
+though only one is created today, and their child tables are not populated), `Order`, and `Product`;
 `AuthIdentity` is used by `presentation/auth/` (see below). The
 rest (the `NutritionalPlan` children, several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
@@ -208,7 +210,7 @@ actually used by the Guard.
 
 There is no data-retention job: orders (`Order.planJson`), consultations and `NutritionalPlan` rows
 are kept indefinitely (the former 45-day `RetentionService` cron was removed). If a retention policy
-is needed later, it must cover `NutritionalPlan` too.
+is needed later, it must cover `Plan`/`NutritionalPlan` too.
 
 ## Keeping documentation in sync
 

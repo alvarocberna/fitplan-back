@@ -21,16 +21,6 @@ export class NutritionalPlanDatasourceImpl
     });
   }
 
-  async upsertNutritionalPlanByOrderId(
-    dto: CreateNutritionalPlanDto & { orderId: string },
-  ): Promise<NutritionalPlanEntity> {
-    return this.prisma.nutritionalPlan.upsert({
-      where: { orderId: dto.orderId },
-      create: dto,
-      update: dto,
-    });
-  }
-
   async getNutritionalPlanById(
     id: string,
   ): Promise<NutritionalPlanEntity | null> {

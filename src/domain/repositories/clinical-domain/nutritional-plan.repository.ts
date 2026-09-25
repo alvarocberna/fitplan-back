@@ -5,9 +5,6 @@ export abstract class NutritionalPlanRepository {
   abstract createNutritionalPlan(
     createNutritionalPlanDto: CreateNutritionalPlanDto,
   ): Promise<NutritionalPlanEntity>;
-  abstract upsertNutritionalPlanByOrderId(
-    dto: CreateNutritionalPlanDto & { orderId: string },
-  ): Promise<NutritionalPlanEntity>;
   abstract getNutritionalPlanById(
     id: string,
   ): Promise<NutritionalPlanEntity | null>;

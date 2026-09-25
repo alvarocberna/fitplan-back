@@ -13,8 +13,8 @@ export class PanelService {
   ) {}
 
   // Trae el resumen del panel a partir de la última NutritionalConsultation del paciente que ya
-  // tiene un plan generado (con patient, anamneses.goals y nutritionalPlans anidados) en vez de
-  // consultar User/Goals/NutritionalPlan por separado.
+  // tiene un plan generado (con patient, anamneses.goals y plans activos -> nutritionalPlan
+  // principal anidados) en vez de consultar User/Goals/NutritionalPlan por separado.
   async getSummary(claims: CognitoUserClaims): Promise<PanelSummaryDto> {
     const user = await this.authIdentityService.getUserBySub(claims);
 
@@ -24,7 +24,7 @@ export class PanelService {
       );
 
     const goal = consultation?.anamneses?.[0]?.goals?.[0]?.mainGoal ?? null;
-    const plan = consultation?.nutritionalPlans?.[0] ?? null;
+    const plan = consultation?.plans?.[0]?.nutritionalPlans?.[0] ?? null;
 
     return {
       firstName: user.firstName,

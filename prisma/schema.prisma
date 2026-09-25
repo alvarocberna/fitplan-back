@@ -50,7 +50,7 @@ model User {
   gender String?
 
   dateOfBirth DateTime? @map("date_of_birth") @db.Date
-  photoUrl    String?  @map("photo_url")
+  photoUrl    String?   @map("photo_url")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -117,7 +117,7 @@ model NutritionalConsultation {
   description        String?
 
   // Vínculo con la orden comercial que originó esta consulta (flujo consulta -> pago -> generación
-  // de plan). Simétrico al patrón ya usado por NutritionalPlan.orderId.
+  // de plan). La orden también queda vinculada al Plan resultante (Plan.orderId).
   orderId String? @unique @map("order_id") @db.Uuid
   order   Order?  @relation(fields: [orderId], references: [id])
 
@@ -127,9 +127,9 @@ model NutritionalConsultation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  anamneses        Anamnesis[]
-  measurements     Measurements[]
-  nutritionalPlans NutritionalPlan[]
+  anamneses    Anamnesis[]
+  measurements Measurements[]
+  plans        Plan[]
 
   @@map("nutritional_consultation")
 }
@@ -233,6 +233,7 @@ model DietaryRecall24hMeal {
 
   mealTime                    String @map("meal_time")
   mealHour                    String @map("meal_hour")
+  description                 String @default("")
   carbohydrate                String
   freeConsumptionVegetable    String @map("free_consumption_vegetable")
   generalConsumptionVegetable String @map("general_consumption_vegetable")
@@ -374,6 +375,7 @@ model Measurements {
   circumferences     Circumferences[]
   diameters          Diameters[]
   measurementResults MeasurementResults[]
+  projections        Projection[]
 
   @@map("measurements")
 }
@@ -448,20 +450,25 @@ model MeasurementResults {
   bmi               Float?
   bmiClassification String? @map("bmi_classification")
 
-  bfFormula        String? @map("bf_formula")
   bfKg             Float?  @map("bf_kg")
   bfPercentage     Float?  @map("bf_percentage")
   bfClassification String? @map("bf_classification")
+  bfMethod         String? @map("bf_method")
 
-  vfFormula        String? @map("vf_formula")
   vfKg             Float?  @map("vf_kg")
   vfPercentage     Float?  @map("vf_percentage")
   vfClassification String? @map("vf_classification")
+  vfMethod         String? @map("vf_method")
 
-  mmFormula        String? @map("mm_formula")
   mmKg             Float?  @map("mm_kg")
   mmPercentage     Float?  @map("mm_percentage")
   mmClassification String? @map("mm_classification")
+  mmMethod         String? @map("mm_method")
+
+  bmKg             Float?  @map("bm_kg")
+  bmPercentage     Float?  @map("bm_percentage")
+  bmClassification String? @map("bm_classification")
+  bmMethod         String? @map("bm_method")
 
   mmi               Float?
   mmiClassification String? @map("mmi_classification")
@@ -492,14 +499,53 @@ model MeasurementResults {
   @@map("measurement_results")
 }
 
-model NutritionalPlan {
+// Proyección de composición corporal asociada a una medición (hoy no se puebla).
+model Projection {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  projectedDate         DateTime? @map("projected_date") @db.Date
+  projectedWeight       Float?    @map("projected_weight")
+  projectedBfKg         Float?    @map("projected_bf_kg")
+  projectedBfPercentage Float?    @map("projected_bf_percentage")
+  projectedMmKg         Float?    @map("projected_mm_kg")
+  projectedMmPercentage Float?    @map("projected_mm_percentage")
+  projectedBmi          Float?    @map("projected_bmi")
+
+  @@map("projection")
+}
+
+// Plan: agrupa uno o más NutritionalPlan generados a partir de una consulta y la orden que lo
+// originó. Hoy cada Plan tiene un único NutritionalPlan (mainPlan = true), pero el modelo soporta N.
+model Plan {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   consultationId String                  @map("consultation_id") @db.Uuid
   consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
 
-  orderId String? @unique @map("order_id") @db.Uuid
-  order   Order?  @relation(fields: [orderId], references: [id]) // solo si el plan corresponde a un product.type = GENERATED
+  orderId String @unique @map("order_id") @db.Uuid
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  active Boolean @default(true)
+
+  nutritionalPlans NutritionalPlan[]
+
+  @@map("plan")
+}
+
+model NutritionalPlan {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId String @map("plan_id") @db.Uuid
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  planName  String?   @map("plan_name")
+  period    String? // EVENTO | MICROCICLO | MESOCICLO | MACROCICLO
+  mainPlan  Boolean   @default(true) @map("main_plan")
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
 
   goal        String?
   dietRegimen String? @map("diet_regimen")
@@ -514,7 +560,7 @@ model NutritionalPlan {
   carbohydrateIntake Float @map("carbohydrate_intake")
   lipidIntake        Float @map("lipid_intake")
 
-  mealTimes            PlanMealTime[]
+  mealTimes             PlanMealTime[]
   supplement            PlanSupplement?
   sportsRecommendations PlanSportsRecommendation[]
 
@@ -525,8 +571,8 @@ model NutritionalPlan {
 model PlanMealTime {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  planId String          @map("plan_id") @db.Uuid
-  plan   NutritionalPlan @relation(fields: [planId], references: [id])
+  planId          String          @map("plan_id") @db.Uuid
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
 
   time String? @map("time") // BREAKFAST | LUNCH | AFTERNOON_TEA | DINNER | SNACK
   hour String? @map("hour")
@@ -572,8 +618,8 @@ model PlanMealTimeNote {
 model PlanSupplement {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  planId String          @unique @map("plan_id") @db.Uuid
-  plan   NutritionalPlan @relation(fields: [planId], references: [id])
+  planId          String          @unique @map("plan_id") @db.Uuid
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
 
   supplement         String
   requirement        Float?
@@ -607,8 +653,8 @@ model PlanSupplementNote {
 model PlanSportsRecommendation {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  planId String          @map("plan_id") @db.Uuid
-  plan   NutritionalPlan @relation(fields: [planId], references: [id])
+  planId          String          @map("plan_id") @db.Uuid
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
 
   session        String?
   strategy       String?
@@ -699,7 +745,7 @@ model Order {
   expirationDate DateTime? @map("expiration_date")
 
   payments                Payment[]
-  nutritionalPlan         NutritionalPlan?
+  plan                    Plan?
   nutritionalConsultation NutritionalConsultation?
 
   @@map("order")
@@ -711,7 +757,7 @@ model Payment {
   orderId String @map("order_id") @db.Uuid
   order   Order  @relation(fields: [orderId], references: [id])
 
-  provider          String // TRANSBANK
+  provider          String // TRANSBANK | SIMULATED
   paymentIdentifier String   @map("payment_identifier") // identificador transbank
   authorizationCode String   @map("authorization_code")
   amount            Decimal  @db.Decimal(12, 2)

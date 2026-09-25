@@ -6,7 +6,7 @@ import { EmailService } from '../notifications/email.service';
 import { PdfService } from '../pdf/pdf.service';
 import { ThumbnailService } from '../pdf/thumbnail.service';
 import { StorageService } from '../storage/storage.service';
-import { NutritionalPlanRepository } from '../../domain/repositories/clinical-domain/nutritional-plan.repository';
+import { PlanRepository } from '../../domain/repositories/clinical-domain/plan.repository';
 import { calculateAge } from '../../domain/services/utils/age.service';
 import { calculateRequirements } from '../../domain/services/formulas/requirements.service';
 import { determineMealTimes } from '../../domain/services/alimentos/meal-times.service';
@@ -74,7 +74,7 @@ describe('PlanGenerationService', () => {
   let pdfService: jest.Mocked<PdfService>;
   let thumbnailService: jest.Mocked<ThumbnailService>;
   let storageService: jest.Mocked<StorageService>;
-  let nutritionalPlanRepository: jest.Mocked<NutritionalPlanRepository>;
+  let planRepository: jest.Mocked<PlanRepository>;
 
   const dateOfBirth = new Date('1996-01-01');
   const weight = 70;
@@ -106,6 +106,7 @@ describe('PlanGenerationService', () => {
 
   const orderEntity = {
     id: 'order-1',
+    product: { name: 'Plan personalizado' },
     user: {
       rut: null,
       rutCheckDigit: null,
@@ -176,7 +177,7 @@ describe('PlanGenerationService', () => {
           provide: StorageService,
           useValue: { uploadPdf: jest.fn(), uploadImage: jest.fn(), getSignedDownloadUrl: jest.fn() },
         },
-        { provide: NutritionalPlanRepository, useValue: { upsertNutritionalPlanByOrderId: jest.fn() } },
+        { provide: PlanRepository, useValue: { upsertPlanWithMainNutritionalPlanByOrderId: jest.fn() } },
       ],
     }).compile();
 
@@ -187,9 +188,9 @@ describe('PlanGenerationService', () => {
     pdfService = module.get(PdfService);
     thumbnailService = module.get(ThumbnailService);
     storageService = module.get(StorageService);
-    nutritionalPlanRepository = module.get(NutritionalPlanRepository);
+    planRepository = module.get(PlanRepository);
 
-    nutritionalPlanRepository.upsertNutritionalPlanByOrderId.mockResolvedValue({} as any);
+    planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mockResolvedValue({} as any);
     ordersService.tryStartGeneration.mockResolvedValue(true);
     ordersService.findByIdWithUser.mockResolvedValue(orderEntity);
     ordersService.getConsultationForOrder.mockResolvedValue(consultationEntity);
@@ -280,42 +281,49 @@ describe('PlanGenerationService', () => {
     );
   });
 
-  it('persiste el NutritionalPlan (por orderId) con los datos del plan, antes de marcar la orden como completada', async () => {
+  it('persiste el Plan (por orderId) con su NutritionalPlan principal, antes de marcar la orden como completada', async () => {
     const { requirements, totalIntake } = mockMatchingAiResponses();
 
     await service.generatePlan('order-1');
 
-    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId).toHaveBeenCalledTimes(1);
-    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId).toHaveBeenCalledWith({
+    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId).toHaveBeenCalledTimes(1);
+    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId).toHaveBeenCalledWith({
       consultationId: 'consultation-1',
       orderId: 'order-1',
-      goal,
-      dietRegimen: 'Plan personalizado',
-      calorieRequirement: requirements.calories,
-      proteinRequirement: requirements.protein,
-      carbohydrateRequirement: requirements.carbohydrate,
-      lipidRequirement: requirements.fat,
-      calorieIntake: totalIntake.calories,
-      proteinIntake: totalIntake.protein,
-      carbohydrateIntake: totalIntake.carbohydrate,
-      lipidIntake: totalIntake.fat,
+      nutritionalPlan: {
+        planName: 'Plan personalizado',
+        period: null,
+        mainPlan: true,
+        startDate: expect.any(Date),
+        endDate: null,
+        goal,
+        dietRegimen: 'Plan personalizado',
+        calorieRequirement: requirements.calories,
+        proteinRequirement: requirements.protein,
+        carbohydrateRequirement: requirements.carbohydrate,
+        lipidRequirement: requirements.fat,
+        calorieIntake: totalIntake.calories,
+        proteinIntake: totalIntake.protein,
+        carbohydrateIntake: totalIntake.carbohydrate,
+        lipidIntake: totalIntake.fat,
+      },
     });
-    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock.invocationCallOrder[0]).toBeLessThan(
       ordersService.completeGeneration.mock.invocationCallOrder[0],
     );
   });
 
-  it('si falla la persistencia del NutritionalPlan, la orden no se completa en ese intento y el reintento la completa', async () => {
+  it('si falla la persistencia del Plan, la orden no se completa en ese intento y el reintento la completa', async () => {
     jest.useFakeTimers();
     mockMatchingAiResponses(); // 1er intento
     mockMatchingAiResponses(); // 2do intento (encola 2 respuestas más de la IA)
-    nutritionalPlanRepository.upsertNutritionalPlanByOrderId.mockRejectedValueOnce(new Error('DB caída'));
+    planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mockRejectedValueOnce(new Error('DB caída'));
 
     const resultPromise = service.generatePlan('order-1');
     await jest.advanceTimersByTimeAsync(60000);
     await resultPromise;
 
-    expect(nutritionalPlanRepository.upsertNutritionalPlanByOrderId).toHaveBeenCalledTimes(2);
+    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId).toHaveBeenCalledTimes(2);
     expect(ordersService.completeGeneration).toHaveBeenCalledTimes(1);
     expect(ordersService.recordFailedAttempt).not.toHaveBeenCalled();
 

@@ -18,7 +18,7 @@ entidades, DTOs, contratos, datasources y repositories.
 > la mayoría de `clinical-domain` fuera de `Anamnesis`/`Measurements` básicos) siguen sin ningún
 > consumidor real, ver §7 y §9 más abajo. `NutritionalPlan` (solo la fila principal; sus hijas siguen
 > sin poblarse) es un caso aparte: tiene un consumidor de **escritura** (`PlanGenerationService` →
-> `NutritionalPlanRepository.upsertNutritionalPlanByOrderId`) y uno de **lectura** desde
+> `PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`, vía el `Plan` de la orden) y uno de **lectura** desde
 > `presentation/panel/` (`GET /panel/resumen`, vía
 > `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId`) — ver
 > `doc/technical-debt.md`.
@@ -43,7 +43,8 @@ a una carpeta homónima en `domain/dtos`, `domain/datasources`, `domain/reposito
 | `CLINICAL DOMAIN` | `ClinicalRecord`, `NutritionalConsultation`, `Anamnesis` y sus 11 hijas (`Goals`, `AnamnesisClinical`, `ClinicalCondition`, `AnamnesisDietary`, `DietaryRecall24h`, `DietaryRecall24hMeal`, `FoodPreference`, `FoodPreferenceGroup`, `Supplements`, `AnamnesisPsychosocial`, `Lifestyle`, `SportsSession`, `SportsStrategy`), `Measurements` y sus 5 hijas (`BasicMeasurements`, `Skinfolds`, `Circumferences`, `Diameters`, `MeasurementResults`), `NutritionalPlan` y sus 5 hijas (`PlanMealTime`, `PlanMealTimeNote`, `PlanSupplement`, `PlanSupplementNote`, `PlanSportsRecommendation`) | `clinical-domain/` |
 | `COMMERCIAL DOMAIN` | `Product`, `Order`, `Payment` | `commercial-domain/` |
 
-Total: **33 modelos/entidades** (2 identity-auth + 28 clinical-domain + 3 commercial-domain).
+Total: **35 modelos/entidades** (2 identity-auth + 30 clinical-domain + 3 commercial-domain; `Plan` y
+`Projection` se agregaron en la migración `20260925120000_plan_entity`).
 
 Nota de nombres: el nuevo modelo `Order` (Postgres, tabla `order`) se llamaba `CommercialOrder` en
 un momento para no chocar con el `Order` legacy (tabla `orden`, SQLite); una vez que el legacy quedó

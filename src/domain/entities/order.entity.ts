@@ -6,7 +6,7 @@
 import type { UserEntity } from './user.entity';
 import type { ProductEntity } from './product.entity';
 import type { PaymentEntity } from './payment.entity';
-import type { NutritionalPlanEntity } from './nutritional-plan.entity';
+import type { PlanEntity } from './plan.entity';
 import type { NutritionalConsultationEntity } from './clinical-record.entity';
 
 export type OrderStatus = 'pendiente' | 'pagado';
@@ -47,6 +47,6 @@ export interface OrderEntity {
   expirationDate: Date | null;
 
   payments?: PaymentEntity[];
-  nutritionalPlan?: NutritionalPlanEntity | null;
+  plan?: PlanEntity | null;
   nutritionalConsultation?: NutritionalConsultationEntity | null;
 }
