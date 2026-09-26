@@ -32,6 +32,80 @@ datasource db {
 // }
 
 // =========================================
+// ENUMS
+// Columnas con un conjunto cerrado de valores (enums nativos de Postgres).
+// =========================================
+
+enum AuthProvider {
+  COGNITO
+  GOOGLE
+}
+
+enum SportsEventType {
+  TRAINING
+  COMPETITION
+}
+
+enum MeasurementLevel {
+  BASIC
+  ISAK_1       @map("ISAK 1")
+  BIOIMPEDANCE
+}
+
+enum PlanPeriod {
+  EVENTO
+  MICROCICLO
+  MESOCICLO
+  MACROCICLO
+}
+
+enum PlanMealTimeSlot {
+  BREAKFAST
+  LUNCH
+  AFTERNOON_TEA
+  DINNER
+  SNACK
+}
+
+enum PlanMealTimeNoteType {
+  EXAMPLE
+  COMMENT
+}
+
+enum PlanSupplementNoteType {
+  EFFECT
+  CONSIDERATION
+}
+
+enum ProductType {
+  PREDEFINED
+  GENERATED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
+
+enum GenerationStatus {
+  NOT_STARTED
+  GENERATING
+  COMPLETED
+  ERROR
+}
+
+enum PaymentProvider {
+  TRANSBANK
+  SIMULATED
+}
+
+enum PaymentTransactionStatus {
+  AUTHORIZED
+  REJECTED
+  CANCELLED
+}
+
+// =========================================
 // IDENTITY & AUTH
 // =========================================
 
@@ -52,8 +126,11 @@ model User {
   dateOfBirth DateTime? @map("date_of_birth") @db.Date
   photoUrl    String?   @map("photo_url")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // Se captura en el perfil (PATCH /auth/perfil); antes vivía en nutritional_consultation.
+  athlete Boolean @default(false)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
 
   authIdentities           AuthIdentity[]
   clinicalRecord           ClinicalRecord?
@@ -69,7 +146,7 @@ model AuthIdentity {
   userId String @map("user_id") @db.Uuid
   user   User   @relation(fields: [userId], references: [id])
 
-  provider String // COGNITO | GOOGLE
+  provider AuthProvider
 
   providerUserId String @map("provider_user_id")
 
@@ -95,10 +172,11 @@ model ClinicalRecord {
   patientId String @unique @map("patient_id") @db.Uuid
   patient   User   @relation(fields: [patientId], references: [id])
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
 
   nutritionalConsultations NutritionalConsultation[]
+  measurements             Measurements[]
 
   @@map("clinical_record")
 }
@@ -121,11 +199,8 @@ model NutritionalConsultation {
   orderId String? @unique @map("order_id") @db.Uuid
   order   Order?  @relation(fields: [orderId], references: [id])
 
-  // Dato puntual de la consulta (no de la identidad del paciente), recolectado en personalInfo.athlete.
-  athlete Boolean?
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
 
   anamneses    Anamnesis[]
   measurements Measurements[]
@@ -231,23 +306,23 @@ model DietaryRecall24hMeal {
   dietaryRecall24hId String           @map("dietary_recall_24h_id") @db.Uuid
   dietaryRecall24h   DietaryRecall24h @relation(fields: [dietaryRecall24hId], references: [id])
 
-  mealTime                    String @map("meal_time")
-  mealHour                    String @map("meal_hour")
-  description                 String @default("")
-  carbohydrate                String
-  freeConsumptionVegetable    String @map("free_consumption_vegetable")
-  generalConsumptionVegetable String @map("general_consumption_vegetable")
-  fruit                       String
-  highFatProtein              String @map("high_fat_protein")
-  lowFatProtein               String @map("low_fat_protein")
-  highFatDairy                String @map("high_fat_dairy")
-  mediumFatDairy              String @map("medium_fat_dairy")
-  lowFatDairy                 String @map("low_fat_dairy")
-  highProteinDairy            String @map("high_protein_dairy")
-  lipidRich                   String @map("lipid_rich")
-  oil                         String
-  sugar                       String
-  alcohol                     String
+  mealTime                    String  @map("meal_time")
+  mealHour                    String? @map("meal_hour")
+  description                 String?
+  cereals                     String?
+  freeConsumptionVegetable    String? @map("free_consumption_vegetable")
+  generalConsumptionVegetable String? @map("general_consumption_vegetable")
+  fruit                       String?
+  highFatProtein              String? @map("high_fat_protein")
+  lowFatProtein               String? @map("low_fat_protein")
+  highFatDairy                String? @map("high_fat_dairy")
+  mediumFatDairy              String? @map("medium_fat_dairy")
+  lowFatDairy                 String? @map("low_fat_dairy")
+  highProteinDairy            String? @map("high_protein_dairy")
+  lipidRich                   String? @map("lipid_rich")
+  oil                         String?
+  sugar                       String?
+  alcohol                     String?
 
   @@map("dietary_recall_24h_meal")
 }
@@ -338,7 +413,7 @@ model SportsSession {
   discipline  String?
   duration    Int?
   intensity   String?
-  eventType   String? @map("event_type") // TRAINING | COMPETITION
+  eventType   SportsEventType? @map("event_type")
   days        String?
   schedule    String?
 
@@ -360,14 +435,24 @@ model SportsStrategy {
   @@map("sports_strategy")
 }
 
+// Una medición siempre pertenece al historial clínico del paciente (clinicalRecordId). Si se tomó en
+// una consulta, además apunta a ella (consultationId); si la registró el usuario por su cuenta,
+// consultationId queda en null.
 model Measurements {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  consultationId String                  @map("consultation_id") @db.Uuid
-  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
+  clinicalRecordId String         @map("clinical_record_id") @db.Uuid
+  clinicalRecord   ClinicalRecord @relation(fields: [clinicalRecordId], references: [id])
 
-  measurementNumber Int     @map("measurement_number")
-  level             String?
+  // onDelete: Restrict explícito: al volverse opcional, Prisma usaría SET NULL por defecto.
+  consultationId String?                  @map("consultation_id") @db.Uuid
+  consultation   NutritionalConsultation? @relation(fields: [consultationId], references: [id], onDelete: Restrict)
+
+  // Fecha de la medición. En las de consulta coincide con consultationDate.
+  measuredAt DateTime @default(now()) @map("measured_at")
+
+  measurementNumber Int               @map("measurement_number")
+  level             MeasurementLevel?
   description       String?
 
   basicMeasurements  BasicMeasurements[]
@@ -375,8 +460,8 @@ model Measurements {
   circumferences     Circumferences[]
   diameters          Diameters[]
   measurementResults MeasurementResults[]
-  projections        Projection[]
 
+  @@index([clinicalRecordId, measuredAt])
   @@map("measurements")
 }
 
@@ -447,6 +532,7 @@ model MeasurementResults {
   measurementsId String       @map("measurements_id") @db.Uuid
   measurements   Measurements @relation(fields: [measurementsId], references: [id])
 
+  // El ERD los define NOT NULL, pero hoy ningún flujo puebla measurement_results: quedan nullable.
   bmi               Float?
   bmiClassification String? @map("bmi_classification")
 
@@ -470,8 +556,8 @@ model MeasurementResults {
   bmClassification String? @map("bm_classification")
   bmMethod         String? @map("bm_method")
 
-  mmi               Float?
-  mmiClassification String? @map("mmi_classification")
+  lbmi               Float? // lean body mass index
+  lbmiClassification String? @map("lbmi_classification")
 
   endo Float?
   meso Float?
@@ -499,20 +585,21 @@ model MeasurementResults {
   @@map("measurement_results")
 }
 
-// Proyección de composición corporal asociada a una medición (hoy no se puebla).
+// Proyección de composición corporal asociada a un Plan (un Plan puede tener N). Hoy no se puebla.
 model Projection {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  measurementsId String       @map("measurements_id") @db.Uuid
-  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+  planId String @map("plan_id") @db.Uuid
+  plan   Plan   @relation(fields: [planId], references: [id])
 
-  projectedDate         DateTime? @map("projected_date") @db.Date
-  projectedWeight       Float?    @map("projected_weight")
-  projectedBfKg         Float?    @map("projected_bf_kg")
-  projectedBfPercentage Float?    @map("projected_bf_percentage")
-  projectedMmKg         Float?    @map("projected_mm_kg")
-  projectedMmPercentage Float?    @map("projected_mm_percentage")
-  projectedBmi          Float?    @map("projected_bmi")
+  projectedStartDate    DateTime @map("projected_start_date") @db.Date
+  projectedEndDate      DateTime @map("projected_end_date") @db.Date
+  projectedWeight       Float    @map("projected_weight")
+  projectedBfKg         Float?   @map("projected_bf_kg")
+  projectedBfPercentage Float?   @map("projected_bf_percentage")
+  projectedMmKg         Float?   @map("projected_mm_kg")
+  projectedMmPercentage Float?   @map("projected_mm_percentage")
+  projectedBmi          Float?   @map("projected_bmi")
 
   @@map("projection")
 }
@@ -531,6 +618,7 @@ model Plan {
   active Boolean @default(true)
 
   nutritionalPlans NutritionalPlan[]
+  projections      Projection[]
 
   @@map("plan")
 }
@@ -541,14 +629,15 @@ model NutritionalPlan {
   planId String @map("plan_id") @db.Uuid
   plan   Plan   @relation(fields: [planId], references: [id])
 
-  planName  String?   @map("plan_name")
-  period    String? // EVENTO | MICROCICLO | MESOCICLO | MACROCICLO
-  mainPlan  Boolean   @default(true) @map("main_plan")
-  startDate DateTime? @map("start_date") @db.Date
-  endDate   DateTime? @map("end_date") @db.Date
+  planName  String      @map("plan_name")
+  period    PlanPeriod?
+  mainPlan  Boolean     @default(true) @map("main_plan")
+  startDate DateTime    @map("start_date") @db.Date
+  // El ERD lo define NOT NULL, pero la generación automática no tiene fecha de término: queda nullable.
+  endDate   DateTime?   @map("end_date") @db.Date
 
-  goal        String?
-  dietRegimen String? @map("diet_regimen")
+  goal        String
+  dietRegimen String @map("diet_regimen")
 
   calorieRequirement      Float @map("calorie_requirement")
   proteinRequirement      Float @map("protein_requirement")
@@ -574,8 +663,9 @@ model PlanMealTime {
   planId          String          @map("plan_id") @db.Uuid
   nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
 
-  time String? @map("time") // BREAKFAST | LUNCH | AFTERNOON_TEA | DINNER | SNACK
-  hour String? @map("hour")
+  // El ERD lo define NOT NULL; queda nullable mientras esta tabla no se pueble.
+  time PlanMealTimeSlot? @map("time")
+  hour String?           @map("hour")
 
   calorieIntake      Float @map("calorie_intake")
   proteinIntake      Float @map("protein_intake")
@@ -609,7 +699,7 @@ model PlanMealTimeNote {
   planMealTime   PlanMealTime @relation(fields: [planMealTimeId], references: [id])
 
   note String
-  type String // EXAMPLE | COMMENT
+  type PlanMealTimeNoteType
 
   @@map("plan_meal_time_note")
 }
@@ -622,7 +712,7 @@ model PlanSupplement {
   nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
 
   supplement         String
-  requirement        Float?
+  requirement        Float? // El ERD lo define NOT NULL; queda nullable mientras esta tabla no se pueble.
   doseInstructions   String? @map("dose_instructions")
   intakeInstructions String? @map("intake_instructions")
 
@@ -644,7 +734,7 @@ model PlanSupplementNote {
   planSupplement   PlanSupplement @relation(fields: [planSupplementId], references: [id])
 
   note String
-  type String // EFFECT | CONSIDERATION
+  type PlanSupplementNoteType
 
   @@map("plan_supplement_note")
 }
@@ -672,7 +762,7 @@ model PlanSportsRecommendation {
 model Product {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  type        String // PREDEFINED | GENERATED
+  type        ProductType
   name        String
   description String
 
@@ -706,8 +796,8 @@ model Product {
 
   active Boolean
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
 
   orders Order[]
 
@@ -729,16 +819,16 @@ model Order {
   amount   Decimal @db.Decimal(12, 2) // monto efectivamente cobrado (puede diferir de product.price por descuentos/promos)
   currency String
 
-  paymentStatus String @default("pendiente") @map("payment_status") // 'pendiente' | 'pagado'
+  paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
 
   // Estado del pipeline de generación del plan (background, fire-and-forget desde el webhook de pago).
   // No es un dato comercial del pedido en sí, pero vive acá por continuidad con el flujo legacy
   // (antes columnas de la tabla `orden`) y porque el pipeline opera 1:1 sobre una Order.
-  generationStatus String  @default("no_iniciado") @map("generation_status") // no_iniciado | generando | completado | error
-  planJson         String? @map("plan_json") // NutritionPlanDto serializado, null hasta que se genera
-  pdfKey           String? @map("pdf_key") // object key en S3 (carpeta productos-personalizados/) del PDF ya generado y subido
-  thumbnailKey     String? @map("thumbnail_key") // object key en S3 (productos-personalizados/miniaturas/) de la miniatura WebP de la página 1 del PDF; null si no se pudo generar
-  attempts         Int     @default(0)
+  generationStatus GenerationStatus @default(NOT_STARTED) @map("generation_status")
+  planJson         String?          @map("plan_json") // NutritionPlanDto serializado, null hasta que se genera
+  pdfKey           String?          @map("pdf_key") // object key en S3 (carpeta productos-personalizados/) del PDF ya generado y subido
+  thumbnailKey     String?          @map("thumbnail_key") // object key en S3 (productos-personalizados/miniaturas/) de la miniatura WebP de la página 1 del PDF; null si no se pudo generar
+  attempts         Int              @default(0)
 
   creationDate   DateTime  @map("creation_date")
   paymentDate    DateTime? @map("payment_date")
@@ -757,15 +847,15 @@ model Payment {
   orderId String @map("order_id") @db.Uuid
   order   Order  @relation(fields: [orderId], references: [id])
 
-  provider          String // TRANSBANK | SIMULATED
-  paymentIdentifier String   @map("payment_identifier") // identificador transbank
-  authorizationCode String   @map("authorization_code")
-  amount            Decimal  @db.Decimal(12, 2)
-  installmentCount  Int      @map("installment_count")
-  status            String // AUTHORIZED | REJECTED | CANCELLED
-  transactionDate   DateTime @map("transaction_date")
-  movementType      String   @map("movement_type")
-  cardType          String   @map("card_type")
+  provider          PaymentProvider
+  paymentIdentifier String                   @map("payment_identifier") // identificador transbank
+  authorizationCode String                   @map("authorization_code")
+  amount            Decimal                  @db.Decimal(12, 2)
+  installmentCount  Int                      @map("installment_count")
+  status            PaymentTransactionStatus
+  transactionDate   DateTime                 @map("transaction_date")
+  movementType      String                   @map("movement_type")
+  cardType          String                   @map("card_type")
 
   @@map("payment")
 }

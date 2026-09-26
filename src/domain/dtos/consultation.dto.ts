@@ -36,7 +36,7 @@ export interface DietaryAnamnesisDto {
 
 export interface Meal {
     mealTime: string | null
-    carbohydrate: string | null
+    cereals: string | null
     freeConsumptionVegetable: string | null
     generalConsumptionVegetable: string | null
     fruit: string | null

@@ -1,10 +1,10 @@
 import { CompleteConsultationDto } from './consultation.dto';
 import { NutritionPlanDto } from './nutrition-plan.dto';
 
-// SQLite no soporta enums nativos en Prisma (ver prisma/schema.prisma), por eso
-// estos estados se tipan acá y se validan/asignan como string a nivel de aplicación.
-export type PaymentStatus = 'pendiente' | 'pagado';
-export type GenerationStatus = 'no_iniciado' | 'generando' | 'completado' | 'error';
+import type { GenerationStatus, PaymentStatus } from '../entities/enums';
+
+// Enums nativos del schema Postgres (ver domain/entities/enums.ts).
+export { GenerationStatus, PaymentStatus } from '../entities/enums';
 
 export interface OrderDto {
   id: string;

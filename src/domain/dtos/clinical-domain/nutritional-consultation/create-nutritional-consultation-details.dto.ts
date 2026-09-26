@@ -13,6 +13,7 @@ import { CreateFoodPreferenceGroupDto } from '../food-preference-group/create-fo
 import { CreateSportsSessionDto } from '../sports-session/create-sports-session.dto';
 import { CreateSportsStrategyDto } from '../sports-strategy/create-sports-strategy.dto';
 import { CreateBasicMeasurementsDto } from '../basic-measurements/create-basic-measurements.dto';
+import { MeasurementLevel } from '../../../entities/enums';
 
 export interface AnamnesisDetailsInput {
   goals?: Omit<CreateGoalsDto, 'anamnesisId'>;
@@ -35,9 +36,12 @@ export interface AnamnesisDetailsInput {
   };
 }
 
+// clinicalRecordId no va acá: el datasource lo toma de consultation.clinicalRecordId, así la medición
+// queda siempre en el mismo historial que su consulta.
 export interface MeasurementsDetailsInput {
+  measuredAt: Date;
   measurementNumber: number;
-  level: string | null;
+  level: MeasurementLevel | null;
   description: string | null;
   basicMeasurements?: Omit<CreateBasicMeasurementsDto, 'measurementsId'>;
 }

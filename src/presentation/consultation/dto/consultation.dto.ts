@@ -114,7 +114,7 @@ export class MealDtoImpl implements Meal {
 
   @IsString()
   @IsOptional()
-  carbohydrate!: string | null;
+  cereals!: string | null;
 
   @IsString()
   @IsOptional()

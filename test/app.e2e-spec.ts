@@ -147,8 +147,8 @@ describe('App (e2e)', () => {
   describe('GET /ordenes/obtener-estado/:id', () => {
     it('devuelve el estado de la orden mockeada', async () => {
       orderRepository.getOrderById.mockResolvedValue({
-        paymentStatus: 'pagado',
-        generationStatus: 'completado',
+        paymentStatus: 'PAID',
+        generationStatus: 'COMPLETED',
         planJson: null,
       } as any);
 
@@ -157,8 +157,8 @@ describe('App (e2e)', () => {
         .expect(200);
 
       expect(response.body).toEqual({
-        paymentStatus: 'pagado',
-        generationStatus: 'completado',
+        paymentStatus: 'PAID',
+        generationStatus: 'COMPLETED',
         planJson: null,
       });
     });

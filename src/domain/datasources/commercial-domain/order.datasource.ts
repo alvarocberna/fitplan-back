@@ -2,7 +2,7 @@ import { OrderEntity } from '../../entities/order.entity';
 import { CreateOrderDto, CreatePaymentDto, UpdateOrderDto } from '../..';
 
 // Campos de la orden que se fijan en el mismo instante en que se confirma el pago (hoy: la copia
-// del PDF/miniatura de un producto predefinido y su paso a 'completado').
+// del PDF/miniatura de un producto predefinido y su paso a COMPLETED).
 export type OrderPaidExtras = Partial<
   Pick<UpdateOrderDto, 'pdfKey' | 'thumbnailKey' | 'generationStatus'>
 >;
@@ -38,7 +38,7 @@ export abstract class OrderDatasource {
     extras?: OrderPaidExtras,
   ): Promise<boolean>;
 
-  // guard de estado: solo entra a 'generando' si no estaba ya en ese estado (evita que dos
+  // guard de estado: solo entra a GENERATING si no estaba ya en ese estado (evita que dos
   // disparos concurrentes generen el plan dos veces).
   abstract tryTransitionOrderToGenerating(id: string): Promise<boolean>;
 

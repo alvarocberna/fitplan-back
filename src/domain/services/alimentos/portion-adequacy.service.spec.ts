@@ -13,7 +13,7 @@ import { Meal } from '../../dtos/consultation.dto';
 function makeMeal(mealTime: string, overrides: Partial<Meal> = {}): Meal {
   return {
     mealTime,
-    carbohydrate: null,
+    cereals: null,
     freeConsumptionVegetable: null,
     generalConsumptionVegetable: null,
     fruit: null,
@@ -34,14 +34,14 @@ function makeMeal(mealTime: string, overrides: Partial<Meal> = {}): Meal {
 describe('defineFoodGroups', () => {
   it('elimina aceite y azúcar en desayuno/once/colación, y solo azúcar en almuerzo/cena', () => {
     const meals = [
-      makeMeal('desayuno', { oil: 'aceite', sugar: 'azúcar', carbohydrate: 'pan' }),
+      makeMeal('desayuno', { oil: 'aceite', sugar: 'azúcar', cereals: 'pan' }),
       makeMeal('almuerzo', { oil: 'aceite', sugar: 'azúcar' }),
     ];
     const [breakfast, lunch] = defineFoodGroups(meals);
 
     expect(breakfast.oil).toBeNull();
     expect(breakfast.sugar).toBeNull();
-    expect(breakfast.carbohydrate).toBe(true);
+    expect(breakfast.cereals).toBe(true);
 
     expect(lunch.oil).toBe(true);
     expect(lunch.sugar).toBeNull();

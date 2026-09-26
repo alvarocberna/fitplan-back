@@ -5,12 +5,11 @@ import {
   OrderDatasource,
   OrderPaidExtras,
 } from '../../../domain/datasources/commercial-domain/order.datasource';
+import { OrderEntity } from '../../../domain/entities/order.entity';
 import {
-  OrderEntity,
-  OrderStatus,
-  OrderGenerationStatus,
-} from '../../../domain/entities/order.entity';
-import { ProductType } from '../../../domain/entities/product.entity';
+  GenerationStatus,
+  PaymentStatus,
+} from '../../../domain/entities/enums';
 import {
   CreateOrderDto,
   CreatePaymentDto,
@@ -21,16 +20,12 @@ import {
 export class OrderDatasourceImpl implements OrderDatasource {
   constructor(private readonly prisma: PrismaService) {}
 
-  // `paymentStatus` se guarda como String en Postgres (sin enum nativo en el schema); se castea
-  // acá porque las escrituras siempre pasan por CreateOrderDto/UpdateOrderDto, que ya lo tipan
-  // como OrderStatus. Genérico en T para poder reusarlo con resultados que traen relaciones
-  // incluidas (ej. getOrderWithUserById con `user`).
+  // Convierte el Decimal de `amount` a number. Genérico en T para poder reusarlo con resultados
+  // que traen relaciones incluidas (ej. getOrderWithUserById con `user`).
   private toEntity<T extends PrismaOrder>(order: T): OrderEntity {
     return {
       ...order,
       amount: order.amount.toNumber(),
-      paymentStatus: order.paymentStatus as OrderStatus,
-      generationStatus: order.generationStatus as OrderGenerationStatus,
     };
   }
 
@@ -71,7 +66,6 @@ export class OrderDatasourceImpl implements OrderDatasource {
           product: {
             ...order.product,
             price: order.product.price.toNumber(),
-            type: order.product.type as ProductType,
           },
         }
       : null;
@@ -88,7 +82,6 @@ export class OrderDatasourceImpl implements OrderDatasource {
           product: {
             ...order.product,
             price: order.product.price.toNumber(),
-            type: order.product.type as ProductType,
           },
         }
       : null;
@@ -96,7 +89,7 @@ export class OrderDatasourceImpl implements OrderDatasource {
 
   async getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]> {
     const orders = await this.prisma.order.findMany({
-      where: { userId, generationStatus: 'completado', pdfKey: { not: null } },
+      where: { userId, generationStatus: GenerationStatus.COMPLETED, pdfKey: { not: null } },
       orderBy: { creationDate: 'desc' },
     });
     return orders.map((order) => this.toEntity(order));
@@ -104,8 +97,8 @@ export class OrderDatasourceImpl implements OrderDatasource {
 
   async markOrderAsPaidIfPending(id: string): Promise<boolean> {
     const { count } = await this.prisma.order.updateMany({
-      where: { id, paymentStatus: 'pendiente' },
-      data: { paymentStatus: 'pagado' },
+      where: { id, paymentStatus: PaymentStatus.PENDING },
+      data: { paymentStatus: PaymentStatus.PAID },
     });
     return count > 0;
   }
@@ -118,8 +111,12 @@ export class OrderDatasourceImpl implements OrderDatasource {
     return this.prisma.$transaction(async (tx) => {
       // mismo guard de idempotencia que markOrderAsPaidIfPending: solo la primera llamada avanza.
       const { count } = await tx.order.updateMany({
-        where: { id, paymentStatus: 'pendiente' },
-        data: { ...extras, paymentStatus: 'pagado', paymentDate: new Date() },
+        where: { id, paymentStatus: PaymentStatus.PENDING },
+        data: {
+          ...extras,
+          paymentStatus: PaymentStatus.PAID,
+          paymentDate: new Date(),
+        },
       });
       if (count === 0) return false;
 
@@ -130,8 +127,13 @@ export class OrderDatasourceImpl implements OrderDatasource {
 
   async tryTransitionOrderToGenerating(id: string): Promise<boolean> {
     const { count } = await this.prisma.order.updateMany({
-      where: { id, generationStatus: { in: ['no_iniciado', 'error'] } },
-      data: { generationStatus: 'generando' },
+      where: {
+        id,
+        generationStatus: {
+          in: [GenerationStatus.NOT_STARTED, GenerationStatus.ERROR],
+        },
+      },
+      data: { generationStatus: GenerationStatus.GENERATING },
     });
     return count > 0;
   }
@@ -139,7 +141,7 @@ export class OrderDatasourceImpl implements OrderDatasource {
   async incrementOrderFailedAttempt(id: string): Promise<void> {
     await this.prisma.order.update({
       where: { id },
-      data: { generationStatus: 'error', attempts: { increment: 1 } },
+      data: { generationStatus: GenerationStatus.ERROR, attempts: { increment: 1 } },
     });
   }
 }

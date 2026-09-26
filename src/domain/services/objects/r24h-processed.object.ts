@@ -3,7 +3,7 @@
 export const r24hProcessed1 = [
     {
         "mealTime": "desayuno",
-        "carbohydrate": true,
+        "cereals": true,
         "freeConsumptionVegetable": null,
         "generalConsumptionVegetable": null,
         "fruit": true,
@@ -20,7 +20,7 @@ export const r24hProcessed1 = [
     },
     {
         "mealTime": "almuerzo",
-        "carbohydrate": true,
+        "cereals": true,
         "freeConsumptionVegetable": true,
         "generalConsumptionVegetable": null,
         "fruit": null,
@@ -37,7 +37,7 @@ export const r24hProcessed1 = [
     },
         {
         "mealTime": "colacion",
-        "carbohydrate": null,
+        "cereals": null,
         "freeConsumptionVegetable": null,
         "generalConsumptionVegetable": null,
         "fruit": null,
@@ -54,7 +54,7 @@ export const r24hProcessed1 = [
     },
     {
         "mealTime": "once",
-        "carbohydrate": true,
+        "cereals": true,
         "freeConsumptionVegetable": null,
         "generalConsumptionVegetable": null,
         "fruit": true,

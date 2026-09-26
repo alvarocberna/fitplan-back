@@ -4,7 +4,9 @@
 
 import type { NutritionalConsultationEntity } from './clinical-record.entity';
 
-export type SportsEventType = 'TRAINING' | 'COMPETITION';
+import type { SportsEventType } from './enums';
+
+export { SportsEventType } from './enums';
 
 export interface AnamnesisEntity {
   id: string;
@@ -92,22 +94,22 @@ export interface DietaryRecall24hMealEntity {
   dietaryRecall24h?: DietaryRecall24hEntity;
 
   mealTime: string;
-  mealHour: string;
-  description: string;
-  carbohydrate: string;
-  freeConsumptionVegetable: string;
-  generalConsumptionVegetable: string;
-  fruit: string;
-  highFatProtein: string;
-  lowFatProtein: string;
-  highFatDairy: string;
-  mediumFatDairy: string;
-  lowFatDairy: string;
-  highProteinDairy: string;
-  lipidRich: string;
-  oil: string;
-  sugar: string;
-  alcohol: string;
+  mealHour: string | null;
+  description: string | null;
+  cereals: string | null;
+  freeConsumptionVegetable: string | null;
+  generalConsumptionVegetable: string | null;
+  fruit: string | null;
+  highFatProtein: string | null;
+  lowFatProtein: string | null;
+  highFatDairy: string | null;
+  mediumFatDairy: string | null;
+  lowFatDairy: string | null;
+  highProteinDairy: string | null;
+  lipidRich: string | null;
+  oil: string | null;
+  sugar: string | null;
+  alcohol: string | null;
 }
 
 export interface FoodPreferenceEntity {

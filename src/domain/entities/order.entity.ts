@@ -9,12 +9,9 @@ import type { PaymentEntity } from './payment.entity';
 import type { PlanEntity } from './plan.entity';
 import type { NutritionalConsultationEntity } from './clinical-record.entity';
 
-export type OrderStatus = 'pendiente' | 'pagado';
-export type OrderGenerationStatus =
-  | 'no_iniciado'
-  | 'generando'
-  | 'completado'
-  | 'error';
+import type { PaymentStatus, GenerationStatus } from './enums';
+
+export { PaymentStatus, GenerationStatus } from './enums';
 
 export interface OrderEntity {
   id: string;
@@ -28,13 +25,13 @@ export interface OrderEntity {
   // Monto efectivamente cobrado (puede diferir de product.price por descuentos/promos).
   amount: number;
   currency: string;
-  paymentStatus: OrderStatus;
+  paymentStatus: PaymentStatus;
 
   // Estado del pipeline de generación del plan (background, fire-and-forget desde el webhook de
   // pago) y su resultado. No es un dato comercial del pedido en sí, pero vive acá por continuidad
   // con el flujo legacy (antes columnas de la tabla `orden`) y porque el pipeline opera 1:1 sobre
   // una Order.
-  generationStatus: OrderGenerationStatus;
+  generationStatus: GenerationStatus;
   planJson: string | null;
   pdfKey: string | null;
   // Miniatura (página 1 del PDF) en S3; null si aún no se generó o si la rasterización falló

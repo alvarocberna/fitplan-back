@@ -95,9 +95,10 @@ src/
 ```
 
 > Nota de nomenclatura: las rutas HTTP y varios nombres de campo JSON siguen deliberadamente en
-> español (`/consulta/chat`, `/ordenes/crear`, valores como `'pendiente'`/`'pagado'`), aunque las
+> español (`/consulta/chat`, `/ordenes/crear`), aunque las
 > carpetas, clases y la mayoría de campos internos ya están en inglés (`ConsultationService`,
-> `OrdersService`, `PlanGenerationService`, `orderId`, `paymentStatus`, etc.) — ver `CLAUDE.md`.
+> `OrdersService`, `PlanGenerationService`, `orderId`, `paymentStatus`, etc.) — ver `CLAUDE.md`. Los
+> estados de la orden son enums en inglés (`PENDING`/`PAID`, `NOT_STARTED`/`GENERATING`/`COMPLETED`/`ERROR`).
 
 `domain/` no importa nada de `presentation/` (dependencia en un solo sentido); los DTOs de `presentation`
 (los `*Impl`, con decoradores de `class-validator`) implementan las interfaces definidas en `domain/dtos`.
@@ -246,7 +247,7 @@ en este paso.
 - Ya **no** persiste un payload JSON crudo: resuelve/crea el `User` por email
   (`findOrCreateUserByEmail`), su `ClinicalRecord` (`findOrCreateClinicalRecordByPatientId`) y el
   `Product` activo tipo `GENERATED` (`findOrCreateActiveGeneratedProduct`), crea la `Order`
-  (`paymentStatus='pendiente'`, `generationStatus='no_iniciado'`, `planJson=null`, `attempts=0`) y
+  (`paymentStatus='PENDING'`, `generationStatus='NOT_STARTED'`, `planJson=null`, `attempts=0`) y
   crea, en una sola operación atómica, el árbol completo `NutritionalConsultation` +
   `Anamnesis`/`Measurements` y sus hijas, vinculado a esa orden (`orderId`). Ver el detalle completo
   del mapeo en [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md). Requiere que
@@ -265,7 +266,7 @@ Crea la orden de un **plan predefinido** (PDF ya hecho, sin consulta previa). Ve
   formato responde 400.
 - **Response**: `{ orderId: string }`
 - Busca el `Product` activo `PREDEFINED` con ese `code` (404 si no existe, está inactivo o no tiene
-  `pdfKey`) y crea la `Order` (`paymentStatus='pendiente'`, `amount = product.price`) **sin**
+  `pdfKey`) y crea la `Order` (`paymentStatus='PENDING'`, `amount = product.price`) **sin**
   `pdfKey`/`thumbnailKey`: se copian desde el producto recién al confirmarse el pago, para que una orden
   impaga nunca exponga el PDF. No crea `ClinicalRecord` ni `NutritionalConsultation`.
 
@@ -288,8 +289,8 @@ saber si el plan ya está listo.
   interna del pipeline):
   ```ts
   {
-    paymentStatus: 'pendiente' | 'pagado',
-    generationStatus: 'no_iniciado' | 'generando' | 'completado' | 'error',
+    paymentStatus: 'PENDING' | 'PAID',
+    generationStatus: 'NOT_STARTED' | 'GENERATING' | 'COMPLETED' | 'ERROR',
     planJson: NutritionPlanDto | null,
     pdfUrl: string | null, // URL firmada de S3 (10 min) para DESCARGAR el PDF (attachment), null hasta que el plan termine de generarse
     thumbnailUrl: string | null, // URL firmada de S3 (10 min) de la miniatura WebP de la página 1; null si aún no hay plan o si no tiene miniatura
@@ -298,7 +299,7 @@ saber si el plan ya está listo.
   El `pdfUrl` se firma igual que en `GET /ordenes` (`Content-Disposition: attachment` con nombre
   `plan-nutricional-<YYYY-MM-DD>.pdf`), porque el frontend ya no incrusta el PDF en un `<iframe>`: muestra la
   miniatura y un botón "Descargar". La miniatura ya está disponible cuando `generationStatus` pasa a
-  `completado` (`thumbnailKey` se persiste en la misma escritura que el estado).
+  `COMPLETED` (`thumbnailKey` se persiste en la misma escritura que el estado).
 - Valida que la orden pertenezca al usuario del token (`order.userId` contra el `User` resuelto vía
   `AuthIdentityService.getUserBySub`); si no coincide, responde `404` igual que si la orden no
   existiera, para no filtrar cuál de los dos casos ocurrió. Esto corrige un gap de BOLA (Broken
@@ -323,7 +324,7 @@ frontend para mostrar el historial de planes descargables.
   - `thumbnailUrl`: URL firmada de la miniatura WebP de la página 1 del plan, o `null` si la orden no
     tiene miniatura (plan generado antes de esta función, o falló su rasterización). El frontend
     muestra un placeholder en ese caso.
-- Solo incluye órdenes con `generationStatus='completado'` y `pdfKey` no nulo
+- Solo incluye órdenes con `generationStatus='COMPLETED'` y `pdfKey` no nulo
   (`OrderRepository.getPaidOrdersWithPdfByUserId`, `Prisma.findMany`). Filtra siempre por el usuario
   del token y nunca recibe un id externo, por lo que no hay BOLA posible acá (a diferencia de
   `GET /ordenes/obtener-estado/:id`).
@@ -345,12 +346,12 @@ Lógica de `WebhooksService.processPayment(orderId)`:
 
 1. `OrdersService.markAsPaid` carga la orden con su producto (404 si no existe).
 2. `OrderRepository.markOrderAsPaidWithPayment` ejecuta, **en una sola transacción**: marca
-   `paymentStatus: 'pendiente' → 'pagado'` (y `paymentDate`) de forma **idempotente**, y crea la fila
+   `paymentStatus: 'PENDING' → 'PAID'` (y `paymentDate`) de forma **idempotente**, y crea la fila
    `payment` (`status: 'AUTHORIZED'`). Si la orden ya estaba pagada no crea otro `payment`, no la reprocesa
    y responde `{ status: 'ya_procesado' }`. Mientras el pago es simulado, `payment.provider = 'SIMULATED'`
    y sus campos de detalle son placeholders.
 3. Solo para productos `PREDEFINED`, en esa misma transacción copia `product.pdfKey`/`thumbnailKey` a la
-   orden y la deja `generationStatus: 'completado'` (el plan ya viene hecho). No se genera nada.
+   orden y la deja `generationStatus: 'COMPLETED'` (el plan ya viene hecho). No se genera nada.
 4. Solo para productos `GENERATED`, si la marcó recién, dispara `PlanGenerationService.generatePlan(orderId)`
    **fire-and-forget** (sin `await`) y responde de inmediato `{ status: 'procesado' }` — el webhook no
    espera a que el plan termine de generarse.
@@ -388,9 +389,9 @@ Resumen:
    `productos-personalizados/miniaturas/<orderId>.webp` (**best-effort**: si falla, se registra un
    warning, `thumbnailKey` queda `null` y **no** consume un reintento ni falla el plan), y persiste el
    plan junto al `pdfKey`/`thumbnailKey` en la orden en la misma llamada
-   (`generationStatus='completado'`) — luego llama a `EmailService.sendPlanByEmail`
+   (`generationStatus='COMPLETED'`) — luego llama a `EmailService.sendPlanByEmail`
    reutilizando el mismo buffer del PDF para el adjunto, sin regenerarlo. Si agota los reintentos,
-   marca `generationStatus='error'` y registra el evento.
+   marca `generationStatus='ERROR'` y registra el evento.
 
 ### `GET /user/me` y `PATCH /user/me`
 
@@ -581,8 +582,8 @@ Campos relevantes de `Order` (tabla `order`):
 | `id` | UUID, generado en `OrdersService.createOrder` |
 | `userId` / `productId` | FKs a `User` y `Product` |
 | `amount` / `currency` | Copiados de `Product` al crear la orden |
-| `paymentStatus` | `'pendiente'` \| `'pagado'` |
-| `generationStatus` | `'no_iniciado'` \| `'generando'` \| `'completado'` \| `'error'` |
+| `paymentStatus` | `'PENDING'` \| `'PAID'` |
+| `generationStatus` | `'NOT_STARTED'` \| `'GENERATING'` \| `'COMPLETED'` \| `'ERROR'` |
 | `planJson` | `NutritionPlanDto` resultante serializado, `null` hasta que se genera |
 | `pdfKey` | Key del PDF del plan en el bucket S3. `GENERATED`: `productos-personalizados/<orderId>.pdf`, `null` hasta que se genera. `PREDEFINED`: copia de `Product.pdfKey`, solo desde que se confirma el pago — ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3) |
 | `thumbnailKey` | Key de la miniatura WebP de la página 1 del PDF (`productos-personalizados/miniaturas/<orderId>.webp`); `null` si aún no se genera, si falló (es best-effort) o si el plan es anterior a esta función (sin backfill) |
@@ -596,7 +597,7 @@ mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básic
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
 la fila principal, no sus tablas hijas) sí está conectado: `PlanGenerationService` la **escribe**
 (`PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`, idempotente por `orderId`: crea el `Plan` de la orden con su `NutritionalPlan` principal o reemplaza este último) justo antes de
-marcar la orden como `completado`, y `GET /panel/resumen` la **lee** (`plans` → `nutritionalPlans` incluido en
+marcar la orden como `COMPLETED`, y `GET /panel/resumen` la **lee** (`plans` → `nutritionalPlans` incluido en
 `getLatestNutritionalConsultationWithDetailsByPatientId`, que solo considera consultas que ya tienen
 plan). Las órdenes completadas antes de este cambio no tienen fila `NutritionalPlan` (sin backfill).
 Desde la migración `20260925120000_plan_entity`, `NutritionalPlan` ya no cuelga directamente de la

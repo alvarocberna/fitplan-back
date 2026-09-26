@@ -13,7 +13,7 @@ import {
   AnamnesisDetailsInput,
   MeasurementsDetailsInput,
 } from '../../domain/dtos/clinical-domain/nutritional-consultation/create-nutritional-consultation-details.dto';
-import { SportsEventType } from '../../domain/entities/anamnesis.entity';
+import { SportsEventType } from '../../domain/entities/enums';
 
 export function mapMealDtoToEntity(
   meal: Meal,
@@ -21,36 +21,36 @@ export function mapMealDtoToEntity(
   return {
     mealTime: meal.mealTime ?? '',
     // Sin fuente en el DTO de consulta (no se recolecta la hora exacta de cada comida hoy).
-    mealHour: '',
+    mealHour: null,
     // Tampoco se recolecta una descripción libre de la comida en el chat de consulta.
-    description: '',
-    carbohydrate: meal.carbohydrate ?? '',
-    freeConsumptionVegetable: meal.freeConsumptionVegetable ?? '',
-    generalConsumptionVegetable: meal.generalConsumptionVegetable ?? '',
-    fruit: meal.fruit ?? '',
-    highFatProtein: meal.highFatProtein ?? '',
-    lowFatProtein: meal.lowFatProtein ?? '',
-    highFatDairy: meal.highFatDairy ?? '',
-    mediumFatDairy: meal.mediumFatDairy ?? '',
-    lowFatDairy: meal.lowFatDairy ?? '',
-    highProteinDairy: meal.highProteinDairy ?? '',
-    lipidRich: meal.highLipid ?? '',
-    oil: meal.oil ?? '',
-    sugar: meal.sugar ?? '',
-    alcohol: meal.alcohol ?? '',
+    description: null,
+    cereals: meal.cereals,
+    freeConsumptionVegetable: meal.freeConsumptionVegetable,
+    generalConsumptionVegetable: meal.generalConsumptionVegetable,
+    fruit: meal.fruit,
+    highFatProtein: meal.highFatProtein,
+    lowFatProtein: meal.lowFatProtein,
+    highFatDairy: meal.highFatDairy,
+    mediumFatDairy: meal.mediumFatDairy,
+    lowFatDairy: meal.lowFatDairy,
+    highProteinDairy: meal.highProteinDairy,
+    lipidRich: meal.highLipid,
+    oil: meal.oil,
+    sugar: meal.sugar,
+    alcohol: meal.alcohol,
   };
 }
 
-// SportsSession.eventType (entidad) exige 'TRAINING'|'COMPETITION'|null, pero el DTO de consulta
+// SportsSession.eventType (entidad) exige SportsEventType | null, pero el DTO de consulta
 // solo captura texto libre (lo que haya tipeado/dictado el paciente en la entrevista). Heurística
 // simple por substring; si no calza con ninguno de los dos, se guarda null en vez de forzar un
 // valor incorrecto.
 export function normalizeEventType(raw: string | null): SportsEventType | null {
   if (!raw) return null;
   const normalized = raw.toLowerCase();
-  if (normalized.includes('compet')) return 'COMPETITION';
+  if (normalized.includes('compet')) return SportsEventType.COMPETITION;
   if (normalized.includes('entrena') || normalized.includes('train'))
-    return 'TRAINING';
+    return SportsEventType.TRAINING;
   return null;
 }
 
@@ -142,11 +142,14 @@ export function mapAnamnesisDtoToDetails(
   };
 }
 
+//measuredAt: fecha de la medición; en el flujo de consulta es la misma consultationDate.
 export function mapMeasurementsDtoToDetails(
   measurements: MeasurementsDto | null,
+  measuredAt: Date,
 ): MeasurementsDetailsInput | null {
   if (!measurements) return null;
   return {
+    measuredAt,
     // Este flujo siempre crea una sola tanda de measurements por consulta.
     measurementNumber: 1,
     level: null,

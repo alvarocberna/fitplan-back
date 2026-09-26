@@ -17,7 +17,7 @@ import {
 
 const MEAL_KEYS = [
   'mealTime',
-  'carbohydrate',
+  'cereals',
   'freeConsumptionVegetable',
   'generalConsumptionVegetable',
   'fruit',
@@ -69,8 +69,8 @@ function toNumberOrNull(value: unknown): number | null {
 }
 
 // Repara el caso donde el modelo anida los campos de una comida bajo el nombre de esa
-// comida, ej. { desayuno: { mealTime: ..., carbohydrate: ... } } en vez del
-// objeto plano { mealTime: "desayuno", carbohydrate: ... } que espera MealDtoImpl.
+// comida, ej. { desayuno: { mealTime: ..., cereals: ... } } en vez del
+// objeto plano { mealTime: "desayuno", cereals: ... } que espera MealDtoImpl.
 function normalizeMeal(raw: unknown): MealDtoImpl {
   const empty = Object.fromEntries(MEAL_KEYS.map((key) => [key, null]));
   if (!isPlainObject(raw)) return plainToInstance(MealDtoImpl, empty);

@@ -134,8 +134,8 @@ describe('OrdersService', () => {
         expect.objectContaining({
           userId: 'user-1',
           productId: 'product-1',
-          paymentStatus: 'pendiente',
-          generationStatus: 'no_iniciado',
+          paymentStatus: 'PENDING',
+          generationStatus: 'NOT_STARTED',
           planJson: null,
           pdfKey: null,
           thumbnailKey: null,
@@ -153,6 +153,41 @@ describe('OrdersService', () => {
             consultationNumber: 1,
           }),
         }),
+      );
+      // athlete vive en User (se captura en el perfil), ya no en la consulta.
+      const [details] =
+        nutritionalConsultationRepository.createNutritionalConsultationWithDetails
+          .mock.calls[0];
+      expect(details.consultation).not.toHaveProperty('athlete');
+    });
+
+    it('fecha la medición con la misma consultationDate de la consulta', async () => {
+      authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
+      authIdentityService.isProfileComplete.mockReturnValue(true);
+      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue({
+        id: 'clinical-1',
+      } as any);
+      productRepository.findOrCreateActiveGeneratedProduct.mockResolvedValue({
+        id: 'product-1',
+        price: 10000,
+        currency: 'CLP',
+      } as any);
+      orderRepository.createOrder.mockResolvedValue({ id: 'order-1' } as any);
+      nutritionalConsultationRepository.countNutritionalConsultationsByClinicalRecordId.mockResolvedValue(0);
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mockResolvedValue({} as any);
+
+      const dto = {
+        ...baseDto,
+        measurements: { weight: 70, height: 175, somatotype: null },
+      } as CompleteConsultationDtoImpl;
+      await service.createOrder(dto, cognitoUser);
+
+      const [details] =
+        nutritionalConsultationRepository.createNutritionalConsultationWithDetails
+          .mock.calls[0];
+      expect(details.measurements!.measuredAt).toBeInstanceOf(Date);
+      expect(details.measurements!.measuredAt).toBe(
+        details.consultation.consultationDate,
       );
     });
   });
@@ -184,8 +219,8 @@ describe('OrdersService', () => {
           productId: 'product-2',
           amount: 14990,
           currency: 'CLP',
-          paymentStatus: 'pendiente',
-          generationStatus: 'no_iniciado',
+          paymentStatus: 'PENDING',
+          generationStatus: 'NOT_STARTED',
           planJson: null,
           pdfKey: null,
           thumbnailKey: null,
@@ -230,8 +265,8 @@ describe('OrdersService', () => {
       authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
         userId: 'user-1',
-        paymentStatus: 'pagado',
-        generationStatus: 'completado',
+        paymentStatus: 'PAID',
+        generationStatus: 'COMPLETED',
         planJson: JSON.stringify({ prescription: { goal: 'volumen' } }),
         pdfKey: 'productos-personalizados/order-1.pdf',
         thumbnailKey: 'productos-personalizados/miniaturas/order-1.webp',
@@ -244,8 +279,8 @@ describe('OrdersService', () => {
 
       const status = await service.getStatus('order-1', cognitoUser);
 
-      expect(status.paymentStatus).toBe('pagado');
-      expect(status.generationStatus).toBe('completado');
+      expect(status.paymentStatus).toBe('PAID');
+      expect(status.generationStatus).toBe('COMPLETED');
       expect((status.planJson as any).prescription.goal).toBe('volumen');
       expect(status.pdfUrl).toBe('https://signed-url.example/productos-personalizados/order-1.pdf');
       expect(status.thumbnailUrl).toBe(
@@ -266,8 +301,8 @@ describe('OrdersService', () => {
       authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
         userId: 'user-1',
-        paymentStatus: 'pagado',
-        generationStatus: 'completado',
+        paymentStatus: 'PAID',
+        generationStatus: 'COMPLETED',
         planJson: JSON.stringify({ prescription: { goal: 'volumen' } }),
         pdfKey: 'productos-personalizados/order-1.pdf',
         thumbnailKey: null,
@@ -286,8 +321,8 @@ describe('OrdersService', () => {
       authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
         userId: 'user-1',
-        paymentStatus: 'pendiente',
-        generationStatus: 'no_iniciado',
+        paymentStatus: 'PENDING',
+        generationStatus: 'NOT_STARTED',
         planJson: null,
         pdfKey: null,
         thumbnailKey: null,
@@ -305,8 +340,8 @@ describe('OrdersService', () => {
       authIdentityService.getUserBySub.mockResolvedValue({ id: 'user-1' } as any);
       orderRepository.getOrderById.mockResolvedValue({
         userId: 'otro-usuario',
-        paymentStatus: 'pagado',
-        generationStatus: 'completado',
+        paymentStatus: 'PAID',
+        generationStatus: 'COMPLETED',
         planJson: null,
         pdfKey: null,
       } as any);
@@ -402,7 +437,7 @@ describe('OrdersService', () => {
         {
           pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
           thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
-          generationStatus: 'completado',
+          generationStatus: 'COMPLETED',
         },
       );
     });
@@ -444,7 +479,7 @@ describe('OrdersService', () => {
       );
 
       expect(orderRepository.updateOrderById).toHaveBeenCalledWith('order-1', {
-        generationStatus: 'completado',
+        generationStatus: 'COMPLETED',
         planJson: JSON.stringify(plan),
         pdfKey: 'productos-personalizados/order-1.pdf',
         thumbnailKey: 'productos-personalizados/miniaturas/order-1.webp',
@@ -457,7 +492,7 @@ describe('OrdersService', () => {
 
       expect(orderRepository.updateOrderById).toHaveBeenCalledWith(
         'order-1',
-        expect.objectContaining({ generationStatus: 'completado', thumbnailKey: null }),
+        expect.objectContaining({ generationStatus: 'COMPLETED', thumbnailKey: null }),
       );
     });
 

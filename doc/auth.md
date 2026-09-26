@@ -124,13 +124,11 @@ if (!this.authIdentityService.isProfileComplete(user)) {
 
 El `User` **tiene** que existir y estar completo de antemano — si no, la creación de la orden
 falla explícitamente en vez de crear/completar el `User` a medias con lo que venga en el body.
-`personalInfo.athlete` (deportista) sigue viniendo del body de `ordenes/crear` porque **no** es un
-campo de `User` — es específico de cada `NutritionalConsultation`, no del perfil de la persona.
-
-**Deuda técnica**: como `athlete` no se persiste en `User`, un usuario que ya tiene el perfil
-completo (y por lo tanto no vuelve a pasar por el formulario de `informacion-personal`) nunca
-vuelve a responder esa pregunta — el frontend asume `false`. Ver
-`nutricionista-virtual-front/doc/auth-pending.md`.
+`athlete` (deportista) es un campo de `User` (`BOOLEAN NOT NULL DEFAULT false`): se envía en
+`PATCH /auth/perfil` (opcional; si no viene se conserva el valor actual) desde el formulario de
+`informacion-personal`, y `POST`/`PATCH /auth/perfil` lo devuelven. `ordenes/crear` ya no lo lee
+del body, y la generación del plan lo toma de `User`. Un usuario con el perfil completo que se
+salta `informacion-personal` conserva la última respuesta que dio.
 
 ## Google como Identity Provider — por qué no cambia nada acá
 

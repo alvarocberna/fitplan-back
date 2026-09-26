@@ -1,4 +1,11 @@
-import { IsDateString, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class SincronizarPerfilDtoImpl {
   @IsEmail()
@@ -40,6 +47,11 @@ export class ActualizarPerfilDtoImpl {
   @IsDateString()
   @IsNotEmpty()
   dateOfBirth!: string;
+
+  // Opcional: si no viene, se conserva el valor actual del perfil.
+  @IsBoolean()
+  @IsOptional()
+  athlete?: boolean;
 }
 
 export interface PerfilResponseDto {
@@ -49,6 +61,7 @@ export interface PerfilResponseDto {
   maternalLastName: string | null;
   gender: string | null;
   dateOfBirth: Date | null;
+  athlete: boolean;
   email: string | null;
   rut: string | null;
   rutCheckDigit: string | null;

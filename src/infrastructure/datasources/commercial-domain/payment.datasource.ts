@@ -2,26 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { Payment as PrismaPayment } from '../../../../generated/prisma';
 import { PrismaService } from '../../orm/prisma/prisma.service';
 import { PaymentDatasource } from '../../../domain/datasources/commercial-domain/payment.datasource';
-import {
-  PaymentEntity,
-  PaymentProvider,
-  PaymentTransactionStatus,
-} from '../../../domain/entities/payment.entity';
+import { PaymentEntity } from '../../../domain/entities/payment.entity';
 import { CreatePaymentDto, UpdatePaymentDto } from '../../../domain';
 
 @Injectable()
 export class PaymentDatasourceImpl implements PaymentDatasource {
   constructor(private readonly prisma: PrismaService) {}
 
-  // `amount` es Decimal(12,2) en Postgres (Prisma lo devuelve como instancia Decimal, no number);
-  // `provider`/`status` se guardan como String (sin enum nativo en el schema) y ya llegan
-  // validados vía CreatePaymentDto.
+  // `amount` es Decimal(12,2) en Postgres (Prisma lo devuelve como instancia Decimal, no number).
   private toEntity(payment: PrismaPayment): PaymentEntity {
     return {
       ...payment,
       amount: payment.amount.toNumber(),
-      provider: payment.provider as PaymentProvider,
-      status: payment.status as PaymentTransactionStatus,
     };
   }
 

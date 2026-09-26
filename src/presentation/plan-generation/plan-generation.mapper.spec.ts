@@ -40,10 +40,10 @@ describe('mapPlanToNutritionalPlanDto', () => {
     });
   });
 
-  it('usa la fecha actual como startDate por defecto y admite planName null', () => {
+  it('usa la fecha actual como startDate por defecto y un planName por defecto si viene null', () => {
     const result = mapPlanToNutritionalPlanDto(plan, null);
 
-    expect(result.planName).toBeNull();
+    expect(result.planName).toBe('Plan Nutricional Personalizado');
     expect(result.startDate).toBeInstanceOf(Date);
   });
 });

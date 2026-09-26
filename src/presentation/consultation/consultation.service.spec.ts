@@ -33,7 +33,7 @@ describe('ConsultationService', () => {
           r24h: [
             {
               mealTime: 'desayuno',
-              carbohydrate: 'pan',
+              cereals: 'pan',
               freeConsumptionVegetable: null,
               generalConsumptionVegetable: null,
               fruit: null,

@@ -4,7 +4,7 @@ import { Meal } from '../../dtos/consultation.dto';
 function makeMeal(mealTime: string, overrides: Partial<Meal> = {}): Meal {
   return {
     mealTime,
-    carbohydrate: null,
+    cereals: null,
     freeConsumptionVegetable: null,
     generalConsumptionVegetable: null,
     fruit: null,
@@ -48,13 +48,13 @@ describe('isMainMealTime', () => {
 
 describe('determineMealTimes', () => {
   it('con 1 tiempo reportado, completa a 3 principales + 1 colación (goal no-volumen)', () => {
-    const result = determineMealTimes([makeMeal('desayuno', { carbohydrate: 'pan' })], 'mantencion');
+    const result = determineMealTimes([makeMeal('desayuno', { cereals: 'pan' })], 'mantencion');
 
     expect(result.map((m) => m.mealTime)).toEqual(['desayuno', 'almuerzo', 'colación', 'once']);
     // el tiempo reportado conserva su contenido original
-    expect(result[0].carbohydrate).toBe('pan');
+    expect(result[0].cereals).toBe('pan');
     // los tiempos agregados quedan vacíos
-    expect(result[1].carbohydrate).toBeNull();
+    expect(result[1].cereals).toBeNull();
   });
 
   it('con los 4 principales reportados y goal "volumen", agrega 1 colación', () => {
@@ -106,6 +106,6 @@ describe('determineMealTimes', () => {
   it('sin ningún tiempo reportado (r24h null), igual completa la estructura base', () => {
     const result = determineMealTimes(null, 'mantencion');
     expect(result.map((m) => m.mealTime)).toEqual(['desayuno', 'almuerzo', 'colación', 'once']);
-    expect(result.every((m) => m.carbohydrate === null)).toBe(true);
+    expect(result.every((m) => m.cereals === null)).toBe(true);
   });
 });

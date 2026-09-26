@@ -17,7 +17,12 @@ import { NutritionalConsultationRepository } from '../../domain/repositories/cli
 import { ProductRepository } from '../../domain/repositories/commercial-domain/product.repository';
 import { OrderRepository } from '../../domain/repositories/commercial-domain/order.repository';
 import { OrderEntity } from '../../domain/entities/order.entity';
-import { ProductType } from '../../domain/entities/product.entity';
+import {
+  PaymentProvider,
+  PaymentStatus,
+  PaymentTransactionStatus,
+  ProductType,
+} from '../../domain/entities/enums';
 import type { OrderPaidExtras } from '../../domain/datasources/commercial-domain/order.datasource';
 import { NutritionalConsultationEntity } from '../../domain/entities/clinical-record.entity';
 import { StorageService } from '../storage/storage.service';
@@ -43,7 +48,7 @@ export class OrdersService {
     private readonly storageService: StorageService,
   ) {}
 
-  //crea la orden en paymentStatus='pendiente', antes de que el usuario pague
+  //crea la orden en paymentStatus=PENDING, antes de que el usuario pague
   //(el webhook de pago es server-a-server y no tiene acceso al localStorage del navegador)
   async createOrder(
     dto: CompleteConsultationDtoImpl,
@@ -56,7 +61,7 @@ export class OrdersService {
 
     // El perfil (User) ya tiene que existir y estar completo a esta altura — se crea al primer
     // login (POST /auth/perfil) y se completa en informacion-personal (PATCH /auth/perfil).
-    // ordenes/crear ya no crea ni completa User, solo lee el athlete puntual de esta consulta.
+    // ordenes/crear ya no crea ni completa User (athlete también vive en el perfil).
     const user = await this.authIdentityService.getUserBySub(cognitoUser);
     if (!this.authIdentityService.isProfileComplete(user)) {
       throw new BadRequestException(
@@ -76,8 +81,8 @@ export class OrdersService {
       productId: product.id,
       amount: product.price,
       currency: product.currency,
-      paymentStatus: 'pendiente',
-      generationStatus: 'no_iniciado',
+      paymentStatus: PaymentStatus.PENDING,
+      generationStatus: GenerationStatus.NOT_STARTED,
       planJson: null,
       pdfKey: null,
       thumbnailKey: null,
@@ -87,6 +92,7 @@ export class OrdersService {
       expirationDate: null,
     });
 
+    const consultationDate = new Date();
     const consultationNumber =
       (await this.nutritionalConsultationRepository.countNutritionalConsultationsByClinicalRecordId(
         clinicalRecord.id,
@@ -99,19 +105,21 @@ export class OrdersService {
           patientId: user.id,
           orderId: order.id,
           consultationNumber,
-          consultationDate: new Date(),
+          consultationDate,
           description: null,
-          athlete: personalInfo.athlete ?? null,
         },
         anamnesis: mapAnamnesisDtoToDetails(dto.anamnesis),
-        measurements: mapMeasurementsDtoToDetails(dto.measurements),
+        measurements: mapMeasurementsDtoToDetails(
+          dto.measurements,
+          consultationDate,
+        ),
       },
     );
 
     return { orderId: order.id };
   }
 
-  //crea la orden de un plan predefinido en paymentStatus='pendiente'. A diferencia de createOrder no hay
+  //crea la orden de un plan predefinido en paymentStatus=PENDING. A diferencia de createOrder no hay
   //consulta ni ficha clínica: la orden solo vincula al usuario (userId) con el producto que eligió, y el
   //monto sale siempre de product.price. Tampoco se exige perfil completo, basta con tener sesión.
   //la orden nace SIN pdfKey/thumbnailKey: se copian desde el producto recién al confirmarse el pago
@@ -133,8 +141,8 @@ export class OrdersService {
       productId: product.id,
       amount: product.price,
       currency: product.currency,
-      paymentStatus: 'pendiente',
-      generationStatus: 'no_iniciado',
+      paymentStatus: PaymentStatus.PENDING,
+      generationStatus: GenerationStatus.NOT_STARTED,
       planJson: null,
       pdfKey: null,
       thumbnailKey: null,
@@ -174,7 +182,7 @@ export class OrdersService {
 
     return {
       paymentStatus: order.paymentStatus,
-      generationStatus: order.generationStatus as GenerationStatus,
+      generationStatus: order.generationStatus,
       planJson: order.planJson
         ? (JSON.parse(order.planJson) as NutritionPlanDto)
         : null,
@@ -243,11 +251,11 @@ export class OrdersService {
   }
 
   //idempotente: si ya estaba pagada, no vuelve a marcarla ni crea otro payment.
-  //en UNA transacción marca order.paymentStatus='pagado' y crea la fila payment (status AUTHORIZED),
+  //en UNA transacción marca order.paymentStatus=PAID y crea la fila payment (status AUTHORIZED),
   //para que ambas entidades queden consistentes. Devuelve markedNow=true si esta llamada fue la que
   //efectivamente marcó el pago, y el tipo del producto para que el webhook decida si hay que generar.
   //para un producto PREDEFINED, en el mismo instante copia su pdfKey/thumbnailKey a la orden y la deja
-  //'completado': recién ahora que está pagada la orden puede exponer el PDF (getStatus / GET /ordenes).
+  //COMPLETED: recién ahora que está pagada la orden puede exponer el PDF (getStatus / GET /ordenes).
   async markAsPaid(
     id: string,
   ): Promise<{ markedNow: boolean; productType: ProductType }> {
@@ -256,7 +264,7 @@ export class OrdersService {
     const { product } = order;
 
     let extras: OrderPaidExtras | undefined;
-    if (product.type === 'PREDEFINED') {
+    if (product.type === ProductType.PREDEFINED) {
       if (!product.pdfKey) {
         throw new Error(
           `Producto ${product.id} (PREDEFINED) sin pdfKey: no se puede entregar la orden ${id}`,
@@ -265,7 +273,7 @@ export class OrdersService {
       extras = {
         pdfKey: product.pdfKey,
         thumbnailKey: product.thumbnailKey,
-        generationStatus: 'completado',
+        generationStatus: GenerationStatus.COMPLETED,
       };
     }
 
@@ -274,12 +282,12 @@ export class OrdersService {
     const markedNow = await this.orderRepository.markOrderAsPaidWithPayment(
       id,
       {
-        provider: 'SIMULATED',
+        provider: PaymentProvider.SIMULATED,
         paymentIdentifier: `SIM-${id}`,
         authorizationCode: 'SIMULATED',
         amount: order.amount,
         installmentCount: 1,
-        status: 'AUTHORIZED',
+        status: PaymentTransactionStatus.AUTHORIZED,
         transactionDate: new Date(),
         movementType: 'SIMULATED',
         cardType: 'SIMULATED',
@@ -289,7 +297,7 @@ export class OrdersService {
     return { markedNow, productType: product.type };
   }
 
-  //guard de estado: solo entra a 'generando' si no estaba ya en ese estado,
+  //guard de estado: solo entra a GENERATING si no estaba ya en ese estado,
   //para evitar que dos disparos concurrentes (ej. reintento manual de webhook) generen el plan dos veces.
   async tryStartGeneration(id: string): Promise<boolean> {
     return this.orderRepository.tryTransitionOrderToGenerating(id);
@@ -302,7 +310,7 @@ export class OrdersService {
     thumbnailKey: string | null,
   ): Promise<void> {
     await this.orderRepository.updateOrderById(id, {
-      generationStatus: 'completado',
+      generationStatus: GenerationStatus.COMPLETED,
       planJson: JSON.stringify(plan),
       pdfKey,
       thumbnailKey,

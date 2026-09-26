@@ -179,7 +179,7 @@ export class ConsultationService {
           /* un objeto PLANO por cada comida, con las claves de Meal al mismo nivel (nunca anidadas bajo el nombre de la comida) */
           {
             "mealTime": string, // "desayuno" | "almuerzo" | "once" | "cena" | "colación"
-            "carbohydrate": string | null,
+            "cereals": string | null,
             "freeConsumptionVegetable": string | null,
             "generalConsumptionVegetable": string | null,
             "fruit": string | null,
@@ -329,18 +329,18 @@ export class ConsultationService {
         -- En el campo 'mealTime' indica a qué comida corresponde, pudiendo ser desayuno, almuerazo, once, cena o colación.
         -- Para cada comida mencionada, clasifica los alimentos en los campos del objeto Meal según corresponda. Completa cada campo
         con con un enunciado que indique qué alimentos suele comer el usuario durante ese tiempo de comida. Completa los campos con
-        enunciados como el siguiente (ejemplo para carbohidratos en el tiempo de comida del desayuno): "Consume una cantidad moderada de
-        carbohidratos durante el desayuno, como lo son pan 1 unidad, avena 1 taza, granola 1 taza, tortillas 1 unidad, cereal de desayuno 1 taza".
+        enunciados como el siguiente (ejemplo para cereales en el tiempo de comida del desayuno): "Consume una cantidad moderada de
+        cereales durante el desayuno, como lo son pan 1 unidad, avena 1 taza, granola 1 taza, tortillas 1 unidad, cereal de desayuno 1 taza".
         -- Importante: La palta se clasifica dentro del grupo 'highLipid'. Por ningun motivo va en los grupos de verduras.
         Ejemplo para proteina en el desayuno: "Consume una cantidad moderada de proteina en el desayuno, como huevo 2 unidades, jamón 1 tajada, }
         quesillo 2 tajadas".
         -- Todas las instancias de comida deben incluir el campo 'mealTime'.
         -- Una instancia de comida suele tener entre 3-5 campos correspondientes a alimentos (carbohidratos, proteina, lacteos, fruta, etc).
         -- IMPORTANTE sobre la forma del objeto: cada elemento del array "r24h" debe ser un objeto PLANO con las claves de Meal
-        directamente al mismo nivel (mealTime, carbohydrate, freeConsumptionVegetable, etc). NUNCA anides el objeto de una comida
+        directamente al mismo nivel (mealTime, cereals, freeConsumptionVegetable, etc). NUNCA anides el objeto de una comida
         bajo una clave con su nombre.
-        Correcto:   { "mealTime": "desayuno", "carbohydrate": "...", "fruit": null, ... }
-        Incorrecto: { "desayuno": { "mealTime": "desayuno", "carbohydrate": "...", ... } }
+        Correcto:   { "mealTime": "desayuno", "cereals": "...", "fruit": null, ... }
+        Incorrecto: { "desayuno": { "mealTime": "desayuno", "cereals": "...", ... } }
         -- Esta clasificación detallada por campos va SOLO en el objeto "anamnesis"; NUNCA la repitas ni la
         enumeres en "reply" (ver "ESTILO DEL CAMPO reply").
       - Una vez que 'r24h' quede razonablemente completo (todos los tiempos de comida principales cubiertos),

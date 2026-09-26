@@ -16,7 +16,7 @@ import {
 // simula/confirma vía webhook sin gateway real). Ajustar estos valores con negocio antes de
 // producción.
 const DEFAULT_GENERATED_PRODUCT: CreateProductDto = {
-  type: 'GENERATED',
+  type: ProductType.GENERATED,
   name: 'Plan Nutricional Personalizado',
   description:
     'Plan nutricional generado automáticamente a partir de la consulta del paciente.',
@@ -42,7 +42,6 @@ export class ProductDatasourceImpl implements ProductDatasource {
     return {
       ...product,
       price: product.price.toNumber(),
-      type: product.type as ProductType,
     };
   }
 
@@ -79,7 +78,7 @@ export class ProductDatasourceImpl implements ProductDatasource {
     code: string,
   ): Promise<ProductEntity | null> {
     const product = await this.prisma.product.findFirst({
-      where: { code, type: 'PREDEFINED', active: true },
+      where: { code, type: ProductType.PREDEFINED, active: true },
     });
     return product ? this.toEntity(product) : null;
   }
@@ -102,7 +101,7 @@ export class ProductDatasourceImpl implements ProductDatasource {
 
   async findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {
     const existing = await this.prisma.product.findFirst({
-      where: { type: 'GENERATED', active: true },
+      where: { type: ProductType.GENERATED, active: true },
     });
     if (existing) return this.toEntity(existing);
     const created = await this.prisma.product.create({

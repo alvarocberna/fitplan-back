@@ -24,7 +24,7 @@ import type { CognitoUserClaims } from '../auth/cognito-user.decorator';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  //crea la orden (paymentStatus='pendiente') ANTES de que el usuario pague.
+  //crea la orden (paymentStatus=PENDING) ANTES de que el usuario pague.
   @UseGuards(CognitoAuthGuard)
   @Post('crear')
   create(
@@ -34,7 +34,7 @@ export class OrdersController {
     return this.ordersService.createOrder(body, cognitoUser);
   }
 
-  //crea la orden (paymentStatus='pendiente') de un plan predefinido, sin consulta previa: recibe solo el
+  //crea la orden (paymentStatus=PENDING) de un plan predefinido, sin consulta previa: recibe solo el
   //code de la versión elegida y el precio/archivos salen de la base de datos, nunca del frontend.
   @UseGuards(CognitoAuthGuard)
   @Post('crear-predefinido')

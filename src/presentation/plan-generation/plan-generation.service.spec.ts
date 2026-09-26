@@ -87,7 +87,7 @@ describe('PlanGenerationService', () => {
   const r24h: Meal[] = [
     {
       mealTime: 'desayuno',
-      carbohydrate: null,
+      cereals: null,
       freeConsumptionVegetable: null,
       generalConsumptionVegetable: null,
       fruit: null,
@@ -115,6 +115,7 @@ describe('PlanGenerationService', () => {
       paternalLastName: 'Pérez',
       maternalLastName: null,
       gender,
+      athlete: false,
       email: 'ana@example.com',
       dateOfBirth,
     },
@@ -122,7 +123,6 @@ describe('PlanGenerationService', () => {
 
   const consultationEntity = {
     id: 'consultation-1',
-    athlete: false,
     anamneses: [
       {
         anamnesisDietary: [
@@ -131,7 +131,7 @@ describe('PlanGenerationService', () => {
               {
                 meals: r24h.map((meal) => ({
                   mealTime: meal.mealTime,
-                  carbohydrate: meal.carbohydrate,
+                  cereals: meal.cereals,
                   freeConsumptionVegetable: meal.freeConsumptionVegetable,
                   generalConsumptionVegetable: meal.generalConsumptionVegetable,
                   fruit: meal.fruit,

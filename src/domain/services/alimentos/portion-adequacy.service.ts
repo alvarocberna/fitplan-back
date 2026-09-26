@@ -28,7 +28,7 @@ export type MealGroups = {
 type FoodField = Exclude<keyof Meal, 'mealTime'>;
 
 const FOOD_FIELDS: FoodField[] = [
-    'carbohydrate',
+    'cereals',
     'freeConsumptionVegetable',
     'generalConsumptionVegetable',
     'fruit',

@@ -42,6 +42,7 @@ export class AuthController {
       maternalLastName: body.maternalLastName ?? null,
       gender: body.gender,
       dateOfBirth: new Date(body.dateOfBirth),
+      athlete: body.athlete,
     });
     return this.toResponse(user);
   }
@@ -54,6 +55,7 @@ export class AuthController {
       maternalLastName: user.maternalLastName,
       gender: user.gender,
       dateOfBirth: user.dateOfBirth,
+      athlete: user.athlete,
       email: user.email,
       rut: user.rut,
       rutCheckDigit: user.rutCheckDigit,

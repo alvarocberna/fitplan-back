@@ -5,14 +5,19 @@
 
 import type { PlanEntity } from './plan.entity';
 
-export type PlanMealTimeSlot =
-  | 'BREAKFAST'
-  | 'LUNCH'
-  | 'AFTERNOON_TEA'
-  | 'DINNER'
-  | 'SNACK';
-export type PlanMealTimeNoteType = 'EXAMPLE' | 'COMMENT';
-export type PlanSupplementNoteType = 'EFFECT' | 'CONSIDERATION';
+import type {
+  PlanMealTimeSlot,
+  PlanMealTimeNoteType,
+  PlanPeriod,
+  PlanSupplementNoteType,
+} from './enums';
+
+export {
+  PlanMealTimeSlot,
+  PlanMealTimeNoteType,
+  PlanPeriod,
+  PlanSupplementNoteType,
+} from './enums';
 
 export interface NutritionalPlanEntity {
   id: string;
@@ -21,15 +26,16 @@ export interface NutritionalPlanEntity {
   planId: string;
   plan?: PlanEntity;
 
-  planName: string | null;
-  period: string | null; // EVENTO | MICROCICLO | MESOCICLO | MACROCICLO
+  planName: string;
+  period: PlanPeriod | null;
   // Plan principal dentro de su Plan (hoy siempre true: la generación crea uno solo).
   mainPlan: boolean;
-  startDate: Date | null;
+  startDate: Date;
+  // Nullable: la generación automática no tiene fecha de término.
   endDate: Date | null;
 
-  goal: string | null;
-  dietRegimen: string | null;
+  goal: string;
+  dietRegimen: string;
 
   calorieRequirement: number;
   proteinRequirement: number;

@@ -68,14 +68,14 @@ sequenceDiagram
     BE->>BE: CognitoAuthGuard valida el token
     BE->>DB: resuelve User por sub (AuthIdentity) — ya tiene que existir y estar completo
     Note over BE,DB: find-or-create ClinicalRecord + Product
-    BE->>DB: INSERT Order (paymentStatus='pendiente')
+    BE->>DB: INSERT Order (paymentStatus='PENDING')
     BE->>DB: INSERT NutritionalConsultation + Anamnesis/Measurements (árbol completo, orderId vinculado)
     BE-->>FE: { orderId }
     FE->>Paciente: redirige a /pago/{orderId}
 
     Paciente->>FE: /pago/[ordenId] ("Pagar")
     FE->>BE: POST /webhooks/ordenes/:id/simular-pago
-    BE->>DB: UPDATE Order paymentStatus='pagado'
+    BE->>DB: UPDATE Order paymentStatus='PAID'
     BE-->>FE: { status: 'procesado' }
     FE->>Paciente: redirige a /ordenes/{ordenId}
 
@@ -88,10 +88,10 @@ sequenceDiagram
         AI-->>BE: GeneratedNutritionPlan
         Note over BE: genera el PDF y lo sube a S3 (productos-personalizados/<orderId>.pdf)
         Note over BE: rasteriza la página 1 a WebP y la sube a S3 (productos-personalizados/miniaturas/<orderId>.webp), best-effort
-        BE->>DB: UPDATE Order planJson, pdfKey, thumbnailKey, generationStatus='completado'
+        BE->>DB: UPDATE Order planJson, pdfKey, thumbnailKey, generationStatus='COMPLETED'
         Note over BE: "envía" el correo con el mismo PDF ya generado como adjunto (stub)
     and polling del frontend
-        loop cada 4s hasta 'completado' o 'error'
+        loop cada 4s hasta 'COMPLETED' o 'ERROR'
             FE->>BE: GET /ordenes/obtener-estado/:id
             BE-->>FE: paymentStatus, generationStatus, planJson, pdfUrl
         end
@@ -168,13 +168,12 @@ Pantalla de resumen/checkout. Al presionar "Realizar pago" (`BtnGenerarOrden`):
   - El backend resuelve el `User` por el `sub` del token (**ya tiene que existir y tener el perfil
     completo** — creado/completado en los pasos 1-2; si no, `400 BadRequestException`), su
     `ClinicalRecord` y el `Product` activo (estos dos sí con find-or-create), crea la `Order`
-    (`paymentStatus='pendiente'`, `generationStatus='no_iniciado'`) y crea en la misma operación el
+    (`paymentStatus='PENDING'`, `generationStatus='NOT_STARTED'`) y crea en la misma operación el
     árbol completo `NutritionalConsultation` + `Anamnesis`/`Measurements` (y sus hijas), vinculado a
     la orden recién creada — ver
     [orders-postgres-migration.md § 5](./orders-postgres-migration.md#5-reescritura-de-srcpresentationordersordersservicets).
-    Ya no se persiste un `payload_json` crudo. `personalInfo.athlete` es el único campo de
-    `personalInfo` que este paso todavía usa (no es un campo de `User`, es propio de esta
-    consulta). **La IA todavía no se ejecuta en este paso** — se crea la orden antes de cobrar para
+    Ya no se persiste un `payload_json` crudo. `personalInfo` ya no se lee en este paso: `athlete`
+    vive en `User` y se guarda con `PATCH /auth/perfil`. **La IA todavía no se ejecuta en este paso** — se crea la orden antes de cobrar para
     no perder los datos del paciente si el pago falla o el usuario cierra la pestaña.
   - Response: `{ orderId }`.
 - El frontend redirige a `/pago/{orderId}`.
@@ -188,7 +187,7 @@ Checkout **simulado**: los campos de tarjeta son decorativos y no validan nada. 
   - Pensado como sustituto temporal del webhook real de una pasarela de pago (`POST /webhooks/pago`,
     que ya existe con la misma lógica y validación de firma — hoy un stub que siempre pasa — pero no
     tiene ninguna pasarela real que lo dispare aún).
-  - Marca la orden `paymentStatus: 'pendiente' → 'pagado'` (operación idempotente: si ya estaba
+  - Marca la orden `paymentStatus: 'PENDING' → 'PAID'` (operación idempotente: si ya estaba
     pagada, no hace nada y responde `{ status: 'ya_procesado' }`).
   - Dispara **en background** (fire-and-forget, sin esperar el resultado) la generación del plan:
     `PlanGenerationService.generatePlan(orderId)`. El endpoint responde de inmediato con
@@ -200,7 +199,7 @@ Checkout **simulado**: los campos de tarjeta son decorativos y no validan nada. 
 Disparado por el paso anterior, corre del lado del backend sin que el frontend lo invoque
 directamente (`PlanGenerationService.generatePlan`):
 
-1. **Guard de estado**: solo continúa si `generationStatus` es `no_iniciado` o `error` (evita que dos
+1. **Guard de estado**: solo continúa si `generationStatus` es `NOT_STARTED` o `ERROR` (evita que dos
    disparos concurrentes — p. ej. un reintento manual del webhook — generen el plan dos veces).
 2. **Carga de datos**: obtiene la `Order` con su `User` (`findByIdWithUser`) y la
    `NutritionalConsultation` completa asociada a la orden (`getConsultationForOrder`) — la fuente de
@@ -226,10 +225,10 @@ directamente (`PlanGenerationService.generatePlan`):
      `productos-personalizados/<orderId>.pdf`), rasteriza su página 1 a una miniatura WebP y la sube
      (`productos-personalizados/miniaturas/<orderId>.webp`; best-effort, su fallo no falla el plan ni
      consume un reintento), guarda `planJson`, `pdfKey` y `thumbnailKey` en la orden y marca
-     `generationStatus: 'completado'` — luego llama a `EmailService.sendPlanByEmail` reutilizando el
+     `generationStatus: 'COMPLETED'` — luego llama a `EmailService.sendPlanByEmail` reutilizando el
      mismo buffer del PDF como adjunto (ya no lo regenera) y "envía" el correo (hoy es un stub que
      solo logea; no hay proveedor de email real conectado todavía).
-   - Si fallan los 4 intentos: marca `generationStatus: 'error'` y registra el evento (log
+   - Si fallan los 4 intentos: marca `generationStatus: 'ERROR'` y registra el evento (log
      estructurado; sin alerta real todavía, ver `doc/technical-debt.md`).
 
 ### 8. `/ordenes/[id]` — espera y resultado
@@ -244,13 +243,13 @@ Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 s
     `pdfUrl` es una URL firmada de S3 (10 min) para descargar el PDF (`Content-Disposition: attachment`),
     `null` hasta que el plan termina de generarse; `thumbnailUrl` es la URL firmada de la miniatura WebP
     de la página 1 (`null` si aún no hay plan o si no tiene miniatura).
-- Mientras `generationStatus` sea `'no_iniciado'` o `'generando'`, se muestra un spinner (y, pasados
+- Mientras `generationStatus` sea `'NOT_STARTED'` o `'GENERATING'`, se muestra un spinner (y, pasados
   45s sin terminar, un aviso de demora que tranquiliza al paciente: el pago ya quedó registrado).
-- Cuando `generationStatus === 'completado'`, se muestra el plan y un botón de descarga que genera el
+- Cuando `generationStatus === 'COMPLETED'`, se muestra el plan y un botón de descarga que genera el
   PDF **en el cliente** (mismo documento react-pdf que usa el backend para el adjunto del correo y
   para el PDF persistido en S3, pero ejecutado en el navegador — no hay llamada adicional al backend
   para esto).
-- Si `generationStatus === 'error'`, se muestra un mensaje indicando que el pago quedó registrado y
+- Si `generationStatus === 'ERROR'`, se muestra un mensaje indicando que el pago quedó registrado y
   que el equipo ya fue notificado (vía el log del paso 7).
 
 ## Tabla resumen de endpoints (en orden de uso)
@@ -260,10 +259,10 @@ Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 s
 | 0a | `POST /auth/perfil` | Sí | `/consulta/inicio`, `/consulta/informacion-personal` | 1+ veces (idempotente) | Crea/recupera `AuthIdentity`+`User` por el `sub` de Cognito; informa si el perfil está completo |
 | 0b | `PATCH /auth/perfil` | Sí | `/consulta/informacion-personal` | 1 vez (si el perfil no estaba completo) | Completa `firstName`/`paternalLastName`/`gender`/`dateOfBirth` del `User` ya existente |
 | 1 | `POST /consulta/chat` | Sí | `/consulta/anamnesis` | 1 vez por turno del chat | Llama a OpenAI, devuelve la siguiente pregunta y el estado acumulado de la anamnesis |
-| 2 | `POST /ordenes/crear` | Sí | `/consulta/generar-orden` | 1 vez | Resuelve el `User` (ya tiene que existir y estar completo), find-or-create `ClinicalRecord`/`Product`, crea la `Order` (`paymentStatus='pendiente'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
+| 2 | `POST /ordenes/crear` | Sí | `/consulta/generar-orden` | 1 vez | Resuelve el `User` (ya tiene que existir y estar completo), find-or-create `ClinicalRecord`/`Product`, crea la `Order` (`paymentStatus='PENDING'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
 | 3 | `POST /webhooks/ordenes/:id/simular-pago` | No | `/pago/[ordenId]` | 1 vez | Marca la orden como pagada y dispara la generación del plan en background |
 | — | *(sin request del frontend)* | — | — | — | `PlanGenerationService.generatePlan`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + generación/subida del PDF a S3 + envío de correo (stub) |
-| 4 | `GET /ordenes/obtener-estado/:id` | Sí (valida dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `completado`/`error` | Polling del estado de pago/generación y, al terminar, del plan generado, su `pdfUrl` (descarga) y su `thumbnailUrl` (miniatura) |
+| 4 | `GET /ordenes/obtener-estado/:id` | Sí (valida dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `COMPLETED`/`ERROR` | Polling del estado de pago/generación y, al terminar, del plan generado, su `pdfUrl` (descarga) y su `thumbnailUrl` (miniatura) |
 
 Endpoint equivalente no usado en este flujo (queda para cuando se integre una pasarela real):
 **`POST /webhooks/pago`** — mismo efecto que el endpoint #3, pero pensado para ser llamado por la

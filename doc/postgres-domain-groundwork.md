@@ -44,7 +44,8 @@ a una carpeta homónima en `domain/dtos`, `domain/datasources`, `domain/reposito
 | `COMMERCIAL DOMAIN` | `Product`, `Order`, `Payment` | `commercial-domain/` |
 
 Total: **35 modelos/entidades** (2 identity-auth + 30 clinical-domain + 3 commercial-domain; `Plan` y
-`Projection` se agregaron en la migración `20260925120000_plan_entity`).
+`Projection` se agregaron en la migración `20260925120000_plan_entity`; desde `20260926120000_erd_sync`
+`Projection` cuelga de `Plan` —un `Plan` puede tener varias— y ya no de `Measurements`).
 
 Nota de nombres: el nuevo modelo `Order` (Postgres, tabla `order`) se llamaba `CommercialOrder` en
 un momento para no chocar con el `Order` legacy (tabla `orden`, SQLite); una vez que el legacy quedó
@@ -52,11 +53,13 @@ comentado, se renombró a `Order` a secas. **No confundir ambos**: son modelos c
 distintos con el mismo nombre — `domain/entities/order.entity.ts` (nuevo, usuario + producto + pago)
 no tiene relación con `domain/dtos/order.dto.ts` (legacy, describe la tabla `orden`).
 
-Los modelos "enum" del schema (`AuthIdentity.provider`, `Order.status`, `Payment.provider`/`status`,
-`Product.type`, `SportsSession.eventType`, `PlanMealTime.time`, `PlanMealTimeNote.type`,
-`PlanSupplementNote.type`) son columnas `String` planas — Postgres/Prisma no declaran un enum nativo
-para ellas aquí — con los valores posibles documentados solo como comentario en el schema (ej.
-`status String // PENDING | PAID | EXPIRED | CANCELLED`).
+Los campos de valores cerrados (`AuthIdentity.provider`, `Order.paymentStatus`/`generationStatus`,
+`Payment.provider`/`status`, `Product.type`, `SportsSession.eventType`, `Measurements.level`,
+`NutritionalPlan.period`, `PlanMealTime.time`, `PlanMealTimeNote.type`, `PlanSupplementNote.type`)
+son **enums nativos de Postgres** (bloques `enum` en `schema.prisma`, migración
+`20260926120000_erd_sync`). En el dominio se reflejan en `domain/entities/enums.ts` como objeto
+`as const` + tipo unión (la misma forma que genera Prisma), así que los valores son intercambiables
+sin casts y el dominio no depende del cliente generado.
 
 ## 2. `src/domain/entities/` — entidades de dominio
 
@@ -178,14 +181,8 @@ En 25 de los 33 archivos, el resultado de Prisma es estructuralmente idéntico a
 dominio y se retorna tal cual. En los otros 8 hace falta un método privado `toEntity()` que mapea
 explícitamente, porque Prisma devuelve un tipo más amplio que el dominio:
 
-- **Campos "enum-as-string"** (columna `String`, dominio con unión de literales — ver §2):
-  `AuthIdentityDatasourceImpl` (`provider`), `SportsSessionDatasourceImpl` (`eventType`),
-  `PlanMealTimeDatasourceImpl` (`time`), `PlanMealTimeNoteDatasourceImpl` (`type`),
-  `PlanSupplementNoteDatasourceImpl` (`type`), `OrderDatasourceImpl` (`status`),
-  `PaymentDatasourceImpl` (`provider`, `status`), `ProductDatasourceImpl` (`type`) — se resuelven
-  con un cast (`as OrderStatus`, etc.), justificado porque la escritura siempre pasa por el DTO ya
-  tipado con esa unión (no hay forma de que Prisma devuelva un valor fuera de la unión salvo que se
-  escriba directo a la base de datos por fuera del datasource).
+- ~~Campos "enum-as-string"~~: desde que son enums nativos (ver §1) ya no requieren cast; los
+  `toEntity()` que solo existían para eso se eliminaron.
 - **Campos `Decimal`**: `OrderDatasourceImpl.amount`, `PaymentDatasourceImpl.amount`,
   `ProductDatasourceImpl.price` — Prisma los devuelve como instancia de la clase `Decimal`
   (decimal.js-like), **no** como `number` de JS. Esto era un bug real de tipos, no solo cosmético

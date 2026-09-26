@@ -6,6 +6,7 @@
 import type { NutritionalConsultationEntity } from './clinical-record.entity';
 import type { OrderEntity } from './order.entity';
 import type { NutritionalPlanEntity } from './nutritional-plan.entity';
+import type { ProjectionEntity } from './measurements.entity';
 
 export interface PlanEntity {
   id: string;
@@ -19,4 +20,5 @@ export interface PlanEntity {
   active: boolean;
 
   nutritionalPlans?: NutritionalPlanEntity[];
+  projections?: ProjectionEntity[];
 }

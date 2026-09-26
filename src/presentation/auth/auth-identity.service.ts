@@ -1,7 +1,10 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthIdentityRepository } from '../../domain/repositories/identity-auth/auth-identity.repository';
 import { UserRepository } from '../../domain/repositories/identity-auth/user.repository';
-import { UserEntity } from '../../domain/entities/user.entity';
+import {
+  AuthProvider,
+  UserEntity,
+} from '../../domain/entities/user.entity';
 import { UpdateUserDto } from '../../domain';
 import { CognitoUserClaims } from './cognito-user.decorator';
 
@@ -17,7 +20,7 @@ export class AuthIdentityService {
   // órdenes creadas antes de este sistema de auth).
   async syncUser(claims: CognitoUserClaims, email: string): Promise<UserEntity> {
     const existing = await this.authIdentityRepository.findAuthIdentityByProvider(
-      'COGNITO',
+      AuthProvider.COGNITO,
       claims.sub,
     );
 
@@ -37,7 +40,7 @@ export class AuthIdentityService {
 
     await this.authIdentityRepository.createAuthIdentity({
       userId: user.id,
-      provider: 'COGNITO',
+      provider: AuthProvider.COGNITO,
       providerUserId: claims.sub,
       email,
       emailVerified: false,
@@ -51,7 +54,7 @@ export class AuthIdentityService {
   // necesitara) — no crea nada, falla si todavía no se sincronizó la identidad.
   async getUserBySub(claims: CognitoUserClaims): Promise<UserEntity> {
     const existing = await this.authIdentityRepository.findAuthIdentityByProvider(
-      'COGNITO',
+      AuthProvider.COGNITO,
       claims.sub,
     );
     if (!existing) {

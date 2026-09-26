@@ -3,7 +3,7 @@
 export const r24h1 = [
     {
         "mealTime": "desayuno",
-        "carbohydrate": "1 pan",
+        "cereals": "1 pan",
         "freeConsumptionVegetable": null,
         "generalConsumptionVegetable": null,
         "fruit": "1 manzana",
@@ -20,7 +20,7 @@ export const r24h1 = [
     },
     {
         "mealTime": "almuerzo",
-        "carbohydrate": "200gr de arroz o fideo",
+        "cereals": "200gr de arroz o fideo",
         "freeConsumptionVegetable": "ensalada",
         "generalConsumptionVegetable": null,
         "fruit": null,
@@ -37,7 +37,7 @@ export const r24h1 = [
     },
     {
         "mealTime": "once",
-        "carbohydrate": "1 pan",
+        "cereals": "1 pan",
         "freeConsumptionVegetable": null,
         "generalConsumptionVegetable": null,
         "fruit": "1 manzana",
@@ -57,7 +57,7 @@ export const r24h1 = [
 export const r24h2 = [
     {
         "mealTime": "almuerzo",
-        "carbohydrate": "200gr de arroz o fideo",
+        "cereals": "200gr de arroz o fideo",
         "freeConsumptionVegetable": "ensalada",
         "generalConsumptionVegetable": null,
         "fruit": null,
@@ -74,7 +74,7 @@ export const r24h2 = [
     },
     {
         "mealTime": "once",
-        "carbohydrate": "1 pan",
+        "cereals": "1 pan",
         "freeConsumptionVegetable": null,
         "generalConsumptionVegetable": null,
         "fruit": "1 manzana",

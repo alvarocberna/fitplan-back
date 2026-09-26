@@ -7,10 +7,10 @@ import {
 import { Meal, AnamnesisDto, MeasurementsDto } from '../../domain/dtos/consultation.dto';
 
 describe('mapMealDtoToEntity', () => {
-  it('mapea cada campo de Meal a su equivalente en la entidad, usando "" para los null', () => {
+  it('mapea cada campo de Meal a su equivalente en la entidad, conservando los null', () => {
     const meal: Meal = {
       mealTime: 'desayuno',
-      carbohydrate: 'pan',
+      cereals: 'pan',
       freeConsumptionVegetable: null,
       generalConsumptionVegetable: null,
       fruit: 'manzana',
@@ -29,14 +29,14 @@ describe('mapMealDtoToEntity', () => {
     const result = mapMealDtoToEntity(meal);
 
     expect(result.mealTime).toBe('desayuno');
-    expect(result.mealHour).toBe('');
-    expect(result.description).toBe('');
-    expect(result.carbohydrate).toBe('pan');
+    expect(result.mealHour).toBeNull();
+    expect(result.description).toBeNull();
+    expect(result.cereals).toBe('pan');
     expect(result.fruit).toBe('manzana');
     expect(result.lowFatProtein).toBe('huevo');
     // "highLipid" (DTO) se mapea a "lipidRich" (entidad)
     expect(result.lipidRich).toBe('palta');
-    expect(result.freeConsumptionVegetable).toBe('');
+    expect(result.freeConsumptionVegetable).toBeNull();
   });
 });
 
@@ -78,7 +78,7 @@ describe('mapAnamnesisDtoToDetails', () => {
         r24h: [
           {
             mealTime: 'desayuno',
-            carbohydrate: 'pan',
+            cereals: 'pan',
             freeConsumptionVegetable: null,
             generalConsumptionVegetable: null,
             fruit: null,
@@ -175,14 +175,17 @@ describe('mapAnamnesisDtoToDetails', () => {
 });
 
 describe('mapMeasurementsDtoToDetails', () => {
+  const measuredAt = new Date('2026-09-26T12:00:00.000Z');
+
   it('devuelve null si measurements es null', () => {
-    expect(mapMeasurementsDtoToDetails(null)).toBeNull();
+    expect(mapMeasurementsDtoToDetails(null, measuredAt)).toBeNull();
   });
 
   it('mapea weight/height a basicMeasurements y somatotype a description', () => {
     const measurements: MeasurementsDto = { weight: 70, height: 175, somatotype: 'MESO' };
-    const result = mapMeasurementsDtoToDetails(measurements)!;
+    const result = mapMeasurementsDtoToDetails(measurements, measuredAt)!;
 
+    expect(result.measuredAt).toBe(measuredAt);
     expect(result.measurementNumber).toBe(1);
     expect(result.description).toBe('MESO');
     expect(result.basicMeasurements).toEqual({
@@ -194,7 +197,10 @@ describe('mapMeasurementsDtoToDetails', () => {
   });
 
   it('omite basicMeasurements si falta weight o height', () => {
-    const result = mapMeasurementsDtoToDetails({ weight: null, height: 175, somatotype: null })!;
+    const result = mapMeasurementsDtoToDetails(
+      { weight: null, height: 175, somatotype: null },
+      measuredAt,
+    )!;
     expect(result.basicMeasurements).toBeUndefined();
     expect(result.description).toBeNull();
   });

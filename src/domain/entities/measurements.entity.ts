@@ -1,18 +1,32 @@
 // Mapea Measurements y sus hijos de prisma/schema.prisma (sección CLINICAL DOMAIN).
+// Una medición siempre pertenece al historial clínico (clinicalRecordId); consultationId es null
+// cuando la registró el usuario por su cuenta, fuera de una consulta.
 // Nota: solo peso/talla (BasicMeasurements) están conectados al flujo de generación de plan
 // actual; el resto (skinfolds, circunferencias, diámetros, resultados derivados) existen en el
 // schema pero aún no se usan — ver README "Deuda técnica" / doc/technical-debt.md.
 
-import type { NutritionalConsultationEntity } from './clinical-record.entity';
+import type {
+  ClinicalRecordEntity,
+  NutritionalConsultationEntity,
+} from './clinical-record.entity';
+import type { PlanEntity } from './plan.entity';
+import type { MeasurementLevel } from './enums';
+
+export { MeasurementLevel } from './enums';
 
 export interface MeasurementsEntity {
   id: string;
 
-  consultationId: string;
-  consultation?: NutritionalConsultationEntity;
+  clinicalRecordId: string;
+  clinicalRecord?: ClinicalRecordEntity;
+
+  consultationId: string | null;
+  consultation?: NutritionalConsultationEntity | null;
+
+  measuredAt: Date;
 
   measurementNumber: number;
-  level: string | null;
+  level: MeasurementLevel | null;
   description: string | null;
 
   basicMeasurements?: BasicMeasurementsEntity[];
@@ -20,7 +34,6 @@ export interface MeasurementsEntity {
   circumferences?: CircumferencesEntity[];
   diameters?: DiametersEntity[];
   measurementResults?: MeasurementResultsEntity[];
-  projections?: ProjectionEntity[];
 }
 
 export interface BasicMeasurementsEntity {
@@ -105,8 +118,8 @@ export interface MeasurementResultsEntity {
   bmClassification: string | null;
   bmMethod: string | null;
 
-  mmi: number | null;
-  mmiClassification: string | null;
+  lbmi: number | null; // lean body mass index
+  lbmiClassification: string | null;
 
   endo: number | null;
   meso: number | null;
@@ -132,15 +145,16 @@ export interface MeasurementResultsEntity {
   phaDiameterFemur: number | null;
 }
 
-// Proyección de composición corporal asociada a una medición (aún no se puebla).
+// Proyección de composición corporal asociada a un Plan (un Plan puede tener varias; aún no se puebla).
 export interface ProjectionEntity {
   id: string;
 
-  measurementsId: string;
-  measurements?: MeasurementsEntity;
+  planId: string;
+  plan?: PlanEntity;
 
-  projectedDate: Date | null;
-  projectedWeight: number | null;
+  projectedStartDate: Date;
+  projectedEndDate: Date;
+  projectedWeight: number;
   projectedBfKg: number | null;
   projectedBfPercentage: number | null;
   projectedMmKg: number | null;

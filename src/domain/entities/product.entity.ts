@@ -4,7 +4,9 @@
 
 import type { OrderEntity } from './order.entity';
 
-export type ProductType = 'PREDEFINED' | 'GENERATED';
+import type { ProductType } from './enums';
+
+export { ProductType } from './enums';
 
 export interface ProductEntity {
   id: string;
@@ -38,7 +40,7 @@ export interface ProductEntity {
   active: boolean;
 
   createdAt: Date;
-  updatedAt: Date;
+  updatedAt: Date | null;
 
   orders?: OrderEntity[];
 }

@@ -146,8 +146,8 @@ export class PlanGenerationService {
   //se dispara (sin await, "fire and forget") desde el webhook de pago una vez confirmado el cobro
   //cualquier error queda contenido acá adentro: nunca debe tirar una unhandled rejection.
   async generatePlan(orderId: string): Promise<void> {
-    //guard de estado: si la orden ya está 'generando' (otro disparo concurrente) o 'completado',
-    //no hace nada. Solo entra si estaba 'no_iniciado' o 'error' (reintento de un fallo previo).
+    //guard de estado: si la orden ya está GENERATING (otro disparo concurrente) o COMPLETED,
+    //no hace nada. Solo entra si estaba NOT_STARTED o ERROR (reintento de un fallo previo).
     const canGenerate = await this.ordersService.tryStartGeneration(orderId);
     if (!canGenerate) {
       this.logger.log(
@@ -182,7 +182,7 @@ export class PlanGenerationService {
         const thumbnailKey = await this.tryUploadThumbnail(orderId, pdfBuffer);
 
         // Se persiste el Plan (con su NutritionalPlan principal) ANTES de marcar la orden como
-        // 'completado', así una orden completada siempre tiene su plan normalizado. Es un upsert por
+        // COMPLETED, así una orden completada siempre tiene su plan normalizado. Es un upsert por
         // orderId, por lo que un reintento del loop (ej. si falla el correo más abajo) no duplica
         // ni rompe el @unique: reemplaza el NutritionalPlan principal.
         await this.planRepository.upsertPlanWithMainNutritionalPlanByOrderId({
@@ -432,16 +432,13 @@ export class PlanGenerationService {
     if (!order.user)
       throw new Error(`Orden ${order.id}: falta el usuario asociado`);
     return {
-      personalInfo: this.buildPersonalInfoDto(order.user, consultation.athlete),
+      personalInfo: this.buildPersonalInfoDto(order.user),
       anamnesis: this.buildAnamnesisDto(consultation.anamneses?.[0]),
       measurements: this.buildMeasurementsDto(consultation.measurements?.[0]),
     };
   }
 
-  private buildPersonalInfoDto(
-    user: UserEntity,
-    athlete: boolean | null,
-  ): PersonalInfoDto {
+  private buildPersonalInfoDto(user: UserEntity): PersonalInfoDto {
     return {
       rut: user.rut ? Number(user.rut) : null,
       dvRut: user.rutCheckDigit,
@@ -450,7 +447,7 @@ export class PlanGenerationService {
       paternalLastName: user.paternalLastName,
       maternalLastName: user.maternalLastName,
       gender: user.gender,
-      athlete,
+      athlete: user.athlete,
       email: user.email,
       dateOfBirth: user.dateOfBirth,
     };
@@ -486,7 +483,7 @@ export class PlanGenerationService {
             r24h:
               dietary.dietaryRecalls24h?.[0]?.meals?.map((meal) => ({
                 mealTime: meal.mealTime,
-                carbohydrate: meal.carbohydrate,
+                cereals: meal.cereals,
                 freeConsumptionVegetable: meal.freeConsumptionVegetable,
                 generalConsumptionVegetable: meal.generalConsumptionVegetable,
                 fruit: meal.fruit,

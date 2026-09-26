@@ -7,6 +7,9 @@
 import { NutritionPlanDto } from '../../domain/dtos/nutrition-plan.dto';
 import { CreateNutritionalPlanDto } from '../../domain/dtos/clinical-domain/nutritional-plan/create-nutritional-plan.dto';
 
+// nutritional_plan.plan_name es NOT NULL: se usa si la orden no trae el nombre de su producto.
+const DEFAULT_PLAN_NAME = 'Plan Nutricional Personalizado';
+
 export function mapPlanToNutritionalPlanDto(
   plan: NutritionPlanDto,
   planName: string | null,
@@ -15,7 +18,7 @@ export function mapPlanToNutritionalPlanDto(
   const { prescription, planIntake } = plan;
 
   return {
-    planName,
+    planName: planName ?? DEFAULT_PLAN_NAME,
     // La generación automática produce un único plan, sin periodización ni fecha de término.
     period: null,
     mainPlan: true,

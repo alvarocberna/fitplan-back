@@ -177,6 +177,8 @@ export class NutritionalConsultationDatasourceImpl
           ? {
               create: [
                 {
+                  clinicalRecordId: consultation.clinicalRecordId,
+                  measuredAt: measurements.measuredAt,
                   measurementNumber: measurements.measurementNumber,
                   level: measurements.level,
                   description: measurements.description,

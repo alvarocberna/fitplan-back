@@ -42,7 +42,7 @@ export function isMainMealTime(type: MealTimeType): boolean {
 function emptyMeal(type: MealTimeType): Meal {
     return {
         mealTime: MEAL_TIME_LABEL[type],
-        carbohydrate: null,
+        cereals: null,
         freeConsumptionVegetable: null,
         generalConsumptionVegetable: null,
         fruit: null,

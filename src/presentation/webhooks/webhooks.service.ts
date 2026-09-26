@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersService } from '../orders/orders.service';
 import { PlanGenerationService } from '../plan-generation/plan-generation.service';
+import { ProductType } from '../../domain/entities/enums';
 
 @Injectable()
 export class WebhooksService {
@@ -18,11 +19,11 @@ export class WebhooksService {
     return true;
   }
 
-  // Idempotente: si la orden ya estaba en paymentStatus='pagado', no la reprocesa ni vuelve a
+  // Idempotente: si la orden ya estaba en paymentStatus=PAID, no la reprocesa ni vuelve a
   // disparar la generación. La respuesta no espera a que termine la generación (esta corre
   // en segundo plano) para no bloquear al webhook.
   async processPayment(orderId: string): Promise<{ status: 'procesado' | 'ya_procesado' }> {
-    //marca el paymentStatus de pendiente -> pagado y crea el payment (404 si la orden no existe).
+    //marca el paymentStatus de PENDING -> PAID y crea el payment (404 si la orden no existe).
     //para un plan predefinido también deja lista la orden (copia el PDF del producto).
     const { markedNow, productType } = await this.ordersService.markAsPaid(orderId);
     if (!markedNow) {
@@ -32,7 +33,7 @@ export class WebhooksService {
 
     // un plan predefinido ya viene con su PDF (se copió desde el producto al marcar el pago): no hay
     // consulta ni nada que generar, así que solo los productos GENERATED disparan el pipeline.
-    if (productType !== 'GENERATED') {
+    if (productType !== ProductType.GENERATED) {
       this.logger.log(`Orden ${orderId}: pago confirmado (producto ${productType}, sin generación)`);
       return { status: 'procesado' };
     }

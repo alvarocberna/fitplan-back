@@ -119,11 +119,11 @@ provides `CognitoAuthGuard` (validates the Cognito Access Token via `aws-jwt-ver
    + `AuthIdentityService.isProfileComplete` — 400 if either isn't satisfied) — resolves the `User`
    by the token's `sub` (find-or-create by email no longer happens here, see `doc/auth.md`) and their
    `ClinicalRecord`, resolves (find-or-create) a `Product`, creates the `Order`
-   (`paymentStatus:'pendiente'`, no AI call yet), and persists the full `NutritionalConsultation`
+   (`paymentStatus:'PENDING'`, no AI call yet), and persists the full `NutritionalConsultation`
    (`Anamnesis`/`Measurements` + their children) in one nested Prisma write — see
    `doc/orders-postgres-migration.md` for the exact DTO→entity mapping decisions. `personalInfo` in
-   the request body is only used for its `athlete` field now (not for `User` — that's already
-   resolved from the session).
+   the request body is still required by the contract but no longer read: `User` (including
+   `athlete`) is already resolved from the session and completed via `PATCH /auth/perfil`.
 3. Payment webhook (`POST /webhooks/pago` or the simulated `POST /webhooks/ordenes/:id/simular-pago`)
    marks the order paid **idempotently**, then fires `PlanGenerationService.generatePlan` without
    awaiting it (fire-and-forget) — the webhook responds immediately.
@@ -168,15 +168,19 @@ the plan-generation prompt to tell the AI the nutritional value per portion of e
 **Postgres**, via a full domain schema (`prisma/schema.prisma`, 35 models across three sections —
 `IDENTITY & AUTH`, `CLINICAL DOMAIN`, `COMMERCIAL DOMAIN`). The old single-model SQLite setup (one
 `Order`, tables `orden`) is gone — that legacy model is left commented out in the schema for
-reference only, and its table was dropped. Postgres has no native enums either, so "enum" columns
-(`Order.paymentStatus`, `SportsSession.eventType`, etc.) are plain strings typed as literal unions
-at the application layer (`domain/entities/*.entity.ts`).
+reference only, and its table was dropped. Closed-value columns (`Order.paymentStatus`/`generationStatus`,
+`Payment.provider`/`status`, `Product.type`, `SportsSession.eventType`, `Measurements.level`,
+`NutritionalPlan.period`, `PlanMealTime.time`, ...) are **native Postgres enums** (`enum` blocks in
+`schema.prisma`), mirrored in the domain as `as const` objects + union types in
+`domain/entities/enums.ts` — use those constants (`PaymentStatus.PAID`, `GenerationStatus.COMPLETED`)
+instead of string literals. Order statuses are English (`PENDING|PAID`,
+`NOT_STARTED|GENERATING|COMPLETED|ERROR`) and that's also what `GET /ordenes/obtener-estado/:id` returns.
 
 Only part of this schema has a real consumer today — the `orders`/`webhooks`/`plan-generation`
 pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamnesis`/`Measurements`
 children), `Plan` + `NutritionalPlan` (`PlanGenerationService` upserts the order's `Plan` by `orderId`
 — `Plan.orderId` is `@unique`, 1 order → 1 plan — together with its main `NutritionalPlan`
-(`mainPlan = true`) before marking the order `completado`; a `Plan` can hold N `NutritionalPlan`s,
+(`mainPlan = true`) before marking the order `COMPLETED`; a `Plan` can hold N `NutritionalPlan`s,
 though only one is created today, and their child tables are not populated), `Order`, and `Product`;
 `AuthIdentity` is used by `presentation/auth/` (see below). The
 rest (the `NutritionalPlan` children, several `clinical-domain` leaf entities)
@@ -192,7 +196,7 @@ marks the order paid; `provider = 'SIMULATED'` while the gateway is simulated). 
 `domain/services/utils/predefined-plan-code.ts`): the PDF already exists in S3
 (`productos-estandarizados/<code>.pdf`), uploaded by hand, and `npm run seed:predefined` loads/activates
 the catalog. `POST /ordenes/crear-predefinido` creates the order **without** `pdfKey`; the webhook copies
-`Product.pdfKey`/`thumbnailKey` to the order (and marks it `completado`) only when payment is confirmed,
+`Product.pdfKey`/`thumbnailKey` to the order (and marks it `COMPLETED`) only when payment is confirmed,
 so an unpaid order never exposes the PDF, and it does **not** run plan generation for these. Full flow:
 `../doc/flows/purchase-flow-predefined-plan.md`.
 
@@ -203,7 +207,7 @@ federated Identity Provider) — see `doc/auth.md` for the full picture. `presen
 token's `sub` — `POST /auth/perfil` creates the identity ("skeleton" `User`, no password ever
 stored) as soon as there's a valid session, and `PATCH /auth/perfil` completes the profile
 (`firstName`/`paternalLastName`/`gender`/`dateOfBirth`, all nullable in the schema for exactly this
-reason) separately, since Cognito never provides those fields. `JWT_ACCESS_SECRET`/
+reason, plus the optional `athlete` flag, which lives on `User`) separately, since Cognito never provides those fields. `JWT_ACCESS_SECRET`/
 `JWT_REFRESH_SECRET`/`BCRYPT_SALT_OR_ROUNDS` in `.env.template` are still leftovers from an
 unrelated, removed local-auth module — `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID` are the ones
 actually used by the Guard.

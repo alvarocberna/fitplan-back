@@ -13,9 +13,10 @@ export interface ClinicalRecordEntity {
   patient?: UserEntity;
 
   createdAt: Date;
-  updatedAt: Date;
+  updatedAt: Date | null;
 
   nutritionalConsultations?: NutritionalConsultationEntity[];
+  measurements?: MeasurementsEntity[];
 }
 
 export interface NutritionalConsultationEntity {
@@ -36,11 +37,8 @@ export interface NutritionalConsultationEntity {
   orderId: string | null;
   order?: OrderEntity | null;
 
-  // Dato puntual de la consulta (no de la identidad del paciente), recolectado en personalInfo.athlete.
-  athlete: boolean | null;
-
   createdAt: Date;
-  updatedAt: Date;
+  updatedAt: Date | null;
 
   anamneses?: AnamnesisEntity[];
   measurements?: MeasurementsEntity[];

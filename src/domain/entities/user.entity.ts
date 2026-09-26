@@ -8,7 +8,9 @@ import type {
 } from './clinical-record.entity';
 import type { OrderEntity } from './order.entity';
 
-export type AuthProvider = 'COGNITO' | 'GOOGLE';
+import type { AuthProvider } from './enums';
+
+export { AuthProvider } from './enums';
 
 export interface UserEntity {
   id: string;
@@ -27,8 +29,11 @@ export interface UserEntity {
   dateOfBirth: Date | null;
   photoUrl: string | null;
 
+  // Se captura en el perfil (PATCH /auth/perfil).
+  athlete: boolean;
+
   createdAt: Date;
-  updatedAt: Date;
+  updatedAt: Date | null;
 
   authIdentities?: AuthIdentityEntity[];
   clinicalRecord?: ClinicalRecordEntity | null;

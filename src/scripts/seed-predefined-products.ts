@@ -19,7 +19,7 @@
 // AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY), las mismas que usa StorageService.
 import 'dotenv/config';
 import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { PrismaClient } from '../../generated/prisma';
+import { PrismaClient, ProductType } from '../../generated/prisma';
 import {
   buildAllPredefinedProductSeedRows,
   buildAllPlanPreviewSeedRows,
@@ -107,7 +107,7 @@ async function seedVersionRows(
     } else {
       await prisma.product.create({
         data: {
-          type: 'PREDEFINED',
+          type: ProductType.PREDEFINED,
           code: row.code,
           name: row.name,
           description: row.description,
@@ -162,7 +162,7 @@ async function seedPreviewRows(
     } else {
       await prisma.product.create({
         data: {
-          type: 'PREDEFINED',
+          type: ProductType.PREDEFINED,
           code: row.code,
           name: row.name,
           description: row.description,
