@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GetMySummaryUseCase } from './get-my-summary.use-case';
 import { CurrentUserResolver } from '../current-user.resolver';
 import { NutritionalConsultationRepository } from '../../../domain/repositories/clinical-domain/nutritional-consultation.repository';
+import { MeasurementsRepository } from '../../../domain/repositories/clinical-domain/measurements.repository';
 import { calculateAge } from '../../../domain';
 import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 
@@ -9,6 +10,7 @@ describe('GetMySummaryUseCase', () => {
   let service: GetMySummaryUseCase;
   let currentUser: jest.Mocked<CurrentUserResolver>;
   let nutritionalConsultationRepository: jest.Mocked<NutritionalConsultationRepository>;
+  let measurementsRepository: jest.Mocked<MeasurementsRepository>;
 
   const cognitoUser: CognitoUserClaims = { sub: 'test-sub' };
 
@@ -23,6 +25,12 @@ describe('GetMySummaryUseCase', () => {
             getLatestNutritionalConsultationWithDetailsByPatientId: jest.fn(),
           },
         },
+        {
+          provide: MeasurementsRepository,
+          useValue: {
+            getLatestMeasurementsWithResultsByPatientId: jest.fn().mockResolvedValue(null),
+          },
+        },
       ],
     }).compile();
 
@@ -31,6 +39,7 @@ describe('GetMySummaryUseCase', () => {
     nutritionalConsultationRepository = module.get(
       NutritionalConsultationRepository,
     );
+    measurementsRepository = module.get(MeasurementsRepository);
   });
 
   describe('execute', () => {
@@ -87,6 +96,7 @@ describe('GetMySummaryUseCase', () => {
           carbohydrateIntake: 200,
           lipidIntake: 60,
         },
+        lastMeasurement: null,
       });
     });
 
@@ -133,6 +143,7 @@ describe('GetMySummaryUseCase', () => {
         lastConsultationDate: null,
         goal: null,
         nutritionalPlan: null,
+        lastMeasurement: null,
       });
     });
 
@@ -151,6 +162,61 @@ describe('GetMySummaryUseCase', () => {
 
       expect(result.goal).toBeNull();
       expect(result.nutritionalPlan).toBeNull();
+    });
+
+    it('incluye la última medición del historial con peso, talla y los resultados guardados', async () => {
+      currentUser.resolve.mockResolvedValue({ id: 'user-1', dateOfBirth: null } as any);
+      nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
+        null,
+      );
+      measurementsRepository.getLatestMeasurementsWithResultsByPatientId.mockResolvedValue(
+        {
+          measuredAt: new Date('2026-04-01T10:00:00.000Z'),
+          basicMeasurements: [{ weight: 70.5, height: 172 }],
+          measurementResults: [
+            { bmi: 23.8, bmiClassification: 'NORMAL_WEIGHT', bfPercentage: 18.2 },
+          ],
+        } as any,
+      );
+
+      const result = await service.execute({ claims: cognitoUser });
+
+      expect(
+        measurementsRepository.getLatestMeasurementsWithResultsByPatientId,
+      ).toHaveBeenCalledWith('user-1');
+      expect(result.lastMeasurement).toEqual({
+        measuredAt: '2026-04-01T10:00:00.000Z',
+        weight: 70.5,
+        height: 172,
+        bmi: 23.8,
+        bmiClassification: 'NORMAL_WEIGHT',
+        bfPercentage: 18.2,
+      });
+    });
+
+    it('deja bmi, clasificación y % grasa en null si la medición no tiene measurement_results (no los calcula)', async () => {
+      currentUser.resolve.mockResolvedValue({ id: 'user-1', dateOfBirth: null } as any);
+      nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
+        null,
+      );
+      measurementsRepository.getLatestMeasurementsWithResultsByPatientId.mockResolvedValue(
+        {
+          measuredAt: new Date('2026-04-01T10:00:00.000Z'),
+          basicMeasurements: [{ weight: 70.5, height: 172 }],
+          measurementResults: [],
+        } as any,
+      );
+
+      const result = await service.execute({ claims: cognitoUser });
+
+      expect(result.lastMeasurement).toEqual({
+        measuredAt: '2026-04-01T10:00:00.000Z',
+        weight: 70.5,
+        height: 172,
+        bmi: null,
+        bmiClassification: null,
+        bfPercentage: null,
+      });
     });
   });
 });

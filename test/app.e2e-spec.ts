@@ -84,6 +84,8 @@ describe('App (e2e)', () => {
         createNutritionalConsultationWithDetails: jest.fn(),
         getNutritionalConsultationWithDetailsByOrderId: jest.fn(),
         getLatestNutritionalConsultationWithDetailsByPatientId: jest.fn(),
+        getNutritionalConsultationsWithStatusByPatientId: jest.fn(),
+        getNutritionalConsultationDetailByIdAndPatientId: jest.fn(),
       })
       .overrideProvider(ProductRepository)
       .useValue({
@@ -179,6 +181,87 @@ describe('App (e2e)', () => {
 
       expect(userRepository.updateUserById).toHaveBeenCalledWith('user-1', { athlete: true });
       expect(response.body.athlete).toBe(true);
+    });
+  });
+
+  describe('GET /me/consultations', () => {
+    it('devuelve las consultas del usuario del token con el estado de su plan', async () => {
+      nutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId.mockResolvedValue([
+        {
+          id: 'c-1',
+          consultationNumber: 1,
+          consultationDate: new Date('2026-03-15T12:00:00.000Z'),
+          orderId: 'order-1',
+          order: { id: 'order-1', paymentStatus: 'PENDING', generationStatus: 'NOT_STARTED' },
+          anamneses: [{ goals: [{ mainGoal: 'bajar de peso' }] }],
+          plans: [],
+        },
+      ] as any);
+
+      const response = await request(app.getHttpServer()).get(api('/me/consultations')).set(AUTH).expect(200);
+
+      expect(nutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId).toHaveBeenCalledWith(
+        'user-1',
+      );
+      expect(response.body).toEqual([
+        {
+          consultationId: 'c-1',
+          consultationNumber: 1,
+          consultationDate: '2026-03-15T12:00:00.000Z',
+          mainGoal: 'bajar de peso',
+          planStatus: 'awaiting_payment',
+          orderId: 'order-1',
+          plan: null,
+        },
+      ]);
+    });
+
+    it('sin token devuelve 401', async () => {
+      await request(app.getHttpServer()).get(api('/me/consultations')).expect(401);
+    });
+  });
+
+  describe('GET /me/consultations/:consultationId', () => {
+    const consultationId = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+
+    it('devuelve el detalle de una consulta del usuario del token', async () => {
+      nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId.mockResolvedValue({
+        id: consultationId,
+        consultationNumber: 1,
+        consultationDate: new Date('2026-03-15T12:00:00.000Z'),
+        orderId: 'order-1',
+        order: { id: 'order-1', paymentStatus: 'PENDING', generationStatus: 'NOT_STARTED' },
+        anamneses: [{ goals: [{ mainGoal: 'bajar de peso', secondaryGoal: [] }] }],
+        measurements: [],
+        plans: [],
+      } as any);
+
+      const response = await request(app.getHttpServer())
+        .get(api(`/me/consultations/${consultationId}`))
+        .set(AUTH)
+        .expect(200);
+
+      expect(nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId).toHaveBeenCalledWith(
+        consultationId,
+        'user-1',
+      );
+      expect(response.body).toMatchObject({
+        consultationId,
+        goals: { mainGoal: 'bajar de peso', secondaryGoals: [] },
+        planStatus: 'awaiting_payment',
+        measurements: [],
+        plan: null,
+      });
+    });
+
+    it('si la consulta no existe o es de otro usuario devuelve 404 (BOLA)', async () => {
+      nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId.mockResolvedValue(null);
+
+      await request(app.getHttpServer()).get(api(`/me/consultations/${consultationId}`)).set(AUTH).expect(404);
+    });
+
+    it('con un id que no es UUID v4 devuelve 400', async () => {
+      await request(app.getHttpServer()).get(api('/me/consultations/no-es-uuid')).set(AUTH).expect(400);
     });
   });
 

@@ -11,4 +11,11 @@ export abstract class MeasurementsDatasource {
     updateMeasurementsDto: UpdateMeasurementsDto,
   ): Promise<MeasurementsEntity>;
   abstract deleteMeasurementsById(id: string): Promise<void>;
+
+  // Medición más reciente (por measuredAt) del historial clínico del paciente, sea de una consulta
+  // o registrada por él, con basicMeasurements y measurementResults — usada por el resumen del
+  // panel (GET /me/summary, modules/identity).
+  abstract getLatestMeasurementsWithResultsByPatientId(
+    patientId: string,
+  ): Promise<MeasurementsEntity | null>;
 }

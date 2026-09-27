@@ -29,4 +29,11 @@ export abstract class NutritionalConsultationRepository {
   abstract countNutritionalConsultationsByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number>;
+  abstract getNutritionalConsultationsWithStatusByPatientId(
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity[]>;
+  abstract getNutritionalConsultationDetailByIdAndPatientId(
+    id: string,
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity | null>;
 }

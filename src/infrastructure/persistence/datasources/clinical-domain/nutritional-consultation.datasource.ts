@@ -51,6 +51,37 @@ type NutritionalConsultationWithPanelDetails =
     include: typeof PANEL_DETAILS_INCLUDE;
   }>;
 
+// Árbol para el listado de consultas (GET /me/consultations): objetivo, estados de la orden (solo
+// lectura; la orden la escribe billing) y resumen del plan activo -> NutritionalPlan principal.
+const LIST_WITH_STATUS_INCLUDE = {
+  anamneses: { include: { goals: true } },
+  order: { select: { id: true, paymentStatus: true, generationStatus: true } },
+  plans: {
+    where: { active: true },
+    include: { nutritionalPlans: { where: { mainPlan: true } } },
+  },
+} satisfies Prisma.NutritionalConsultationInclude;
+
+// Árbol para el detalle de una consulta (GET /me/consultations/:id): lo mismo que el listado más las
+// mediciones tomadas en la consulta (la relación ya filtra consultation_id = la consulta, así que no
+// incluye las registradas por el usuario) y, de la orden, lo necesario para firmar la descarga del PDF.
+const DETAIL_WITH_STATUS_INCLUDE = {
+  ...LIST_WITH_STATUS_INCLUDE,
+  order: {
+    select: {
+      id: true,
+      paymentStatus: true,
+      generationStatus: true,
+      pdfKey: true,
+      creationDate: true,
+    },
+  },
+  measurements: {
+    orderBy: { measuredAt: 'asc' },
+    include: { basicMeasurements: true, measurementResults: true },
+  },
+} satisfies Prisma.NutritionalConsultationInclude;
+
 @Injectable()
 export class NutritionalConsultationDatasourceImpl
   implements NutritionalConsultationDatasource
@@ -236,5 +267,29 @@ export class NutritionalConsultationDatasourceImpl
     return this.prisma.nutritionalConsultation.count({
       where: { clinicalRecordId },
     });
+  }
+
+  async getNutritionalConsultationsWithStatusByPatientId(
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity[]> {
+    const consultations = await this.prisma.nutritionalConsultation.findMany({
+      where: { patientId },
+      orderBy: [{ consultationDate: 'desc' }, { consultationNumber: 'desc' }],
+      include: LIST_WITH_STATUS_INCLUDE,
+    });
+    // order viene parcial (select), por eso el cast.
+    return consultations as unknown as NutritionalConsultationEntity[];
+  }
+
+  async getNutritionalConsultationDetailByIdAndPatientId(
+    id: string,
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity | null> {
+    // findFirst (no findUnique) para filtrar también por patientId: ajena o inexistente -> null (R2).
+    const consultation = await this.prisma.nutritionalConsultation.findFirst({
+      where: { id, patientId },
+      include: DETAIL_WITH_STATUS_INCLUDE,
+    });
+    return consultation as unknown as NutritionalConsultationEntity | null;
   }
 }

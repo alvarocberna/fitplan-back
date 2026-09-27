@@ -86,7 +86,8 @@ src/
 │   ├── identity/           # /me, /me/sync, /me/summary + CurrentUserResolver (exportado)
 │   ├── consultation/       # chat de anamnesis + crear consulta (con su orden)
 │   ├── plans/              # catálogo estándar, mis planes, generación del plan (listener de order.paid)
-│   └── billing/            # ciclo de vida de la orden, pagos, webhooks; emite order.paid
+│   ├── billing/            # ciclo de vida de la orden, pagos, webhooks; emite order.paid
+│   └── clinical/           # historial clínico: /me/consultations (mediciones, pendiente)
 │
 ├── app.module.ts
 └── main.ts                 # app.setGlobalPrefix('api/v1')
@@ -204,6 +205,8 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 | GET | `/plans/standard/:code` | No | `GetStandardPlanUseCase` | plans |
 | POST | `/plans/standard/:code/purchase` | Sí | `PurchaseStandardPlanUseCase` | plans |
 | GET | `/me/plans` | Sí | `ListMyPlansUseCase` | plans |
+| GET | `/me/consultations` | Sí | `ListMyConsultationsUseCase` | clinical |
+| GET | `/me/consultations/:consultationId` | Sí | `GetMyConsultationUseCase` | clinical |
 | GET | `/orders/:id/status` | Sí | `GetOrderStatusUseCase` | billing |
 | POST | `/webhooks/payments` | No (firma de la pasarela) | `ConfirmPaymentUseCase` | billing |
 | POST | `/dev/orders/:id/simulate-payment` | No (`ENABLE_PAYMENT_SIMULATION`) | `ConfirmPaymentUseCase` | billing |
@@ -230,7 +233,45 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
   (`NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId`) y
   devuelve nombre, edad (`calculateAge`), fecha de esa consulta, `goal` (`anamneses[0].goals[0].mainGoal`)
   y el `nutritionalPlan` principal del `plan` activo (solo los `*Intake` y `dietRegimen`, nunca los
-  `*Requirement`). Todo es null-safe: sin consulta o sin plan, esos campos vuelven `null`.
+  `*Requirement`). Además devuelve `lastMeasurement` (`{ measuredAt, weight, height, bmi,
+  bmiClassification, bfPercentage }`): la medición de `measuredAt` más reciente del historial clínico,
+  sea de consulta o registrada por el usuario
+  (`MeasurementsRepository.getLatestMeasurementsWithResultsByPatientId`). `bmi`, su clasificación y
+  `bfPercentage` salen solo de `measurement_results` (no se calculan al leer; hoy ningún flujo los
+  puebla, así que vuelven `null`). Todo es null-safe: sin consulta, plan o medición, esos campos
+  vuelven `null`.
+
+### clinical: `/me/consultations`
+
+- **`GET /me/consultations`** (`ListMyConsultationsUseCase`, CU-CLI-01): consultas del usuario del
+  token, de la más reciente a la más antigua (`consultationDate`, luego `consultationNumber`), incluidas
+  las no pagadas. Cada ítem (`ConsultationSummaryDto`):
+  ```ts
+  { consultationId, consultationNumber, consultationDate, mainGoal,
+    planStatus: 'awaiting_payment' | 'generating' | 'ready' | 'error' | null, orderId,
+    plan: { planName, goal, dietRegimen, calorieIntake, proteinIntake, carbohydrateIntake, lipidIntake } | null }
+  ```
+  `planStatus` se deriva de la orden (`generationStatus` COMPLETED → `ready`, ERROR → `error`; si no,
+  `paymentStatus` PENDING → `awaiting_payment`, PAID → `generating`; sin orden → `null`). `plan` es el
+  `NutritionalPlan` principal del `plan` activo. Sin consultas → `[]`. El módulo no importa `billing`:
+  lee los estados de la orden vía include
+  (`NutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId`).
+- **`GET /me/consultations/:consultationId`** (`GetMyConsultationUseCase`, CU-CLI-02): detalle de solo
+  lectura. Busca por (`id`, `patientId` del token) con
+  `getNutritionalConsultationDetailByIdAndPatientId`; inexistente o ajena → **404** (R2), id que no es
+  UUID v4 → 400. Devuelve `ConsultationDetailDto`:
+  ```ts
+  { consultationId, consultationNumber, consultationDate,
+    goals: { mainGoal, secondaryGoals[] }, planStatus, orderId,
+    measurements: { measurementId, measurementNumber, measuredAt, level,
+      basic: { weight, height, sittingHeight, armSpan } | null,
+      results: { bmi, bmiClassification, bfPercentage, bfClassification } | null }[],
+    plan: { orderId, pdfUrl, planName, goal, dietRegimen, calorieIntake, proteinIntake, carbohydrateIntake, lipidIntake } | null }
+  ```
+  `plan.pdfUrl` es la URL firmada de descarga del PDF (R4, `signPlanFiles` de `billing/order-files.ts`,
+  como attachment), o `null` si la orden todavía no tiene `pdfKey`. Las mediciones son solo las tomadas en la consulta (`consultation_id` = la consulta), nunca las
+  registradas por el usuario. El DTO de medición es una versión reducida de `MeasurementDetailDto`
+  (CU-CLI-04). `toPlanStatus` (`modules/clinical/plan-status.ts`) es compartido con el listado.
 
 ### consultation: `/consultations`
 

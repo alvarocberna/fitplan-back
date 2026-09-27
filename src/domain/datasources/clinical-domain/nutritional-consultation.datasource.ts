@@ -40,4 +40,20 @@ export abstract class NutritionalConsultationDatasource {
   abstract countNutritionalConsultationsByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number>;
+
+  // Todas las consultas del paciente, más reciente primero, con anamneses.goals, la orden (solo id y
+  // estados) y el plan activo -> nutritionalPlan principal — usada por el listado de consultas
+  // (GET /me/consultations, modules/clinical). Sin consultas -> [].
+  abstract getNutritionalConsultationsWithStatusByPatientId(
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity[]>;
+
+  // Detalle de una consulta SOLO si pertenece al paciente (R2: null si no existe o no es suya), con
+  // anamneses.goals, la orden (solo id y estados), las mediciones de la consulta (basicMeasurements +
+  // measurementResults) y el plan activo -> nutritionalPlan principal — usada por
+  // GET /me/consultations/:id (modules/clinical).
+  abstract getNutritionalConsultationDetailByIdAndPatientId(
+    id: string,
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity | null>;
 }

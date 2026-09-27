@@ -11,4 +11,7 @@ export abstract class MeasurementsRepository {
     updateMeasurementsDto: UpdateMeasurementsDto,
   ): Promise<MeasurementsEntity>;
   abstract deleteMeasurementsById(id: string): Promise<void>;
+  abstract getLatestMeasurementsWithResultsByPatientId(
+    patientId: string,
+  ): Promise<MeasurementsEntity | null>;
 }

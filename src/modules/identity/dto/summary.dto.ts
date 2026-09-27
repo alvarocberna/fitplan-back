@@ -8,6 +8,18 @@ export interface SummaryNutritionalPlanDto {
   lipidIntake: number;
 }
 
+// Indicadores de la última medición del historial clínico (la de measuredAt más reciente, de una
+// consulta o registrada por el usuario). bmi/bmiClassification/bfPercentage salen solo de
+// measurement_results: si la medición no tiene resultados calculados quedan en null.
+export interface SummaryLastMeasurementDto {
+  measuredAt: string;
+  weight: number | null;
+  height: number | null;
+  bmi: number | null;
+  bmiClassification: string | null;
+  bfPercentage: number | null;
+}
+
 export interface SummaryDto {
   firstName: string | null;
   middleName: string | null;
@@ -19,4 +31,5 @@ export interface SummaryDto {
   lastConsultationDate: string | null;
   goal: string | null;
   nutritionalPlan: SummaryNutritionalPlanDto | null;
+  lastMeasurement: SummaryLastMeasurementDto | null;
 }

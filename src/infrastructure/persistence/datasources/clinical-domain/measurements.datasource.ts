@@ -31,4 +31,18 @@ export class MeasurementsDatasourceImpl implements MeasurementsDatasource {
   async deleteMeasurementsById(id: string): Promise<void> {
     await this.prisma.measurements.delete({ where: { id } });
   }
+
+  // El historial clínico es único por paciente (clinical_record.patient_id), así que filtrar por la
+  // relación equivale a clinical_record_id = <historial del usuario> y usa el índice
+  // (clinical_record_id, measured_at). Incluye ambos orígenes (consulta y registrada por el usuario).
+  async getLatestMeasurementsWithResultsByPatientId(
+    patientId: string,
+  ): Promise<MeasurementsEntity | null> {
+    const measurement = await this.prisma.measurements.findFirst({
+      where: { clinicalRecord: { patientId } },
+      orderBy: { measuredAt: 'desc' },
+      include: { basicMeasurements: true, measurementResults: true },
+    });
+    return measurement as MeasurementsEntity | null;
+  }
 }

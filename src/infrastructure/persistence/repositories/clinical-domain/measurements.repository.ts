@@ -28,4 +28,12 @@ export class MeasurementsRepositoryImpl implements MeasurementsRepository {
   deleteMeasurementsById(id: string): Promise<void> {
     return this.datasource.deleteMeasurementsById(id);
   }
+
+  getLatestMeasurementsWithResultsByPatientId(
+    patientId: string,
+  ): Promise<MeasurementsEntity | null> {
+    return this.datasource.getLatestMeasurementsWithResultsByPatientId(
+      patientId,
+    );
+  }
 }

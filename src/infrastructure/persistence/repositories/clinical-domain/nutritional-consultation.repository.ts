@@ -71,4 +71,22 @@ export class NutritionalConsultationRepositoryImpl
       clinicalRecordId,
     );
   }
+
+  getNutritionalConsultationsWithStatusByPatientId(
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity[]> {
+    return this.datasource.getNutritionalConsultationsWithStatusByPatientId(
+      patientId,
+    );
+  }
+
+  getNutritionalConsultationDetailByIdAndPatientId(
+    id: string,
+    patientId: string,
+  ): Promise<NutritionalConsultationEntity | null> {
+    return this.datasource.getNutritionalConsultationDetailByIdAndPatientId(
+      id,
+      patientId,
+    );
+  }
 }

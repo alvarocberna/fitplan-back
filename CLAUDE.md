@@ -70,8 +70,10 @@ src/
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
 │   ├── consultation/           # /consultations/chat, /consultations
 │   ├── plans/                  # /plans/standard/*, /me/plans, plan generation (listener of order.paid)
-│   └── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment;
-│                                # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid
+│   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment;
+│   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid
+│   └── clinical/               # patient history: /me/consultations (measurements pending); reads order
+│                                # statuses via the consultation repository (no billing import)
 ├── app.module.ts
 └── main.ts                     # app.setGlobalPrefix('api/v1'), Swagger at /api-docs (outside the prefix)
 ```
@@ -86,7 +88,7 @@ domain service or an internal use case (e.g. `CreateOrderUseCase`).
 
 - `domain/` never imports from `modules/`, `infrastructure/` or `common/`. Use cases depend on
   `domain/ports`, never on the OpenAI/S3 SDKs or the concrete adapters; specs mock the port.
-- Between modules: `consultation`/`plans` → `billing` → nothing; everyone may use `identity` only for
+- Between modules: `consultation`/`plans`/`clinical` → `billing` → nothing (`clinical` doesn't import it today); everyone may use `identity` only for
   `CurrentUserResolver`. `billing` never imports `plans`: it emits `order.paid`
   (`modules/billing/events/order-paid.event.ts`, `@nestjs/event-emitter` v3 — v12 is ESM-only and breaks
   Jest) and `plans/listeners/order-paid.listener.ts` reacts.
