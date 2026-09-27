@@ -172,9 +172,12 @@ pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamne
 children), `Plan` + `NutritionalPlan` (`GeneratePersonalizedPlanUseCase` upserts the order's `Plan` by `orderId`
 — `Plan.orderId` is `@unique`, 1 order → 1 plan — together with its main `NutritionalPlan`
 (`mainPlan = true`) before marking the order `COMPLETED`; a `Plan` can hold N `NutritionalPlan`s,
-though only one is created today, and their child tables are not populated), `Order`, and `Product`;
+though only one is created today, together with its child tables `PlanMealTime` (+ notes, numeric
+portions from the calculation), `PlanSupplement` (one row per supplement, + notes) and
+`PlanSportsRecommendation` — see `modules/plans/generation/plan-generation.mapper.ts`; children are
+replaced via `ON DELETE CASCADE` on retries), `Order`, and `Product`;
 `AuthIdentity` is used by `modules/identity/` (see below). The
-rest (the `NutritionalPlan` children, several `clinical-domain` leaf entities)
+rest (`Projection`, several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
 the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
 written by the payment webhook (`OrderRepository.markOrderAsPaidWithPayment`, same transaction that

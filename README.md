@@ -520,8 +520,8 @@ La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
 el detalle de esa migración y su deuda pendiente. `Payment` sí está conectado: el webhook de pago crea su fila (`AUTHORIZED`, hoy con datos simulados) en la misma transacción que marca la orden pagada. Buena parte del resto del dominio (la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
-la fila principal, no sus tablas hijas) sí está conectado: `GeneratePersonalizedPlanUseCase` la **escribe**
-(`PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`, idempotente por `orderId`: crea el `Plan` de la orden con su `NutritionalPlan` principal o reemplaza este último) justo antes de
+la fila principal y sus tablas hijas) está conectado: `GeneratePersonalizedPlanUseCase` lo **escribe**
+(`PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`, idempotente por `orderId`: crea el `Plan` de la orden con su `NutritionalPlan` principal y sus hijas `PlanMealTime` + notas, `PlanSupplement` + notas y `PlanSportsRecommendation`, o reemplaza ese árbol; las hijas se borran por `ON DELETE CASCADE`) justo antes de
 marcar la orden como `COMPLETED`, y `GET /me/summary` la **lee** (`plans` → `nutritionalPlans` incluido en
 `getLatestNutritionalConsultationWithDetailsByPatientId`, que solo considera consultas que ya tienen
 plan). Las órdenes completadas antes de este cambio no tienen fila `NutritionalPlan` (sin backfill).
@@ -558,10 +558,10 @@ datasources/repositories que ya no existe en el código actual).
 - No hay pasarela de pago real integrada (`ConfirmPaymentUseCase.verifyWebhookSignature` siempre devuelve
   `true`) ni proveedor de correo real conectado (`LogEmailSender.sendRealEmail` es un stub que solo
   logea).
-- `GeneratePersonalizedPlanUseCase` persiste la fila `NutritionalPlan` pero no sus hijas (`PlanMealTime`,
-  `PlanSupplement`, `PlanSportsRecommendation`): el detalle del plan sigue viviendo solo en
-  `Order.planJson`. Tampoco se hizo backfill de las órdenes completadas antes de que existiera la
-  escritura de `NutritionalPlan`.
+- `GeneratePersonalizedPlanUseCase` persiste `NutritionalPlan` y sus hijas desde la migración
+  `20260927120000_nutritional_plan_children`, pero no se hizo backfill: las órdenes completadas antes
+  solo tienen el detalle en `Order.planJson` (y las anteriores a la escritura de `NutritionalPlan`, ni
+  siquiera esa fila). `Projection` no se puebla.
 - El bucket S3 para los PDFs de planes ya existe y está en uso (`productos-personalizados/` y
   `productos-estandarizados/`, ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)). Los
   archivos predefinidos se suben **a mano** (no hay un flujo de subida automatizado): tras subirlos hay

@@ -303,5 +303,5 @@ pasarela de pago real en vez de por el frontend.
   `RetentionService`, se eliminó.)
 - **`NutritionalPlan`**: al generar el plan con éxito, `GeneratePersonalizedPlanUseCase` hace un upsert por
   `orderId` de la fila `NutritionalPlan` (objetivo, régimen, requerimientos e ingesta de
-  calorías/macros, key del PDF) justo antes de `OrderLifecycleService.completeGeneration`. Solo la fila
-  principal: las tablas hijas no se pueblan.
+  calorías/macros) justo antes de `OrderLifecycleService.completeGeneration`, junto con sus tablas hijas:
+  `plan_meal_time` (porciones numéricas por grupo + notas de ejemplos, comentarios y equivalencias), `plan_supplement` (una fila por suplemento + notas de efectos y consideraciones) y `plan_sports_recommendation`.

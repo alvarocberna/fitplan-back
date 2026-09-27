@@ -70,6 +70,8 @@ enum PlanMealTimeSlot {
 enum PlanMealTimeNoteType {
   EXAMPLE
   COMMENT
+  // Equivalencias de un grupo de alimentos: "<grupo>: <alimentos alternativos>"
+  EQUIVALENCE
 }
 
 enum PlanSupplementNoteType {
@@ -650,7 +652,7 @@ model NutritionalPlan {
   lipidIntake        Float @map("lipid_intake")
 
   mealTimes             PlanMealTime[]
-  supplement            PlanSupplement?
+  supplements           PlanSupplement[]
   sportsRecommendations PlanSportsRecommendation[]
 
   @@map("nutritional_plan")
@@ -661,10 +663,9 @@ model PlanMealTime {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   planId          String          @map("plan_id") @db.Uuid
-  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  // El ERD lo define NOT NULL; queda nullable mientras esta tabla no se pueble.
-  time PlanMealTimeSlot? @map("time")
+  time PlanMealTimeSlot  @map("time")
   hour String?           @map("hour")
 
   calorieIntake      Float @map("calorie_intake")
@@ -696,7 +697,7 @@ model PlanMealTimeNote {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   planMealTimeId String       @map("plan_meal_time_id") @db.Uuid
-  planMealTime   PlanMealTime @relation(fields: [planMealTimeId], references: [id])
+  planMealTime   PlanMealTime @relation(fields: [planMealTimeId], references: [id], onDelete: Cascade)
 
   note String
   type PlanMealTimeNoteType
@@ -708,11 +709,11 @@ model PlanMealTimeNote {
 model PlanSupplement {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  planId          String          @unique @map("plan_id") @db.Uuid
-  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
+  planId          String          @map("plan_id") @db.Uuid
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   supplement         String
-  requirement        Float? // El ERD lo define NOT NULL; queda nullable mientras esta tabla no se pueble.
+  requirement        Float
   doseInstructions   String? @map("dose_instructions")
   intakeInstructions String? @map("intake_instructions")
 
@@ -731,7 +732,7 @@ model PlanSupplementNote {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   planSupplementId String         @map("plan_supplement_id") @db.Uuid
-  planSupplement   PlanSupplement @relation(fields: [planSupplementId], references: [id])
+  planSupplement   PlanSupplement @relation(fields: [planSupplementId], references: [id], onDelete: Cascade)
 
   note String
   type PlanSupplementNoteType
@@ -744,7 +745,7 @@ model PlanSportsRecommendation {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   planId          String          @map("plan_id") @db.Uuid
-  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id])
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   session        String?
   strategy       String?

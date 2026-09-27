@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../../../../generated/prisma';
 import { PrismaService } from '../../orm/prisma/prisma.service';
 import { PlanDatasource } from '../../../../domain/datasources/clinical-domain/plan.datasource';
 import { PlanEntity } from '../../../../domain/entities/plan.entity';
 import {
   CreatePlanDto,
   UpdatePlanDto,
+  NutritionalPlanTreeDto,
   UpsertPlanWithMainNutritionalPlanDto,
 } from '../../../../domain';
 
@@ -16,29 +18,39 @@ export class PlanDatasourceImpl implements PlanDatasource {
     return this.prisma.plan.create({ data: createPlanDto });
   }
 
-  // Una sola escritura anidada (atómica). En el update se borra el NutritionalPlan principal previo
-  // y se crea el nuevo; hoy sus tablas hijas (PlanMealTime, PlanSupplement, ...) no se pueblan, así
-  // que el deleteMany no choca con FKs. Si algún día se pueblan, habrá que borrarlas antes.
+  // Una sola escritura anidada (atómica): Plan -> NutritionalPlan principal -> PlanMealTime (+ notas),
+  // PlanSupplement (+ notas) y PlanSportsRecommendation. En el update se borra el NutritionalPlan
+  // principal previo y se crea el nuevo; sus tablas hijas se borran por ON DELETE CASCADE, así un
+  // reintento de la generación reemplaza el árbol completo sin duplicarlo.
   async upsertPlanWithMainNutritionalPlanByOrderId({
     consultationId,
     orderId,
     nutritionalPlan,
   }: UpsertPlanWithMainNutritionalPlanDto): Promise<PlanEntity> {
+    const nutritionalPlanCreate = toNestedCreate(nutritionalPlan);
     return this.prisma.plan.upsert({
       where: { orderId },
       create: {
         consultationId,
         orderId,
         active: true,
-        nutritionalPlans: { create: nutritionalPlan },
+        nutritionalPlans: { create: nutritionalPlanCreate },
       },
       update: {
         nutritionalPlans: {
           deleteMany: { mainPlan: true },
-          create: nutritionalPlan,
+          create: nutritionalPlanCreate,
         },
       },
-      include: { nutritionalPlans: true },
+      include: {
+        nutritionalPlans: {
+          include: {
+            mealTimes: { include: { notes: true } },
+            supplements: { include: { notes: true } },
+            sportsRecommendations: true,
+          },
+        },
+      },
     });
   }
 
@@ -56,4 +68,30 @@ export class PlanDatasourceImpl implements PlanDatasource {
   async deletePlanById(id: string): Promise<void> {
     await this.prisma.plan.delete({ where: { id } });
   }
+}
+
+// Traduce el árbol del dominio (hijos como arreglos) a la forma de escritura anidada de Prisma
+// (`{ create: [...] }` en cada relación).
+function toNestedCreate({
+  mealTimes,
+  supplements,
+  sportsRecommendations,
+  ...nutritionalPlan
+}: NutritionalPlanTreeDto): Prisma.NutritionalPlanCreateWithoutPlanInput {
+  return {
+    ...nutritionalPlan,
+    mealTimes: {
+      create: mealTimes.map(({ notes, ...mealTime }) => ({
+        ...mealTime,
+        notes: { create: notes },
+      })),
+    },
+    supplements: {
+      create: supplements.map(({ notes, ...supplement }) => ({
+        ...supplement,
+        notes: { create: notes },
+      })),
+    },
+    sportsRecommendations: { create: sportsRecommendations },
+  };
 }

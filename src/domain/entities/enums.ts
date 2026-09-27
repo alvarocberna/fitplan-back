@@ -46,6 +46,8 @@ export type PlanMealTimeSlot =
 export const PlanMealTimeNoteType = {
   EXAMPLE: 'EXAMPLE',
   COMMENT: 'COMMENT',
+  // Alimentos equivalentes de un grupo: "<grupo>: <alimentos alternativos>".
+  EQUIVALENCE: 'EQUIVALENCE',
 } as const;
 export type PlanMealTimeNoteType =
   (typeof PlanMealTimeNoteType)[keyof typeof PlanMealTimeNoteType];

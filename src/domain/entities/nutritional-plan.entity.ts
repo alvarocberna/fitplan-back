@@ -1,7 +1,7 @@
 // Mapea NutritionalPlan y sus hijos de prisma/schema.prisma (sección CLINICAL DOMAIN).
-// No confundir con NutritionPlanDto (domain/dtos/nutrition-plan.dto.ts): ese es el JSON que
-// genera la IA y se persiste en el `orden` legacy (tabla SQLite `orden`, columna `plan_json`);
-// esta entidad es la representación normalizada en el nuevo schema Postgres.
+// No confundir con NutritionPlanDto (domain/dtos/nutrition-plan.dto.ts): ese es el plan que arma
+// la generación y se serializa en order.plan_json; esta entidad (con sus hijos) es su representación
+// normalizada, que la generación también escribe (ver plan-generation.mapper.ts).
 
 import type { PlanEntity } from './plan.entity';
 
@@ -48,7 +48,7 @@ export interface NutritionalPlanEntity {
   lipidIntake: number;
 
   mealTimes?: PlanMealTimeEntity[];
-  supplement?: PlanSupplementEntity | null;
+  supplements?: PlanSupplementEntity[];
   sportsRecommendations?: PlanSportsRecommendationEntity[];
 }
 
@@ -59,7 +59,7 @@ export interface PlanMealTimeEntity {
   planId: string;
   nutritionalPlan?: NutritionalPlanEntity;
 
-  time: PlanMealTimeSlot | null;
+  time: PlanMealTimeSlot;
   hour: string | null;
 
   calorieIntake: number;
@@ -84,7 +84,7 @@ export interface PlanMealTimeEntity {
   notes?: PlanMealTimeNoteEntity[];
 }
 
-// plan_meal_time puede tener múltiples ejemplos y comentarios.
+// plan_meal_time puede tener múltiples ejemplos, comentarios y equivalencias por grupo de alimentos.
 export interface PlanMealTimeNoteEntity {
   id: string;
 
@@ -95,7 +95,7 @@ export interface PlanMealTimeNoteEntity {
   type: PlanMealTimeNoteType;
 }
 
-// nutritional_plan tiene a lo más un suplemento asociado (objeto, no arreglo).
+// nutritional_plan puede tener múltiples suplementos.
 export interface PlanSupplementEntity {
   id: string;
 
@@ -103,7 +103,7 @@ export interface PlanSupplementEntity {
   nutritionalPlan?: NutritionalPlanEntity;
 
   supplement: string;
-  requirement: number | null;
+  requirement: number;
   doseInstructions: string | null;
   intakeInstructions: string | null;
 

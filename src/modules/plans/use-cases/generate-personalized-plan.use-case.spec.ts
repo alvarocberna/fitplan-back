@@ -233,7 +233,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         prescription: { regimen: 'Plan personalizado', goal },
         mealTimes: buildMatchingGeneratedMealTimes(portionAdequacyResult.calculatedMealTimes),
         supplements: [],
-        sportsRecommendations: {},
+        sportsRecommendations: [],
       }); // prompt principal
 
     return { requirements, portionAdequacyResult, totalIntake, adequacy };
@@ -288,8 +288,8 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     );
   });
 
-  it('persiste el Plan (por orderId) con su NutritionalPlan principal, antes de marcar la orden como completada', async () => {
-    const { requirements, totalIntake } = mockMatchingAiResponses();
+  it('persiste el Plan (por orderId) con su NutritionalPlan principal y sus tablas hijas, antes de marcar la orden como completada', async () => {
+    const { requirements, totalIntake, portionAdequacyResult } = mockMatchingAiResponses();
 
     await service.execute({ orderId: 'order-1' });
 
@@ -297,7 +297,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId).toHaveBeenCalledWith({
       consultationId: 'consultation-1',
       orderId: 'order-1',
-      nutritionalPlan: {
+      nutritionalPlan: expect.objectContaining({
         planName: 'Plan personalizado',
         period: null,
         mainPlan: true,
@@ -313,7 +313,27 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         proteinIntake: totalIntake.protein,
         carbohydrateIntake: totalIntake.carbohydrate,
         lipidIntake: totalIntake.fat,
-      },
+        supplements: [],
+        sportsRecommendations: [],
+      }),
+    });
+
+    // un plan_meal_time por tiempo de comida calculado, con las porciones numéricas del cálculo real
+    // (no parseadas del texto) y los ejemplos/comentarios/equivalencias de la IA como notas
+    const [{ nutritionalPlan }] =
+      planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock.calls[0];
+    const { calculatedMealTimes } = portionAdequacyResult;
+    expect(nutritionalPlan.mealTimes).toHaveLength(calculatedMealTimes.length);
+    nutritionalPlan.mealTimes.forEach((mealTime, index) => {
+      const { numericPortions } = calculatedMealTimes[index];
+      expect(mealTime.hour).toBe('08:00');
+      expect(mealTime.calorieIntake).toBe(calculatedMealTimes[index].intake.calories);
+      expect(mealTime.cereal).toBe(numericPortions.cereals || null);
+      expect(mealTime.lowFatProtein).toBe(numericPortions.lowFatProteins || null);
+      expect(mealTime.notes.filter((n) => n.type === 'EXAMPLE')).toHaveLength(3);
+      expect(mealTime.notes.filter((n) => n.type === 'COMMENT')).toHaveLength(1);
+      const groupsWithPortions = Object.values(numericPortions).filter((p) => p > 0).length;
+      expect(mealTime.notes.filter((n) => n.type === 'EQUIVALENCE')).toHaveLength(groupsWithPortions);
     });
     expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock.invocationCallOrder[0]).toBeLessThan(
       orderLifecycle.completeGeneration.mock.invocationCallOrder[0],
@@ -388,7 +408,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
           comments: [],
         })),
         supplements: [],
-        sportsRecommendations: {},
+        sportsRecommendations: [],
       });
     });
 

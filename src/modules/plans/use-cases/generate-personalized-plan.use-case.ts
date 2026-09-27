@@ -31,6 +31,7 @@ import {
   calculateTotalPlanIntake,
   calculateTotalAdequacy,
   CalculatedMealTime,
+  NumericMealTimePortions,
 } from '../../../domain/services/alimentos/portion-adequacy.service';
 import {
   FOOD_FIELD_TO_GROUP,
@@ -167,7 +168,7 @@ export class GeneratePersonalizedPlanUseCase {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const attemptStart = Date.now();
       try {
-        const plan = await this.processPlan(payload);
+        const { plan, numericPortions } = await this.processPlan(payload);
         const attemptDurationMs = Date.now() - attemptStart;
         this.logger.log(
           `Orden ${orderId}: intento ${attempt}/${MAX_ATTEMPTS} generado en ${attemptDurationMs}ms`,
@@ -181,16 +182,17 @@ export class GeneratePersonalizedPlanUseCase {
         await this.fileStorage.uploadPdf(pdfBuffer, pdfKey);
         const thumbnailKey = await this.tryUploadThumbnail(orderId, pdfBuffer);
 
-        // Se persiste el Plan (con su NutritionalPlan principal) ANTES de marcar la orden como
-        // COMPLETED, así una orden completada siempre tiene su plan normalizado. Es un upsert por
-        // orderId, por lo que un reintento del loop (ej. si falla el correo más abajo) no duplica
-        // ni rompe el @unique: reemplaza el NutritionalPlan principal.
+        // Se persiste el Plan (con su NutritionalPlan principal y todas sus tablas hijas) ANTES de
+        // marcar la orden como COMPLETED, así una orden completada siempre tiene su plan normalizado.
+        // Es un upsert por orderId, por lo que un reintento del loop (ej. si falla el correo más
+        // abajo) no duplica ni rompe el @unique: reemplaza el NutritionalPlan principal y sus hijos.
         await this.planRepository.upsertPlanWithMainNutritionalPlanByOrderId({
           consultationId: consultation.id,
           orderId,
           nutritionalPlan: mapPlanToNutritionalPlanDto(
             plan,
             order.product?.name ?? null,
+            numericPortions,
           ),
         });
 
@@ -276,10 +278,13 @@ export class GeneratePersonalizedPlanUseCase {
     return consultation;
   }
 
-  //recibe la info de consulta y devuelve un objeto con el plan nutricional
+  //recibe la info de consulta y devuelve el plan nutricional, más las porciones numéricas de cada
+  //tiempo de comida (alineadas por índice con plan.mealTimes). Estas últimas no viajan en el plan
+  //(que se serializa en order.plan_json con las porciones como texto): solo se usan para poblar las
+  //columnas numéricas de plan_meal_time.
   private async processPlan(
     body: CompleteConsultationDto,
-  ): Promise<NutritionPlanDto> {
+  ): Promise<{ plan: NutritionPlanDto; numericPortions: NumericMealTimePortions[] }> {
     //se extrae informacion del prompt: NAF y objetivo
     const { physicalActivityLevel, goal } = await this.extractInfoPrompt(body);
     //se extrae informacion del body
@@ -397,7 +402,7 @@ export class GeneratePersonalizedPlanUseCase {
     });
 
     //return
-    return {
+    const plan: NutritionPlanDto = {
       personalInfo: this.buildPersonalInfo(body),
       prescription: {
         regimen: generated.prescription.regimen,
@@ -411,6 +416,10 @@ export class GeneratePersonalizedPlanUseCase {
       mealTimes,
       supplements: generated.supplements,
       sportsRecommendations: generated.sportsRecommendations,
+    };
+    return {
+      plan,
+      numericPortions: calculatedMealTimes.map((calculated) => calculated.numericPortions),
     };
   }
 
