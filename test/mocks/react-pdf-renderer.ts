@@ -1,7 +1,7 @@
 // Stub de Jest para '@react-pdf/renderer' (ver moduleNameMapper en package.json y
 // test/jest-e2e.json). El paquete real solo se publica como ESM puro (además de arrastrar
 // varias dependencias internas también ESM), lo que Jest+ts-jest no puede transformar tal
-// cual. Como los tests nunca necesitan un PDF real (solo verifican que PdfService/EmailService
+// cual. Como los tests nunca necesitan un PDF real (solo verifican que PlanDocumentRenderer/EmailSender
 // invoquen renderToBuffer con el documento correcto y usen el Buffer resultante), esto
 // reemplaza el paquete completo por componentes inertes + un renderToBuffer mockeado.
 const Noop = (props: { children?: unknown }) => props.children ?? null;

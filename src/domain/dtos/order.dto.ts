@@ -18,7 +18,7 @@ export interface OrderDto {
   updatedAt: Date;
 }
 
-// Forma que se expone en GET /ordenes/:id (sin payloadJson, que es información interna
+// Forma que se expone en GET /orders/:id/status (sin payloadJson, que es información interna
 // del pipeline de generación, no algo que el frontend necesite leer).
 export interface OrderStatusDto {
   paymentStatus: PaymentStatus;
@@ -27,21 +27,21 @@ export interface OrderStatusDto {
   // URL firmada (corta duración) para DESCARGAR el PDF ya subido a S3 (viene con
   // Content-Disposition: attachment y nombre de archivo, por lo que no sirve para un <iframe>);
   // null hasta que el plan termine de generarse. Nunca se persiste, se genera on-demand en cada
-  // solicitud (ver StorageService).
+  // solicitud (ver FileStorage).
   pdfUrl: string | null;
   // URL firmada (corta duración) de la miniatura WebP de la página 1 del plan; null si aún no hay
   // plan, o si la orden no tiene miniatura (falló su generación, que es best-effort).
   thumbnailUrl: string | null;
 }
 
-// Forma que se expone en GET /ordenes: un ítem por cada orden con plan generado y PDF
+// Forma que se expone en GET /me/plans: un ítem por cada orden con plan generado y PDF
 // disponible, del usuario autenticado.
 export interface OrderSummaryDto {
   orderId: string;
   creationDate: Date;
   // URL firmada (corta duración) para DESCARGAR el PDF: viene con Content-Disposition: attachment y
   // nombre de archivo, por lo que no sirve para incrustarlo en un <iframe> (para eso, GET
-  // /ordenes/obtener-estado/:id).
+  // /orders/:id/status).
   pdfUrl: string;
   // URL firmada (corta duración) de la miniatura WebP de la página 1 del plan; null si la orden no
   // tiene miniatura (plan anterior a esta función, o falló su generación).

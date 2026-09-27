@@ -19,11 +19,11 @@ export abstract class ProductDatasource {
   ): Promise<ProductEntity | null>;
 
   // Filas "vista previa" activas (una por familia de plan predefinido, code = solo el slug del plan),
-  // ordenadas para el carrusel del home. Usado por GET /productos/vista-previa.
+  // ordenadas para el carrusel del home. Usado por GET /plans/standard/previews.
   abstract getActivePlanPreviews(): Promise<ProductEntity[]>;
 
   // Busca un Product activo de tipo GENERATED; si no existe, crea uno con valores por defecto
   // (ver el *Impl — son placeholders, hay que revisarlos con negocio). Usado por
-  // OrdersService.createOrder para resolver el productId de la nueva Order sin ningún seed previo.
+  // CreateConsultationUseCase para resolver el productId de la nueva Order sin ningún seed previo.
   abstract findOrCreateActiveGeneratedProduct(): Promise<ProductEntity>;
 }

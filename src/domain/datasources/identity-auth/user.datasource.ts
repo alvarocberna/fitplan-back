@@ -15,7 +15,7 @@ export abstract class UserDatasource {
   abstract deleteUserById(id: string): Promise<void>;
 
   // Busca un User por email; si no existe, lo crea con los datos dados. No hay flujo de
-  // login/registro real hoy — esto es lo que usa OrdersService.createOrder para resolver el
+  // login/registro real hoy — esto es lo que usa SyncIdentityUseCase para resolver el
   // userId de la nueva Order a partir de personalInfo.email.
   abstract findOrCreateUserByEmail(
     dto: FindOrCreateUserByEmailDto,

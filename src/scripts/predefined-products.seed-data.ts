@@ -11,7 +11,7 @@ import {
 import {
   buildPredefinedPlanKey,
   buildPredefinedPlanThumbnailKey,
-} from '../presentation/storage/storage.service';
+} from '../domain/services/utils/storage-keys';
 
 // Placeholder: no hay pricing real definido para los planes predefinidos. Ajustar con negocio antes
 // de producción (puede variar por plan editando PRICE_BY_FAMILY). El precio de una orden siempre se

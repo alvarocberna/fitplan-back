@@ -5,7 +5,7 @@ scaffolding de Nest CLI (`consultation.service.spec.ts`, `consultation.controlle
 `openai.service.spec.ts`), que únicamente verificaban `should be defined` sin mockear
 dependencias — uno de ellos (`consultation.controller.spec.ts`) ni siquiera compilaba
 correctamente su grafo de DI (instanciaba `ConsultationService` real sin proveerle su dependencia
-`OpenaiService`). Este documento describe la suite agregada: qué cubre, cómo correrla, y las
+`LlmProvider`). Este documento describe la suite agregada: qué cubre, cómo correrla, y las
 decisiones de infraestructura que hicieron falta para que corriera.
 
 Si buscas la arquitectura general del proyecto o el flujo end-to-end, ver el README principal y
@@ -15,7 +15,7 @@ Si buscas la arquitectura general del proyecto o el flujo end-to-end, ver el REA
 
 Se priorizó el **pipeline core**: la infraestructura de testing en sí, las fórmulas de dominio que
 están efectivamente conectadas a un endpoint (`plan-generation`), y los servicios de
-`presentation/` que arman el flujo `POST /ordenes/crear` → webhook de pago → generación del plan.
+`modules/` que arman el flujo `POST /consultations` → webhook de pago → generación del plan.
 
 **Fuera de esta fase** (deuda pendiente, ver §6): las 8 fórmulas de `domain/services/formulas/`
 que hoy no tiene ningún consumidor real (`bmi.service.ts`, `body-fat.service.ts`,
@@ -31,7 +31,7 @@ npm run test:cov       # unitarios + reporte de cobertura
 npm run test:e2e       # e2e (Jest, config en test/jest-e2e.json)
 ```
 
-Cada módulo de `src/presentation/**` y `src/domain/services/**` trae su(s) `*.spec.ts`
+Cada módulo de `src/modules/**` y `src/domain/services/**` trae su(s) `*.spec.ts`
 co-localizado(s) junto al archivo que testea — mismo patrón que ya usaba el scaffolding original,
 ahora con cobertura real. Jest (`rootDir: src`) solo descubre `*.spec.ts` bajo `src/`; el e2e vive
 aparte, en `test/*.e2e-spec.ts`.
@@ -39,7 +39,7 @@ aparte, en `test/*.e2e-spec.ts`.
 Correr un archivo puntual (Jest `rootDir` es `src`, así que el patrón no incluye ese prefijo):
 
 ```bash
-npm test -- orders.service
+npm test -- confirm-payment.use-case
 npm test -- src/domain/services/formulas/requirements.service.spec.ts
 ```
 
@@ -48,13 +48,13 @@ npm test -- src/domain/services/formulas/requirements.service.spec.ts
 Al escribir estos tests aparecieron dos gaps reales en el setup de Jest que no tenían que ver con
 lógica de negocio, sino con que Jest no podía ni siquiera **cargar** ciertos módulos:
 
-- **`.tsx` no reconocido**: `pdf.service.tsx`/`nutrition-plan.document.tsx` (`presentation/pdf/`)
+- **`.tsx` no reconocido**: `react-pdf-plan-document.renderer.tsx`/`nutrition-plan.document.tsx` (`infrastructure/pdf/`)
   son `.tsx`, pero `moduleFileExtensions`/`transform` del jest config original solo cubrían
   `.ts`/`.js`. Se agregó `"tsx"` a `moduleFileExtensions` y se amplió el regex de `transform` a
   `^.+\.(t|j)sx?$` (en `package.json` y en `test/jest-e2e.json`).
 - **`@react-pdf/renderer` es ESM puro**: el paquete (y varias de sus dependencias internas) solo se
   publica como ESM, que ts-jest no puede transformar tal cual — cualquier test que tocara
-  (aunque sea transitivamente, vía DI) `EmailService`/`PlanGenerationService`/`WebhooksService`
+  (aunque sea transitivamente, vía DI) el renderer de PDF o `GeneratePersonalizedPlanUseCase`
   fallaba con `SyntaxError: Cannot use import statement outside a module`. Se agregó un
   `moduleNameMapper` (`^@react-pdf/renderer$` → `test/mocks/react-pdf-renderer.ts`) que reemplaza
   el paquete completo por componentes inertes + un `renderToBuffer` mockeado (`jest.fn()`
@@ -84,43 +84,51 @@ junto con los imports que quedaron sin uso.
 | `alimentos/portion-adequacy.service.ts` | `portion-adequacy.service.spec.ts` | `defineFoodGroups` (reglas de eliminación por tiempo de comida) + un escenario de `calculateFoodsAndIntake`/`calculateTotalPlanIntake`/`calculateTotalAdequacy` **trazado a mano y verificado contra el algoritmo real** (test de regresión "congelado": si el algoritmo cambia, este test detecta el cambio de números) |
 | `alimentos/food-portions.ts` | `food-portions.spec.ts` | `findFoodGroup` (caso válido / lanza si no existe) |
 
-### `presentation/` — pipeline `orders` → `webhooks` → `plan-generation`
+### `modules/`, `infrastructure/` y `common/`
 
-| Servicio | Test | Mockea |
+Tras el refactor (ver `../doc/product/refactor.md`), la lógica de aplicación vive en casos de uso
+(`modules/<módulo>/use-cases/*.use-case.ts`); cada uno se testea instanciándolo con sus dependencias
+mockeadas (puertos, repositorios, `CurrentUserResolver`), y cada controller solo verifica que delega en
+su caso de uso con los argumentos correctos.
+
+| Archivo | Test | Mockea / foco |
 |---|---|---|
-| `OrdersService` | `orders.service.spec.ts` | `AuthIdentityService`, `ClinicalRecordRepository`, `NutritionalConsultationRepository`, `ProductRepository`, `OrderRepository`, `StorageService` (esta última para firmar `pdfUrl` en `getStatus`/`getOrdersForUser`). Cubre también `createPredefinedOrder` (orden sin `pdfKey`, sin consulta ni perfil completo, 404 si la versión no existe / está inactiva / sin PDF) y `markAsPaid` (crea el `payment` `AUTHORIZED`; para `PREDEFINED` copia `pdfKey`/`thumbnailKey` y deja `completado`; idempotente) |
-| `orders.mapper.ts` | `orders.mapper.spec.ts` | nada (funciones puras) |
-| `OrdersController` | `orders.controller.spec.ts` | `OrdersService` |
-| `WebhooksService` | `webhooks.service.spec.ts` | `OrdersService`, `PlanGenerationService` (solo un producto `GENERATED` dispara la generación; un `PREDEFINED` no) |
-| `ProductsService` | `products.service.spec.ts` | `ProductRepository`, `StorageService` (ficha pública de un plan predefinido: no expone `pdfKey`/`thumbnailKey`, 404 por código inválido o inactivo) |
-| `ProductsController` | `products.controller.spec.ts` | `ProductsService` |
-| `predefined-plan-code.ts` | `predefined-plan-code.spec.ts` | nada (regex, `buildPredefinedPlanCode`, las 112 combinaciones) |
-| `scripts/predefined-products.seed-data.ts` | `predefined-products.seed-data.spec.ts` | nada (las 112 filas del seed con keys de S3 únicas). El runner `seed-predefined-products.ts` (S3 + Prisma) no tiene test: se verificó a mano contra la BD de desarrollo |
-| `WebhooksController` | `webhooks.controller.spec.ts` | `WebhooksService` |
-| `plan-generation.mapper.ts` | `plan-generation.mapper.spec.ts` | nada (función pura `NutritionPlanDto` → `NutritionalPlan`) |
-| `PlanGenerationService` | `plan-generation.service.spec.ts` | `OrdersService`/`OpenaiService`/`EmailService`/`PdfService`/`StorageService`/`NutritionalPlanRepository` (verifica el upsert de `NutritionalPlan` antes de `completeGeneration` y que un fallo ahí reintenta) — **las fórmulas de dominio corren de verdad** (test híbrido unit+integración); ver §5 |
-| `ConsultationService` | `consultation.service.spec.ts` | `OpenaiService` |
-| `ConsultationController` | `consultation.controller.spec.ts` | `ConsultationService` |
-| `OpenaiService` | `openai.service.spec.ts` | el SDK `openai` (`jest.mock('openai', ...)`) |
-| `EmailService` | `email.service.spec.ts` | nada — ya no depende de `PdfService` (recibe el PDF ya generado como `Buffer` en `sendPlanByEmail`) |
-| `HttpExceptionFilter` | `http-exception.filter.spec.ts` | `ArgumentsHost` construido a mano |
-| `UserService` | `user.service.spec.ts` | `AuthIdentityService`, `UserRepository` |
-| `UserController` | `user.controller.spec.ts` | `UserService` |
-| `PanelService` | `panel.service.spec.ts` | `AuthIdentityService`, `NutritionalConsultationRepository` — cubre nombre completo, `lastConsultationDate` y `dietRegimen`, además del caso "paciente sin ninguna consulta todavía" (repositorio devuelve `null`, `goal`/`nutritionalPlan` deben quedar `null` sin lanzar) y el caso de consulta con `anamneses`/`nutritionalPlans` vacíos |
-| `PanelController` | `panel.controller.spec.ts` | `PanelService` |
+| `identity/current-user.resolver.ts` | `current-user.resolver.spec.ts` | repositorios de identidad: `sub` → `AuthIdentity` → `User`, 401 sin identidad, `isProfileComplete` |
+| `identity/use-cases/sync-identity` | `sync-identity.use-case.spec.ts` | identidad existente vs. primera vez (User esqueleto + `AuthIdentity` primaria) |
+| `identity/use-cases/get-my-profile` / `update-my-profile` | `*.use-case.spec.ts` | `CurrentUserResolver`, `UserRepository`: `ProfileDto` completo con `age`; PATCH parcial (solo campos presentes, `null` limpia) |
+| `identity/use-cases/get-my-summary` | `get-my-summary.use-case.spec.ts` | `CurrentUserResolver`, `NutritionalConsultationRepository` — nombre completo, `lastConsultationDate`, `dietRegimen`, paciente sin consultas y consulta con relaciones vacías (`null` sin lanzar) |
+| `identity/me.controller.ts` | `me.controller.spec.ts` | los 4 casos de uso |
+| `consultation/use-cases/chat-anamnesis` | `chat-anamnesis.use-case.spec.ts` | `LlmProvider`: reintento con `reply` vacío, fallback, `isComplete` recalculado |
+| `consultation/use-cases/create-consultation` | `create-consultation.use-case.spec.ts` | `CurrentUserResolver`, repositorios, `CreateOrderUseCase`: 400 sin `personalInfo` o con perfil incompleto, orden vía billing, consulta enlazada por `orderId`, numeración, `measuredAt` |
+| `consultation/consultation.mapper.ts` | `consultation.mapper.spec.ts` | nada (funciones puras) |
+| `consultation/consultations.controller.ts` | `consultations.controller.spec.ts` | los 2 casos de uso |
+| `plans/use-cases/list-standard-plan-previews` / `get-standard-plan` | `*.use-case.spec.ts` | `ProductRepository`, `FileStorage`: no exponen `pdfKey`/`thumbnailKey`, 404 por código inválido o inactivo |
+| `plans/use-cases/purchase-standard-plan` | `purchase-standard-plan.use-case.spec.ts` | `CreateOrderUseCase`: sin perfil completo ni consulta, 404 si no existe / inactivo / sin PDF / código inválido |
+| `plans/use-cases/list-my-plans` | `list-my-plans.use-case.spec.ts` | `OrderRepository`, `FileStorage`: PDF firmado como attachment, miniatura opcional |
+| `plans/use-cases/generate-personalized-plan` | `generate-personalized-plan.use-case.spec.ts` | `OrderLifecycleService`/`LlmProvider`/`EmailSender`/`PlanDocumentRenderer`/`FileStorage`/`PlanRepository`/`NutritionalConsultationRepository` (upsert del `Plan` antes de `completeGeneration`, reintentos) — **las fórmulas de dominio corren de verdad** (test híbrido); ver §5 |
+| `plans/listeners/order-paid.listener.ts` | `order-paid.listener.spec.ts` | `GeneratePersonalizedPlanUseCase`: solo `GENERATED` genera; un error inesperado queda contenido |
+| `plans/generation/plan-generation.mapper.ts` | `plan-generation.mapper.spec.ts` | nada (`NutritionPlanDto` → `NutritionalPlan`) |
+| `plans/*.controller.ts` | `standard-plans.controller.spec.ts` | los casos de uso del catálogo y de `GET /me/plans` |
+| `billing/use-cases/create-order` | `create-order.use-case.spec.ts` | `OrderRepository`: orden pendiente con monto/moneda del producto |
+| `billing/use-cases/confirm-payment` | `confirm-payment.use-case.spec.ts` | `OrderRepository`, `EventEmitter2`: `payment` `AUTHORIZED`, copia del PDF para `PREDEFINED`, emite `order.paid` solo si marcó el pago, idempotencia |
+| `billing/use-cases/get-order-status` | `get-order-status.use-case.spec.ts` | `CurrentUserResolver`, `OrderRepository`, `FileStorage`: 404 por orden ajena o inexistente (BOLA) |
+| `billing/order-lifecycle.service.ts` | `order-lifecycle.service.spec.ts` | `OrderRepository` |
+| `billing/*.controller.ts` + `PaymentSimulationEnabledGuard` | `orders.controller.spec.ts`, `payments.controller.spec.ts` | casos de uso; firma inválida → 401; el simulador responde 404 sin `ENABLE_PAYMENT_SIMULATION=true` |
+| `domain/services/utils/predefined-plan-code.ts` / `storage-keys.ts` | `*.spec.ts` | nada (regex, las 112 combinaciones, keys de S3) |
+| `scripts/predefined-products.seed-data.ts` | `predefined-products.seed-data.spec.ts` | nada (las 112 filas del seed con keys únicas). El runner `seed-predefined-products.ts` no tiene test |
+| `infrastructure/llm/openai/openai-llm.provider.ts` | `openai-llm.provider.spec.ts` | el SDK `openai` (`jest.mock('openai', ...)`) |
+| `infrastructure/storage/s3/s3-file-storage.ts` | `s3-file-storage.spec.ts` | `S3Client`/presigner: comandos `PutObject`/`GetObject`, `Content-Disposition` |
+| `infrastructure/email/log-email-sender.ts` | `log-email-sender.spec.ts` | nada (recibe el PDF ya generado) |
+| `common/filters/http-exception.filter.ts` | `http-exception.filter.spec.ts` | `ArgumentsHost` construido a mano |
 
-`NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId` (y su
-delegación en `infrastructure/repositories/clinical-domain/` + su implementación Prisma en
-`infrastructure/datasources/clinical-domain/`, usada por `PanelService`) se dejó **sin spec propio**,
-igual que el resto de `infrastructure/datasources/**`/`infrastructure/repositories/**`: ningún
-archivo de esa capa (para ninguna entidad) tiene test hoy — es pura delegación/Prisma sin lógica de
-negocio, fuera del alcance de esta fase (ver §1). `PanelService.spec.ts` sí mockea el repositorio en
-ese límite, igual que `OrdersService` mockea sus 5 repositorios.
+`NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId` (y el resto
+de `infrastructure/persistence/**`) no tiene spec propio: es pura delegación/Prisma sin lógica de
+negocio. Los casos de uso mockean los repositorios en ese límite.
 
 ## 5. Patrones usados que vale la pena conocer antes de tocar estos tests
 
-- **`PlanGenerationService` es un test híbrido**: solo se mockean los bordes externos
-  (`OrdersService`, `OpenaiService`, `EmailService`, `PdfService`, `StorageService`);
+- **`GeneratePersonalizedPlanUseCase` es un test híbrido**: solo se mockean los bordes externos
+  (`OrderLifecycleService`, `LlmProvider`, `EmailSender`, `PlanDocumentRenderer`, `FileStorage`);
   `calculateRequirements`, `determineMealTimes`,
   `defineFoodGroups`, `calculateFoodsAndIntake` corren de verdad. El test del caso feliz define un
   helper (`buildMatchingGeneratedMealTimes`) que arma una respuesta de IA "perfecta" **a partir del
@@ -132,31 +140,32 @@ ese límite, igual que `OrdersService` mockea sus 5 repositorios.
 - **Reintentos con backoff**: el test de agotamiento de los 4 intentos usa
   `jest.useFakeTimers()` + `jest.advanceTimersByTimeAsync(...)` para no esperar los ~7s reales de
   backoff exponencial (`1000+2000+4000ms`).
-- **Fire-and-forget**: `WebhooksService.processPayment` dispara `generatePlan()` sin `await`; los
-  tests que necesitan verificar ese llamado (o que un error ahí no rompe la respuesta HTTP) resuelven
-  una promesa extra (`await new Promise((r) => setImmediate(r))`) para dejar correr el microtask
-  antes de aserter.
-- **`OpenaiService`** construye su propio cliente `OpenAI` en el constructor
+- **Fire-and-forget**: `OrderPaidListener` dispara `GeneratePersonalizedPlanUseCase.execute()` sin
+  `await`; el test que verifica que un error ahí queda contenido resuelve una promesa extra
+  (`await new Promise((r) => setImmediate(r))`) para dejar correr el microtask antes de aserter.
+- **`@nestjs/event-emitter` v3**: la v12 es solo ESM y Jest (CJS) no puede cargarla. No actualizarla
+  sin configurar Jest para ESM.
+- **`OpenaiLlmProvider`** construye su propio cliente `OpenAI` en el constructor
   (`new OpenAI({apiKey:...})`); se mockea el paquete completo (`jest.mock('openai', () => ...)`)
   en vez de intentar inyectar el cliente, ya que no hay una forma de override por DI para él.
 
 ## 6. e2e (`test/app.e2e-spec.ts`)
 
-Bootstrapea `AppModule` completo (routing, `ValidationPipe`, `HttpExceptionFilter` reales) contra
-`supertest`, mockeando solo el mismo límite bajo que los unit tests: los 5 repositorios,
-`OpenaiService`, `EmailService`, y además `PrismaService` (para que nadie intente conectarse a una
-base de datos real al hacer `app.init()` — no se levanta Postgres en ningún momento). Cubre:
+Bootstrapea `AppModule` completo (prefijo `/api/v1`, routing, `ValidationPipe`, `HttpExceptionFilter`,
+casos de uso y evento `order.paid` reales) contra `supertest`, mockeando solo el límite bajo: los
+repositorios, los puertos (`LlmProvider`, `EmailSender`, `PlanDocumentRenderer`, `FileStorage`),
+`PrismaService` (no se levanta Postgres) y `CognitoAuthGuard` (con header `Authorization` el token se da
+por válido con un `sub` fijo; sin él, 401). Cubre:
 
-- `POST /ordenes/crear` — payload válido (201 + `orderId`), sin email (400), propiedad desconocida
-  en el body (400, `forbidNonWhitelisted`).
-- `GET /ordenes/obtener-estado/:id` — estado mockeado (200), id no-UUID (400), orden inexistente (404).
-- `POST /webhooks/pago` — idempotencia (`procesado` → `ya_procesado`), `orden_id` no-UUID (400).
-
-**Estado**: escrito y revisado, pero **no se pudo ejecutar en esta sesión** por falta de memoria
-disponible en la máquina de desarrollo (levantar `AppModule` completo vía `ts-jest` compite con
-Chrome/Discord/VS Code/Docker/WSL ya corriendo; el proceso de Jest fue matado 3 veces por el propio
-harness al detectar memoria crítica). Correr `npm run test:e2e` con memoria disponible antes de
-confiar en él como gate de CI.
+- Las rutas antiguas (en español y sin prefijo) responden 404.
+- `GET /me` (200 y 401 sin token) y `PATCH /me` con body parcial.
+- `POST /consultations` — payload válido (201 + `orderId`) y propiedad desconocida (400,
+  `forbidNonWhitelisted`).
+- `GET /orders/:id/status` — estado (200), id no-UUID (400), orden de otro usuario (404).
+- `POST /webhooks/payments` — `processed` → `already_processed` (idempotencia), el evento `order.paid`
+  dispara el listener de generación, `orderId` no-UUID (400).
+- `POST /dev/orders/:id/simulate-payment` — 404 sin `ENABLE_PAYMENT_SIMULATION=true`; con el flag
+  procesa el pago (un plan estándar no dispara la generación).
 
 ## 7. Deuda pendiente / Fase 2 (no incluida en esta pasada)
 
@@ -172,15 +181,8 @@ confiar en él como gate de CI.
   - `body-fat.service.ts` → `getBodyFatClassification`: el bloque `case age < 60:` (rama hombres)
     no tiene `break`, así que cae al bloque `case age >= 60:` y **sobreescribe** el resultado ya
     calculado — afecta a cualquier hombre entre 40 y 59 años.
-- `test:e2e` sin verificar en CI (ver §6) — correrlo una vez con memoria disponible y confirmar que
-  pasa antes de asumir que es un gate confiable.
-- No hay tests de los servicios de `presentation/pdf` (`PdfService`) ni de los prompts de
-  `plan-generation/prompts/**` (son generadores de texto para el prompt de la IA, sin lógica de
+- `test:e2e` pasa en local pero no corre en CI.
+- No hay tests de `infrastructure/pdf` (`ReactPdfPlanDocumentRenderer`, `ThumbnailService`) ni de los
+  prompts (`modules/consultation/prompts/**`, `modules/plans/generation/**`) (son generadores de texto para el prompt de la IA, sin lógica de
   negocio verificable más allá de "no revienta") — bajo valor, se dejaron fuera deliberadamente.
-- **`StorageService` (`presentation/storage/`) no tiene spec propio** — se cubre indirectamente
-  como mock en `orders.service.spec.ts`/`plan-generation.service.spec.ts`, pero nadie testea que
-  `uploadPdf`/`getSignedDownloadUrl` arman correctamente los comandos del SDK de S3
-  (`PutObjectCommand`/`GetObjectCommand`) ni el manejo de errores de red/credenciales. `GET /ordenes`
-  (listado de PDFs del usuario) tampoco tiene cobertura e2e todavía (`test/app.e2e-spec.ts` solo
-  cubre `POST /ordenes/crear`, `GET /ordenes/obtener-estado/:id` y `POST /webhooks/pago`, y ese
-  archivo predata la migración a `CognitoAuthGuard` — ver §6).
+- `GET /me/plans`, `GET /me/summary` y el catálogo `/plans/standard/*` no tienen cobertura e2e (sí unitaria).

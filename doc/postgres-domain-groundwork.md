@@ -1,5 +1,13 @@
 # Nuevo dominio (Postgres) — groundwork, hoy ya conectado al flujo comercial
 
+> **Documento histórico.** Describe una migración anterior al refactor de módulos
+> (`../../doc/product/refactor.md`): las rutas en español (`/ordenes/crear`, `/webhooks/pago`, ...), las
+> carpetas `src/presentation/**` y servicios como `OrdersService`/`PlanGenerationService` ya no existen.
+> Equivalencias: rutas → README (sección Módulos y endpoints, todas bajo `/api/v1`); servicios → casos
+> de uso en `src/modules/**` (`CreateConsultationUseCase`, `ConfirmPaymentUseCase`,
+> `GeneratePersonalizedPlanUseCase`, ...); `src/infrastructure/{orm,datasources,repositories}` →
+> `src/infrastructure/persistence/**`.
+
 Este documento describe la capa de arquitectura nueva que se construyó originalmente **en paralelo**
 al flujo legacy (consulta → orden → pago → generación de plan, que corría sobre SQLite y un modelo
 `Order` que ya no existe en `schema.prisma`). Define el modelo de dominio completo del producto

@@ -8,6 +8,9 @@ del backend (`nutricionista-virtual-back`) que se consumen, en el orden real en 
 No cubre casos de error, reintentos de pago fallido, ni edge cases — para eso ver el código de cada
 servicio (comentarios inline) y `doc/technical-debt.md`.
 
+Todas las rutas del backend llevan el prefijo `/api/v1` (se omite abajo); `apiFetch` del frontend lo
+agrega. Nombres de casos de uso según `../doc/product/use-cases.md`.
+
 ## Actores
 
 - **Cognito**: Amazon Cognito autentica al paciente (Hosted UI, usuario/contraseña nativo o Google
@@ -42,19 +45,19 @@ sequenceDiagram
     participant DB as Postgres (User/AuthIdentity/ClinicalRecord/NutritionalConsultation/Order)
 
     Note over Paciente,FE: Prerrequisito: login/registro con Cognito (ver doc/auth.md), ya resuelto
-    FE->>BE: POST /auth/perfil { email de la sesión }
+    FE->>BE: POST /me/sync { email de la sesión }
     BE->>DB: find-or-create AuthIdentity + User "esqueleto"
     BE-->>FE: { profileComplete: false }
     FE->>Paciente: redirige a /consulta/informacion-personal
 
     Paciente->>FE: /consulta/informacion-personal (form)
-    FE->>BE: PATCH /auth/perfil { firstName, paternalLastName, gender, dateOfBirth }
+    FE->>BE: PATCH /me { firstName, paternalLastName, gender, dateOfBirth }
     BE->>DB: UPDATE User (completa el perfil)
     Note over FE: además guarda en ConsultaContext (localStorage) para el resto del wizard
 
     loop por cada turno del chat
         Paciente->>FE: /consulta/anamnesis (mensaje)
-        FE->>BE: POST /consulta/chat
+        FE->>BE: POST /consultations/chat
         BE->>AI: chatJson (system prompt + historial)
         AI-->>BE: reply, anamnesis, isComplete
         BE-->>FE: reply, titleReply, anamnesis, isComplete
@@ -64,7 +67,7 @@ sequenceDiagram
     Note over FE: guarda en ConsultaContext, sin llamada API
 
     Paciente->>FE: /consulta/generar-orden ("Realizar pago")
-    FE->>BE: POST /ordenes/crear (CompleteConsultationDto), Authorization: Bearer
+    FE->>BE: POST /consultations (CompleteConsultationDto), Authorization: Bearer
     BE->>BE: CognitoAuthGuard valida el token
     BE->>DB: resuelve User por sub (AuthIdentity) — ya tiene que existir y estar completo
     Note over BE,DB: find-or-create ClinicalRecord + Product
@@ -74,9 +77,9 @@ sequenceDiagram
     FE->>Paciente: redirige a /pago/{orderId}
 
     Paciente->>FE: /pago/[ordenId] ("Pagar")
-    FE->>BE: POST /webhooks/ordenes/:id/simular-pago
+    FE->>BE: POST /dev/orders/:id/simulate-payment
     BE->>DB: UPDATE Order paymentStatus='PAID'
-    BE-->>FE: { status: 'procesado' }
+    BE-->>FE: { status: 'processed' }
     FE->>Paciente: redirige a /ordenes/{ordenId}
 
     par generación en background (fire-and-forget)
@@ -92,7 +95,7 @@ sequenceDiagram
         Note over BE: "envía" el correo con el mismo PDF ya generado como adjunto (stub)
     and polling del frontend
         loop cada 4s hasta 'COMPLETED' o 'ERROR'
-            FE->>BE: GET /ordenes/obtener-estado/:id
+            FE->>BE: GET /orders/:id/status
             BE-->>FE: paymentStatus, generationStatus, planJson, pdfUrl
         end
     end
@@ -104,7 +107,7 @@ sequenceDiagram
 
 ### 1. `/consulta/inicio` — pantalla informativa y ruteo según sesión/perfil
 
-Llama **`POST /auth/perfil`** (`AuthController.sync` → `AuthIdentityService.syncUser`) apenas hay
+Llama **`POST /me/sync`** (`MeController.sync` → `SyncIdentityUseCase`) apenas hay
 sesión de Cognito válida — crea `AuthIdentity`+`User` "esqueleto" si es la primera vez que se ve
 ese `sub`, o recupera el existente. Con la respuesta (`profileComplete`), decide a dónde manda el
 botón "Iniciar": sin sesión → login; con sesión pero perfil incompleto →
@@ -114,10 +117,10 @@ botón "Iniciar": sin sesión → login; con sesión pero perfil incompleto →
 ### 2. `/consulta/informacion-personal` — completar el perfil (solo si hace falta)
 
 `FormUserInfo` recoge nombre, apellido paterno, género, fecha de nacimiento — pre-llenado con lo
-que el perfil ya tenga (`GET` implícito vía el mismo `POST /auth/perfil` del paso 1). El correo se
+que el perfil ya tenga (`GET` implícito vía el mismo `POST /me/sync` del paso 1). El correo se
 muestra de solo lectura (siempre el de la cuenta de Cognito, nunca editable acá). Al enviar:
 
-- **`PATCH /auth/perfil`** (`AuthController.update` → `AuthIdentityService.updateProfile`)
+- **`PATCH /me`** (`MeController.update` → `UpdateMyProfileUseCase`)
   - Request: `{ firstName, paternalLastName, gender, dateOfBirth }` (+ opcionalmente
     `rut`/`rutCheckDigit`/`middleName`/`maternalLastName`, sin inputs propios en este formulario
     hoy).
@@ -135,12 +138,12 @@ perfil del backend si `localStorage` no lo tiene (ej. otro dispositivo).
 
 `ChatAnamnesis` intercambia mensajes con el backend, un turno a la vez:
 
-- **`POST /consulta/chat`** (`ConsultationController.chat` → `ConsultationService.chat`)
+- **`POST /consultations/chat`** (`ConsultationsController.chat` → `ChatAnamnesisUseCase`)
   - Request: `{ messages: {role, content}[], anamnesis?: AnamnesisDto }` (el estado acumulado de
     turnos anteriores).
   - El backend arma un system prompt con el esquema completo de la anamnesis, el orden estricto de
     recopilación (objetivos → clínica → alimentaria [r24h → preferencias → estrategia deportiva] →
-    estilo de vida) y las reglas de completitud, y llama a OpenAI (`OpenaiService.chatJson`).
+    estilo de vida) y las reglas de completitud, y llama a OpenAI (`LlmProvider.chatJson`).
   - Normaliza la forma del `anamnesis` devuelto por el LLM (`normalizeAnamnesisPayload`) y recalcula
     `isComplete` en el servidor (`meetsCompletionRules`) en vez de confiar en el LLM.
   - Response: `{ reply, titleReply, anamnesis, isComplete }`.
@@ -160,7 +163,7 @@ backend.**
 
 Pantalla de resumen/checkout. Al presionar "Realizar pago" (`BtnGenerarOrden`):
 
-- **`POST /ordenes/crear`** (`OrdersController.create` → `OrdersService.createOrder`,
+- **`POST /consultations`** (`ConsultationsController.create` → `CreateConsultationUseCase`,
   `CognitoAuthGuard` — exige sesión válida, ver `doc/auth.md`)
   - Request: `CompleteConsultationDto` completo — `{ personalInfo, anamnesis, measurements }`,
     armado con las tres piezas de estado acumuladas en `ConsultaContext`, más
@@ -173,7 +176,7 @@ Pantalla de resumen/checkout. Al presionar "Realizar pago" (`BtnGenerarOrden`):
     la orden recién creada — ver
     [orders-postgres-migration.md § 5](./orders-postgres-migration.md#5-reescritura-de-srcpresentationordersordersservicets).
     Ya no se persiste un `payload_json` crudo. `personalInfo` ya no se lee en este paso: `athlete`
-    vive en `User` y se guarda con `PATCH /auth/perfil`. **La IA todavía no se ejecuta en este paso** — se crea la orden antes de cobrar para
+    vive en `User` y se guarda con `PATCH /me`. **La IA todavía no se ejecuta en este paso** — se crea la orden antes de cobrar para
     no perder los datos del paciente si el pago falla o el usuario cierra la pestaña.
   - Response: `{ orderId }`.
 - El frontend redirige a `/pago/{orderId}`.
@@ -182,22 +185,23 @@ Pantalla de resumen/checkout. Al presionar "Realizar pago" (`BtnGenerarOrden`):
 
 Checkout **simulado**: los campos de tarjeta son decorativos y no validan nada. Al presionar "Pagar":
 
-- **`POST /webhooks/ordenes/:id/simular-pago`** (`WebhooksController.simulatePayment` →
-  `WebhooksService.processPayment`)
-  - Pensado como sustituto temporal del webhook real de una pasarela de pago (`POST /webhooks/pago`,
+- **`POST /dev/orders/:id/simulate-payment`** (`DevPaymentsController.simulate` →
+  `ConfirmPaymentUseCase`)
+  - Pensado como sustituto temporal del webhook real de una pasarela de pago (`POST /webhooks/payments`,
     que ya existe con la misma lógica y validación de firma — hoy un stub que siempre pasa — pero no
     tiene ninguna pasarela real que lo dispare aún).
   - Marca la orden `paymentStatus: 'PENDING' → 'PAID'` (operación idempotente: si ya estaba
-    pagada, no hace nada y responde `{ status: 'ya_procesado' }`).
-  - Dispara **en background** (fire-and-forget, sin esperar el resultado) la generación del plan:
-    `PlanGenerationService.generatePlan(orderId)`. El endpoint responde de inmediato con
-    `{ status: 'procesado' }`, sin esperar a que el plan esté listo.
+    pagada, no hace nada y responde `{ status: 'already_processed' }`).
+  - Solo responde con `ENABLE_PAYMENT_SIMULATION=true` (404 si no).
+  - Emite el evento `order.paid`; `OrderPaidListener` (módulo `plans`) dispara **en background**
+    (fire-and-forget, sin esperar el resultado) `GeneratePersonalizedPlanUseCase`. El endpoint responde
+    de inmediato con `{ status: 'processed' }`, sin esperar a que el plan esté listo.
 - El frontend redirige a `/ordenes/{ordenId}`.
 
 ### 7. Generación del plan (proceso en segundo plano, sin request HTTP del frontend)
 
 Disparado por el paso anterior, corre del lado del backend sin que el frontend lo invoque
-directamente (`PlanGenerationService.generatePlan`):
+directamente (`GeneratePersonalizedPlanUseCase`):
 
 1. **Guard de estado**: solo continúa si `generationStatus` es `NOT_STARTED` o `ERROR` (evita que dos
    disparos concurrentes — p. ej. un reintento manual del webhook — generen el plan dos veces).
@@ -220,12 +224,12 @@ directamente (`PlanGenerationService.generatePlan`):
    llamadas anteriores falla, o si la IA reporta ejemplos/equivalencias que no calzan con las
    porciones ya calculadas por código. La generación del PDF y su subida a S3 (paso siguiente) caen
    en el mismo loop: un fallo ahí también cuenta como intento fallido.
-   - Si tiene éxito: genera el PDF del plan server-side una sola vez (`PdfService.generateBuffer`,
-     `@react-pdf/renderer`), lo sube a S3 (`StorageService.uploadPdf`, key
+   - Si tiene éxito: genera el PDF del plan server-side una sola vez (`PlanDocumentRenderer.renderPdf`,
+     `@react-pdf/renderer`), lo sube a S3 (`FileStorage.uploadPdf`, key
      `productos-personalizados/<orderId>.pdf`), rasteriza su página 1 a una miniatura WebP y la sube
      (`productos-personalizados/miniaturas/<orderId>.webp`; best-effort, su fallo no falla el plan ni
      consume un reintento), guarda `planJson`, `pdfKey` y `thumbnailKey` en la orden y marca
-     `generationStatus: 'COMPLETED'` — luego llama a `EmailService.sendPlanByEmail` reutilizando el
+     `generationStatus: 'COMPLETED'` — luego llama a `EmailSender.sendPlanByEmail` reutilizando el
      mismo buffer del PDF como adjunto (ya no lo regenera) y "envía" el correo (hoy es un stub que
      solo logea; no hay proveedor de email real conectado todavía).
    - Si fallan los 4 intentos: marca `generationStatus: 'ERROR'` y registra el evento (log
@@ -235,7 +239,7 @@ directamente (`PlanGenerationService.generatePlan`):
 
 Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 segundos** a:
 
-- **`GET /ordenes/obtener-estado/:id`** (`OrdersController.getStatus` → `OrdersService.getStatus`,
+- **`GET /orders/:id/status`** (`OrdersController.status` → `GetOrderStatusUseCase`,
   `CognitoAuthGuard` — exige sesión válida y valida que la orden pertenezca al usuario del token,
   ver `doc/auth.md`)
   - Response: `{ paymentStatus, generationStatus, planJson, pdfUrl, thumbnailUrl }` (sin la
@@ -256,23 +260,23 @@ Mientras el paso 7 corre en segundo plano, esta pantalla hace **polling cada 4 s
 
 | # | Endpoint | Guard | Pantalla que lo dispara | Repeticiones | Efecto |
 |---|---|---|---|---|---|
-| 0a | `POST /auth/perfil` | Sí | `/consulta/inicio`, `/consulta/informacion-personal` | 1+ veces (idempotente) | Crea/recupera `AuthIdentity`+`User` por el `sub` de Cognito; informa si el perfil está completo |
-| 0b | `PATCH /auth/perfil` | Sí | `/consulta/informacion-personal` | 1 vez (si el perfil no estaba completo) | Completa `firstName`/`paternalLastName`/`gender`/`dateOfBirth` del `User` ya existente |
-| 1 | `POST /consulta/chat` | Sí | `/consulta/anamnesis` | 1 vez por turno del chat | Llama a OpenAI, devuelve la siguiente pregunta y el estado acumulado de la anamnesis |
-| 2 | `POST /ordenes/crear` | Sí | `/consulta/generar-orden` | 1 vez | Resuelve el `User` (ya tiene que existir y estar completo), find-or-create `ClinicalRecord`/`Product`, crea la `Order` (`paymentStatus='PENDING'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
-| 3 | `POST /webhooks/ordenes/:id/simular-pago` | No | `/pago/[ordenId]` | 1 vez | Marca la orden como pagada y dispara la generación del plan en background |
-| — | *(sin request del frontend)* | — | — | — | `PlanGenerationService.generatePlan`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + generación/subida del PDF a S3 + envío de correo (stub) |
-| 4 | `GET /ordenes/obtener-estado/:id` | Sí (valida dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `COMPLETED`/`ERROR` | Polling del estado de pago/generación y, al terminar, del plan generado, su `pdfUrl` (descarga) y su `thumbnailUrl` (miniatura) |
+| 0a | `POST /me/sync` | Sí | `/consulta/inicio`, `/consulta/informacion-personal` | 1+ veces (idempotente) | Crea/recupera `AuthIdentity`+`User` por el `sub` de Cognito; informa si el perfil está completo |
+| 0b | `PATCH /me` | Sí | `/consulta/informacion-personal` | 1 vez (si el perfil no estaba completo) | Completa `firstName`/`paternalLastName`/`gender`/`dateOfBirth` del `User` ya existente |
+| 1 | `POST /consultations/chat` | Sí | `/consulta/anamnesis` | 1 vez por turno del chat | Llama a OpenAI, devuelve la siguiente pregunta y el estado acumulado de la anamnesis |
+| 2 | `POST /consultations` | Sí | `/consulta/generar-orden` | 1 vez | Resuelve el `User` (ya tiene que existir y estar completo), find-or-create `ClinicalRecord`/`Product`, crea la `Order` (`paymentStatus='PENDING'`) y el árbol `NutritionalConsultation`, sin llamar a la IA todavía |
+| 3 | `POST /dev/orders/:id/simulate-payment` | No | `/pago/[ordenId]` | 1 vez | Marca la orden como pagada y dispara la generación del plan en background |
+| — | *(sin request del frontend)* | — | — | — | `GeneratePersonalizedPlanUseCase`: lee la `NutritionalConsultation` de la orden, 2 llamadas a OpenAI + cálculo local + guardado del plan + generación/subida del PDF a S3 + envío de correo (stub) |
+| 4 | `GET /orders/:id/status` | Sí (valida dueño — ver `doc/auth.md`) | `/ordenes/[id]` | cada 4s hasta `COMPLETED`/`ERROR` | Polling del estado de pago/generación y, al terminar, del plan generado, su `pdfUrl` (descarga) y su `thumbnailUrl` (miniatura) |
 
 Endpoint equivalente no usado en este flujo (queda para cuando se integre una pasarela real):
-**`POST /webhooks/pago`** — mismo efecto que el endpoint #3, pero pensado para ser llamado por la
+**`POST /webhooks/payments`** — mismo efecto que el endpoint #3, pero pensado para ser llamado por la
 pasarela de pago real en vez de por el frontend.
 
 ## Notas relevantes
 
 - **El flujo ya no es anónimo**: requiere sesión de Cognito válida desde `/consulta/inicio` en
-  adelante (gating del lado del frontend) y desde `ordenes/crear`/`consulta/chat`/
-  `ordenes/obtener-estado/:id` del lado del backend (`CognitoAuthGuard`). Ver `doc/auth.md` para
+  adelante (gating del lado del frontend) y desde `/consultations`/`/consultations/chat`/
+  `/orders/:id/status` del lado del backend (`CognitoAuthGuard`). Ver `doc/auth.md` para
   el detalle completo — incluida la corrección del gap de BOLA que tenía el endpoint de estado.
 - **El flujo ya no es stateless**: a diferencia de una versión anterior de este proyecto (ver
   `README.md`), el estado de la orden (estado de pago, estado de generación, plan resultante) y todo
@@ -286,18 +290,18 @@ pasarela de pago real en vez de por el frontend.
   3), y dos veces más en la generación del plan (extracción de nivel de actividad/objetivo + generación
   del plan en sí, paso 7).
 - **El pago es simulado**: no hay pasarela real integrada. El endpoint que sí quedaría para producción
-  (`POST /webhooks/pago`, con verificación de firma) existe pero su verificación
-  (`WebhooksService.verifyWebhookSignature`) siempre devuelve `true` hoy.
-- **El envío de correo es un stub**: `EmailService.sendRealEmail` solo logea, no hay proveedor
+  (`POST /webhooks/payments`, con verificación de firma) existe pero su verificación
+  (`ConfirmPaymentUseCase.verifyWebhookSignature`) siempre devuelve `true` hoy.
+- **El envío de correo es un stub**: `LogEmailSender.sendRealEmail` solo logea, no hay proveedor
   (SendGrid/SES/Resend/etc.) conectado. El PDF sí se genera y persiste de verdad: server-side
-  (`PdfService`), una sola vez por generación exitosa, subido a un bucket S3 privado
-  (`StorageService`, ver `doc/technical-debt.md`) y reutilizado tanto para el adjunto del correo
-  como para el `pdfUrl` firmado que expone `GET /ordenes/obtener-estado/:id`; también se sigue
+  (`PlanDocumentRenderer`), una sola vez por generación exitosa, subido a un bucket S3 privado
+  (`FileStorage`, ver `doc/technical-debt.md`) y reutilizado tanto para el adjunto del correo
+  como para el `pdfUrl` firmado que expone `GET /orders/:id/status`; también se sigue
   generando client-side (mismo documento react-pdf) para la descarga manual desde el navegador.
 - **Retención de datos**: no hay job de retención — las órdenes (`Order.planJson`), las consultas y
   las filas `NutritionalPlan` se conservan sin límite de tiempo. (El antiguo cron de 45 días,
   `RetentionService`, se eliminó.)
-- **`NutritionalPlan`**: al generar el plan con éxito, `PlanGenerationService` hace un upsert por
+- **`NutritionalPlan`**: al generar el plan con éxito, `GeneratePersonalizedPlanUseCase` hace un upsert por
   `orderId` de la fila `NutritionalPlan` (objetivo, régimen, requerimientos e ingesta de
-  calorías/macros, key del PDF) justo antes de `OrdersService.completeGeneration`. Solo la fila
+  calorías/macros, key del PDF) justo antes de `OrderLifecycleService.completeGeneration`. Solo la fila
   principal: las tablas hijas no se pueblan.

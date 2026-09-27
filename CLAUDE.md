@@ -34,124 +34,113 @@ Run a single unit test file (Jest `rootDir` is `src`, so pass a name that matche
 path/filename, not a project-root-relative path):
 
 ```bash
-npm test -- orders.service
-npm test -- src/presentation/webhooks/webhooks.service.spec.ts
+npm test -- confirm-payment.use-case
+npm test -- src/modules/billing/use-cases/confirm-payment.use-case.spec.ts
 ```
 
-Each `presentation/<module>` folder has its `.spec.ts` files (controller + service) next to the
-code they test.
+Every controller, use case, adapter and domain service has its `.spec.ts` next to the file it tests.
 
 ## Architecture
 
-Layered structure under `src/`, with a strict one-way dependency: `domain/` never imports from
-`presentation/`.
+The structure follows `../doc/product/refactor.md` (modules, ports, routes) and
+`../doc/product/use-cases.md` (one class per use case, shared rules R1–R7). Read both before adding a
+module or an endpoint.
 
 ```
 src/
-├── domain/                    # Pure business rules, no NestJS dependencies
-│   ├── dtos/                   # Legacy: shared data interfaces (Anamnesis, Consulta, Plan, Orden)
-│   │                            # + identity-auth/clinical-domain/commercial-domain: Create*/Update*Dto per entity
-│   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (35 entities, *Entity suffix)
-│   ├── datasources/              # Abstract classes, CRUD contracts per entity (identity-auth/clinical-domain/commercial-domain)
-│   ├── repositories/              # Same shape as datasources/, one layer up (services depend on these, not on datasources/)
+├── domain/                    # Pure business rules, no NestJS/SDK dependencies
+│   ├── ports/                  # Abstract classes used as Nest injection tokens: LlmProvider, FileStorage,
+│   │                            # EmailSender, PlanDocumentRenderer
+│   ├── dtos/                   # Shared data interfaces + identity-auth/clinical-domain/commercial-domain Create*/Update*Dto
+│   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (*Entity suffix)
+│   ├── datasources/ repositories/  # Abstract persistence contracts per entity (use cases depend on repositories/)
 │   └── services/
 │       ├── formulas/            # TMB, GET, requirements, body composition, somatocarta, supplements...
 │       ├── alimentos/           # Food exchange-portion table
-│       └── utils/                # Small helpers (age calculation, etc.)
-├── infrastructure/
-│   ├── orm/prisma/              # PrismaService/PrismaModule (Postgres)
-│   ├── datasources/              # Prisma-backed impls of domain/datasources/** (identity-auth, clinical-domain, commercial-domain)
-│   └── repositories/             # Thin delegation layer over infrastructure/datasources/** (domain/repositories/** impls)
-├── presentation/                # NestJS modules (controllers, services, validated DTOs)
-│   ├── auth/                       # Cognito JWT Guard + identity/profile endpoints (see doc/auth.md)
-│   ├── consultation/              # Conversational anamnesis-collection chat
-│   ├── orders/                     # Order creation/status
-│   ├── webhooks/                   # Payment webhook (real + simulated) → creates payment; triggers plan generation for GENERATED products
-│   ├── products/                   # Public catalog of predefined plans (GET /productos/predefinidos/:code)
-│   ├── plan-generation/            # Background worker that generates the plan with AI
-│   ├── pdf/                         # Plan PDF rendering (@react-pdf/renderer)
-│   ├── notifications/               # Emails the plan (stub — logs only, no real provider wired)
-│   ├── openai/                      # Thin OpenAI SDK wrapper, shared by consultation + plan-generation
-│   └── filters/                     # Global HttpExceptionFilter
+│       └── utils/                # Age, predefined plan codes, S3 keys (storage-keys.ts)
+├── infrastructure/             # Adapters: implement domain/ports and domain repositories
+│   ├── persistence/            # orm/prisma (PrismaService, global), datasources/ (Prisma impls), repositories/ (thin delegation)
+│   ├── llm/openai/             # OpenaiLlmProvider -> LlmProvider (LlmModule)
+│   ├── storage/s3/             # S3FileStorage -> FileStorage (FileStorageModule)
+│   ├── email/                  # LogEmailSender -> EmailSender (EmailModule; stub, logs only)
+│   ├── pdf/                    # ReactPdfPlanDocumentRenderer -> PlanDocumentRenderer (PDF + WebP thumbnail)
+│   └── auth/cognito/           # getCognitoVerifier() (aws-jwt-verify)
+├── common/                     # CognitoAuthGuard, @CognitoUser(), HttpExceptionFilter, API_PREFIX
+├── modules/                    # NestJS business modules
+│   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
+│   ├── consultation/           # /consultations/chat, /consultations
+│   ├── plans/                  # /plans/standard/*, /me/plans, plan generation (listener of order.paid)
+│   └── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment;
+│                                # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid
 ├── app.module.ts
-└── main.ts
+└── main.ts                     # app.setGlobalPrefix('api/v1'), Swagger at /api-docs (outside the prefix)
 ```
 
-DTOs in `presentation/**/dto` (the `*Impl` classes, decorated with `class-validator`) implement the
-plain interfaces declared in `domain/dtos`.
+Inside each module: `<resource>.controller.ts` (HTTP ↔ one use case, no logic), `dto/` (validated
+`*Impl` classes implementing the plain interfaces in `domain/dtos`), `use-cases/<verb>-<resource>.use-case.ts`
+(class `VerbResourceUseCase` with a single public `execute(input)`), and `listeners/` for use cases
+triggered by events. Don't add `XxxService` god-classes; if two use cases share logic, extract a
+domain service or an internal use case (e.g. `CreateOrderUseCase`).
 
-**Naming split (important, easy to get wrong):** HTTP route paths (and a couple of leftover DTO
-field names, e.g. `orden_id` in the payment webhook body) **deliberately stayed in Spanish**
-(`/consulta/chat`, `/ordenes/crear`, `/ordenes/obtener-estado/:id`, `/webhooks/pago`,
-`/webhooks/ordenes/:id/simular-pago`) even though folders/classes/services/JSON field names are in
-English (`presentation/orders`, `OrdersService`, `paymentStatus`, `personalInfo`, ...). Don't "fix"
-this mismatch — it's intentional, matching the frontend contract. The Postgres schema introduced by
-the `orders`/`plan-generation` migration (see below) is named entirely in English end to end
-(`payment_status`, `nutritional_consultation`, ...) — there's no more Spanish/English split at the
-DB layer, only at the HTTP route level.
+**Dependency rules (important):**
 
-### Active module chain (`app.module.ts`)
+- `domain/` never imports from `modules/`, `infrastructure/` or `common/`. Use cases depend on
+  `domain/ports`, never on the OpenAI/S3 SDKs or the concrete adapters; specs mock the port.
+- Between modules: `consultation`/`plans` → `billing` → nothing; everyone may use `identity` only for
+  `CurrentUserResolver`. `billing` never imports `plans`: it emits `order.paid`
+  (`modules/billing/events/order-paid.event.ts`, `@nestjs/event-emitter` v3 — v12 is ESM-only and breaks
+  Jest) and `plans/listeners/order-paid.listener.ts` reacts.
+- Only `billing` writes `order`/`payment`. New orders go through `CreateOrderUseCase`; generation state
+  transitions through `OrderLifecycleService`.
 
-`PrismaModule`, `ConsultationModule`, `OpenaiModule`, the 6 domain-layer infrastructure modules
-(`IdentityAuthDatasourcesModule`/`IdentityAuthRepositoriesModule`,
-`ClinicalDomainDatasourcesModule`/`ClinicalDomainRepositoriesModule`,
-`CommercialDomainDatasourcesModule`/`CommercialDomainRepositoriesModule`), `OrdersModule`,
-`WebhooksModule` — the last imports `PlanGenerationModule`, which imports `NotificationsModule` →
-`PdfModule`. Together these form the pipeline: payment confirmed → plan generated → PDF rendered →
-email sent. See `doc/orders-postgres-migration.md` for exactly what changed when the domain-layer
-modules got wired in (they used to be built but unused, not registered anywhere).
-
-`AuthModule` (`presentation/auth/`) is imported by `OrdersModule` and `ConsultationModule` — it
-provides `CognitoAuthGuard` (validates the Cognito Access Token via `aws-jwt-verify`) and
-`AuthIdentityService`, and owns its own controller (`POST`/`PATCH /auth/perfil`). See `doc/auth.md`.
+**Route conventions:** every route lives under `/api/v1`, uses English plural nouns
+(`POST /consultations`, not `/create-consultation`), and everything that belongs to the authenticated
+user lives under `/me` (the user always comes from the token via `CurrentUserResolver.resolve`, never
+from a body/URL id — R1). A route with an id must filter by the user too and answer 404 for both
+"missing" and "not yours" (R2). The frontend (`../nutricionista-virtual-front`) calls these routes
+through `apiFetch`, which adds the `api/v1` prefix — a route change is a coordinated back + front change.
 
 ### Request/response flow
 
-0. `POST /auth/perfil` / `PATCH /auth/perfil` — identity and profile, resolved via
-   `AuthIdentityService` from the Cognito `sub` (see `doc/auth.md`). Called by the frontend before
-   step 2 below, not part of the consultation DTOs.
-1. `POST /consulta/chat` — one call per chat turn (requires a valid session, `CognitoAuthGuard`).
-   Builds a system prompt describing the full `AnamnesisDto` schema and current fill-state, calls
-   OpenAI, normalizes the model's JSON (`anamnesis-normalizer.ts` repairs common LLM shape drift,
-   e.g. `r24h` must be a flat array of per-meal objects), and **recomputes `isComplete` on the
-   server** rather than trusting the model.
-2. `POST /ordenes/crear` (requires a valid session + a **complete** `User` profile, `CognitoAuthGuard`
-   + `AuthIdentityService.isProfileComplete` — 400 if either isn't satisfied) — resolves the `User`
-   by the token's `sub` (find-or-create by email no longer happens here, see `doc/auth.md`) and their
-   `ClinicalRecord`, resolves (find-or-create) a `Product`, creates the `Order`
-   (`paymentStatus:'PENDING'`, no AI call yet), and persists the full `NutritionalConsultation`
-   (`Anamnesis`/`Measurements` + their children) in one nested Prisma write — see
-   `doc/orders-postgres-migration.md` for the exact DTO→entity mapping decisions. `personalInfo` in
-   the request body is still required by the contract but no longer read: `User` (including
-   `athlete`) is already resolved from the session and completed via `PATCH /auth/perfil`.
-3. Payment webhook (`POST /webhooks/pago` or the simulated `POST /webhooks/ordenes/:id/simular-pago`)
-   marks the order paid **idempotently**, then fires `PlanGenerationService.generatePlan` without
-   awaiting it (fire-and-forget) — the webhook responds immediately.
-4. Plan generation (background, no HTTP endpoint): reconstructs the same `CompleteConsultationDto`
-   shape from the `Order`'s linked `NutritionalConsultation` (not from a stored JSON blob — that's
-   gone) → classifies activity level/objective via OpenAI → computes energy/macro requirements and
-   supplements **without AI** (pure domain formulas) → asks OpenAI to generate the plan using those
-   precomputed numbers verbatim, expressing food as portions from the exchange-group table (not
-   free-form quantities) → retries up to 4x with exponential backoff → persists `Order.planJson` and
-   emails it.
-5. `GET /ordenes/obtener-estado/:id` (requires a valid session, `CognitoAuthGuard` — but does
-   **not** verify the order belongs to the token's user, a known BOLA gap, see `doc/auth.md`) —
-   polling endpoint the frontend uses to check `generationStatus` and fetch `planJson` once ready
-   (response shape unchanged).
+0. `POST /me/sync` — creates `AuthIdentity` + skeleton `User` for the Cognito `sub` (idempotent), called
+   by the frontend's login callback. `PATCH /me` completes the profile (single DTO, all fields optional,
+   including `athlete`). See `doc/auth.md`.
+1. `POST /consultations/chat` — one call per chat turn (`ChatAnamnesisUseCase`). Builds a system prompt
+   (`modules/consultation/prompts/anamnesis-chat.prompt.ts`) describing the full `AnamnesisDto` schema and
+   current fill-state, calls the LLM, normalizes the model's JSON (`dto/anamnesis-normalizer.ts`) and
+   **recomputes `isComplete` on the server** rather than trusting the model.
+2. `POST /consultations` (`CreateConsultationUseCase`, requires a **complete** profile — 400 otherwise)
+   — resolves the user and their `ClinicalRecord`, the active `GENERATED` `Product`, creates the `Order`
+   through billing's `CreateOrderUseCase` (`paymentStatus='PENDING'`), and persists the full
+   `NutritionalConsultation` (with `orderId`) + `Anamnesis`/`Measurements` in one nested Prisma write
+   (`consultation.mapper.ts`). Order and consultation are two separate writes (no shared transaction yet).
+   `personalInfo` is still required by the contract but not read.
+3. Payment (`POST /webhooks/payments` or the simulated `POST /dev/orders/:id/simulate-payment`, enabled
+   only with `ENABLE_PAYMENT_SIMULATION=true`) → `ConfirmPaymentUseCase` marks the order paid
+   **idempotently** (+ `payment` row, same transaction; for `PREDEFINED` products it also copies the PDF
+   keys and completes the order) and emits `order.paid` only if this call marked it. It responds
+   immediately (`processed` | `already_processed`).
+4. `OrderPaidListener` runs `GeneratePersonalizedPlanUseCase` fire-and-forget for `GENERATED` products:
+   rebuilds the consultation by `order_id` → classifies activity level/objective via the LLM → computes
+   energy/macro requirements and supplements **without AI** → asks the LLM for the plan using those numbers
+   verbatim, as exchange-group portions (validated in code) → retries up to 4x with exponential backoff →
+   renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan`, completes the order
+   (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
+5. `GET /orders/:id/status` (`GetOrderStatusUseCase`) — polling endpoint; validates ownership (404 for
+   missing or foreign orders). `GET /me/plans` lists the user's ready plans.
 
-`OpenaiService.chatJson<T>` (`presentation/openai/openai.service.ts`) is the single point of access
-to the OpenAI SDK for the whole backend; `chat.completions.create` is called with
-`response_format: json_object` and the parsed result is returned typed. Model selection: each
-caller passes its own model (env-driven, with fallbacks) — `OPENAI_MODEL_CONSULTA` for the chat
-(cheap model, no payment gate) vs `OPENAI_MODEL_PLAN` for generation (paid gate; this model only
-accepts the default `temperature=1` — passing any other value causes a 400).
+`LlmProvider.chatJson<T>` is the single point of access to the model: `OpenaiLlmProvider` calls
+`chat.completions.create` with `response_format: json_object` and returns the parsed result. Each use
+case passes its own model (env-driven, with fallbacks) — `OPENAI_MODEL_CONSULTA` for the chat (cheap
+model, no payment gate) vs `OPENAI_MODEL_PLAN` for generation (paid gate; this model only accepts the
+default `temperature=1` — passing any other value causes a 400).
 
 ### Domain formulas
 
 `domain/services/formulas/requerimientos.service.ts` computes TMB (Harris-Benedict for 18+,
 FAO/OMS/UNU for minors) → GET (TMB adjusted for activity + thermogenesis) → energy/macro targets
 based on `objetivo` (`definicion` | `mantencion` | `volumen`). `suplementos.service.ts` computes a
-supplement prescription from weight alone. Both are computed once in `plan-generation` and handed
+supplement prescription from weight alone. Both are computed once in `GeneratePersonalizedPlanUseCase` and handed
 to the AI as fixed inputs it must not recalculate.
 
 Several other formula services exist (BMI, skinfolds, muscle mass, body fat %, phantom, IMM,
@@ -174,15 +163,15 @@ reference only, and its table was dropped. Closed-value columns (`Order.paymentS
 `schema.prisma`), mirrored in the domain as `as const` objects + union types in
 `domain/entities/enums.ts` — use those constants (`PaymentStatus.PAID`, `GenerationStatus.COMPLETED`)
 instead of string literals. Order statuses are English (`PENDING|PAID`,
-`NOT_STARTED|GENERATING|COMPLETED|ERROR`) and that's also what `GET /ordenes/obtener-estado/:id` returns.
+`NOT_STARTED|GENERATING|COMPLETED|ERROR`) and that's also what `GET /orders/:id/status` returns.
 
-Only part of this schema has a real consumer today — the `orders`/`webhooks`/`plan-generation`
+Only part of this schema has a real consumer today — the consultation → billing → plan-generation
 pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamnesis`/`Measurements`
-children), `Plan` + `NutritionalPlan` (`PlanGenerationService` upserts the order's `Plan` by `orderId`
+children), `Plan` + `NutritionalPlan` (`GeneratePersonalizedPlanUseCase` upserts the order's `Plan` by `orderId`
 — `Plan.orderId` is `@unique`, 1 order → 1 plan — together with its main `NutritionalPlan`
 (`mainPlan = true`) before marking the order `COMPLETED`; a `Plan` can hold N `NutritionalPlan`s,
 though only one is created today, and their child tables are not populated), `Order`, and `Product`;
-`AuthIdentity` is used by `presentation/auth/` (see below). The
+`AuthIdentity` is used by `modules/identity/` (see below). The
 rest (the `NutritionalPlan` children, several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
 the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
@@ -195,17 +184,17 @@ marks the order paid; `provider = 'SIMULATED'` while the gateway is simulated). 
 `Product.code` — `<plan>-<minKg>-<maxKg>-<m|f>-<joven|adulto>`, see
 `domain/services/utils/predefined-plan-code.ts`): the PDF already exists in S3
 (`productos-estandarizados/<code>.pdf`), uploaded by hand, and `npm run seed:predefined` loads/activates
-the catalog. `POST /ordenes/crear-predefinido` creates the order **without** `pdfKey`; the webhook copies
+the catalog. `POST /plans/standard/:code/purchase` creates the order **without** `pdfKey`; payment confirmation copies
 `Product.pdfKey`/`thumbnailKey` to the order (and marks it `COMPLETED`) only when payment is confirmed,
 so an unpaid order never exposes the PDF, and it does **not** run plan generation for these. Full flow:
 `../doc/flows/purchase-flow-predefined-plan.md`.
 
 **Login/registration is implemented** with Amazon Cognito (Hosted UI, native + Google as a
-federated Identity Provider) — see `doc/auth.md` for the full picture. `presentation/auth/`
-(`CognitoAuthGuard`, `AuthIdentityService`) validates the Cognito Access Token
+federated Identity Provider) — see `doc/auth.md` for the full picture. `common/auth/CognitoAuthGuard` (with
+`infrastructure/auth/cognito`) validates the Cognito Access Token
 (`aws-jwt-verify` against the User Pool's JWKS) and resolves/creates `AuthIdentity`+`User` by the
-token's `sub` — `POST /auth/perfil` creates the identity ("skeleton" `User`, no password ever
-stored) as soon as there's a valid session, and `PATCH /auth/perfil` completes the profile
+token's `sub` (`CurrentUserResolver`, `modules/identity/`) — `POST /me/sync` creates the identity ("skeleton" `User`, no password ever
+stored) as soon as there's a valid session, and `PATCH /me` completes the profile
 (`firstName`/`paternalLastName`/`gender`/`dateOfBirth`, all nullable in the schema for exactly this
 reason, plus the optional `athlete` flag, which lives on `User`) separately, since Cognito never provides those fields. `JWT_ACCESS_SECRET`/
 `JWT_REFRESH_SECRET`/`BCRYPT_SALT_OR_ROUNDS` in `.env.template` are still leftovers from an
@@ -231,10 +220,10 @@ or documented flows.
 This repo has a real test suite now (`*.spec.ts` co-located under `src/`, e2e under `test/` — see
 `doc/testing.md` for scope, coverage, and the mocking patterns established). After modifying a
 file that already has a `.spec.ts`, or adding a new service/function to the core pipeline
-(`orders`→`webhooks`→`plan-generation` and wired-in domain formulas), invoke the `test-updater`
+(consultation → billing → plans generation, and wired-in domain formulas), invoke the `test-updater`
 subagent (Agent tool, `subagent_type: "test-updater"`) before considering the task done, so it
 updates/adds the relevant tests and confirms they pass. Skip it for changes to code that has no
-test coverage by design (see `doc/testing.md §7` — dead formulas, `PdfService`, prompt builders)
+test coverage by design (see `doc/testing.md §7` — dead formulas, `ReactPdfPlanDocumentRenderer`, prompt builders)
 unless the user asks to expand coverage there.
 
 ## Stubs / not-yet-real integrations
@@ -242,6 +231,8 @@ unless the user asks to expand coverage there.
 Be aware these are intentionally fake right now — don't assume they behave like production
 integrations when reasoning about behavior or writing tests:
 
-- `WebhooksService.verifyWebhookSignature()` always returns `true` — no real payment gateway
+- `ConfirmPaymentUseCase.verifyWebhookSignature()` always returns `true` — no real payment gateway
   signature validation.
-- `EmailService.sendRealEmail()` only logs — no real email provider wired.
+- `LogEmailSender.sendRealEmail()` only logs — no real email provider wired.
+- Payments are simulated: `POST /dev/orders/:id/simulate-payment` (behind `ENABLE_PAYMENT_SIMULATION`)
+  is the only payment path until Transbank is integrated; `payment.provider = 'SIMULATED'`.

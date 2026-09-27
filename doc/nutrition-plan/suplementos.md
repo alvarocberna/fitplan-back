@@ -7,7 +7,7 @@
 - El archivo src/domain/services/formulas/suplementos.service.ts hace el calculo de la dosis de suplementos recomendada
   para el usuario, además entrega la recomendación de ingesta, beneficios y consideraciones. Esto se genera independiente 
   de si se entregará la recomendación.
-- El archivo src/presentation/consulta/consulta.prompts.ts evalúa la disciplina del usuario y decide que suplementos deportivos
+- El archivo src/modules/consulta/consulta.prompts.ts evalúa la disciplina del usuario y decide que suplementos deportivos
   son prescritos finalmente.
 
 ## Creatina

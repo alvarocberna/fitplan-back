@@ -16,7 +16,7 @@
 //    para no mostrar una imagen rota). Sin verificación no se toca `active` de filas existentes.
 //
 // Verificar requiere las credenciales AWS del .env (AWS_REGION, AWS_S3_BUCKET_NAME,
-// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY), las mismas que usa StorageService.
+// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY), las mismas que usa S3FileStorage.
 import 'dotenv/config';
 import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { PrismaClient, ProductType } from '../../generated/prisma';

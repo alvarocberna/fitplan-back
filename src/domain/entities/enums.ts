@@ -79,7 +79,7 @@ export const GenerationStatus = {
 export type GenerationStatus =
   (typeof GenerationStatus)[keyof typeof GenerationStatus];
 
-// 'SIMULATED' es el pago simulado (POST /webhooks/ordenes/:id/simular-pago) mientras no haya una
+// 'SIMULATED' es el pago simulado (POST /dev/orders/:id/simulate-payment) mientras no haya una
 // pasarela real integrada.
 export const PaymentProvider = {
   TRANSBANK: 'TRANSBANK',

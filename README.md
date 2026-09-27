@@ -9,13 +9,13 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 
 > Estado actual: el proyecto cubre el flujo completo **anamnesis (chat) → creación de orden → pago
 > (simulado) → generación del plan con IA en background → consulta de estado/plan → envío por
-> correo (stub)**, más un endpoint dedicado de perfil (`GET`/`PATCH /user/me`) y uno de resumen para
-> un panel del usuario (`GET /panel/resumen`). La persistencia (Prisma + **Postgres**) está conectada
+> correo (stub)**, más la compra de planes estándar, el perfil (`GET`/`PATCH /me`) y un resumen para
+> un panel del usuario (`GET /me/summary`). La persistencia (Prisma + **Postgres**) está conectada
 > para el dominio comercial completo (`User`, `ClinicalRecord`,
 > `NutritionalConsultation`/`Anamnesis`/`Measurements`, `Order`, `Product`) — ver
 > [Base de datos](#base-de-datos-prisma) y
 > [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md). La autenticación es real,
-> vía Amazon Cognito (`presentation/auth/`, `CognitoAuthGuard`) — ver **[doc/auth.md](./doc/auth.md)**
+> vía Amazon Cognito (`modules/identity/`, `CognitoAuthGuard`) — ver **[doc/auth.md](./doc/auth.md)**
 > — el `User` se resuelve por el `sub` del token validado, no por email suelto.
 
 ## Índice
@@ -25,14 +25,11 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 - [Puesta en marcha](#puesta-en-marcha)
 - [Variables de entorno](#variables-de-entorno)
 - [Módulos y endpoints](#módulos-y-endpoints)
-  - [`POST /consulta/chat`](#post-consultachat)
-  - [`POST /ordenes/crear`](#post-ordenescrear)
-  - [`GET /ordenes/obtener-estado/:id`](#get-ordenesobtener-estadoid)
-  - [`GET /ordenes`](#get-ordenes)
-  - [`POST /webhooks/pago` y `POST /webhooks/ordenes/:id/simular-pago`](#post-webhookspago-y-post-webhooksordenesidsimular-pago)
+  - [identity: `/me`](#identity-me)
+  - [consultation: `/consultations`](#consultation-consultations)
+  - [plans: `/plans/standard` y `/me/plans`](#plans-plansstandard-y-meplans)
+  - [billing: `/orders`, `/webhooks/payments` y `/dev/orders`](#billing-orders-webhookspayments-y-devorders)
   - [Generación del plan (background)](#generación-del-plan-background)
-  - [`GET /user/me` y `PATCH /user/me`](#get-userme-y-patch-userme)
-  - [`GET /panel/resumen`](#get-panelresumen)
 - [Capa de dominio](#capa-de-dominio)
   - [Fórmulas de requerimientos energéticos](#fórmulas-de-requerimientos-energéticos)
   - [Porciones de alimentos](#porciones-de-alimentos)
@@ -42,6 +39,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 - [Base de datos (Prisma)](#base-de-datos-prisma)
 - [Testing](#testing)
 - [Deuda técnica y pendientes](#deuda-técnica-y-pendientes)
+
 
 ## Stack
 
@@ -59,73 +57,70 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 
 ## Arquitectura
 
-El código sigue una separación por capas dentro de `src/`:
+La estructura sigue [`../doc/product/refactor.md`](../doc/product/refactor.md) y la lógica de aplicación
+está partida en casos de uso según [`../doc/product/use-cases.md`](../doc/product/use-cases.md):
 
 ```
 src/
-├── domain/                # Reglas de negocio puras, sin dependencias de NestJS
-│   ├── dtos/               # Interfaces de datos compartidas (Anamnesis, Consulta, Plan, Orden)
+├── domain/                 # Reglas de negocio puras, sin dependencias de NestJS
+│   ├── ports/              # Clases abstractas hacia sistemas externos: LlmProvider, FileStorage,
+│   │                       # EmailSender, PlanDocumentRenderer (Nest las usa como token de inyección)
+│   ├── dtos/ entities/     # Interfaces de datos y entidades (espejo de prisma/schema.prisma)
+│   ├── datasources/ repositories/  # Contratos de persistencia por entidad
 │   └── services/
 │       ├── formulas/       # TMB, GET, requerimientos, composición corporal, somatocarta, suplementos...
 │       ├── alimentos/      # Tabla de porciones de intercambio de alimentos
-│       └── utils/          # Utilidades (cálculo de edad, etc.)
+│       └── utils/          # Edad, códigos de planes estándar, keys de S3 (storage-keys.ts)
 │
-├── infrastructure/
-│   ├── orm/prisma/         # PrismaService/PrismaModule (PostgreSQL)
-│   ├── datasources/        # Implementaciones *Impl con Prisma del dominio Postgres (identity-auth,
-│   │                       # clinical-domain, commercial-domain) — ver doc/postgres-domain-groundwork.md
-│   └── repositories/       # *RepositoryImpl que delegan 1:1 en el datasource de su misma entidad
+├── infrastructure/         # Adaptadores (implementan los puertos y los repositorios)
+│   ├── persistence/        # orm/prisma, datasources/ y repositories/ (Prisma + PostgreSQL)
+│   ├── llm/openai/         # OpenaiLlmProvider (LlmProvider)
+│   ├── storage/s3/         # S3FileStorage (FileStorage)
+│   ├── email/              # LogEmailSender (EmailSender, hoy un stub que solo loguea)
+│   ├── pdf/                # ReactPdfPlanDocumentRenderer (PlanDocumentRenderer): PDF + miniatura
+│   └── auth/cognito/       # Verificador del Access Token de Cognito (aws-jwt-verify)
 │
-├── presentation/           # Módulos NestJS (controllers, services, DTOs con validación)
-│   ├── auth/               # Guard JWT de Cognito + endpoints de identidad/perfil (ver doc/auth.md)
-│   ├── user/               # Endpoint dedicado de perfil para la pantalla /perfil del frontend
-│   ├── panel/              # Resumen de usuario/objetivo/plan para la pantalla /panel del frontend
-│   ├── consultation/       # Chat conversacional de recopilación de la anamnesis
-│   ├── orders/             # Creación/consulta de la orden de cobro
-│   ├── webhooks/           # Webhook de pago (real y simulado) → dispara la generación del plan
-│   ├── plan-generation/    # Worker que genera el plan con IA (disparado por el webhook de pago)
-│   ├── pdf/                # Generación del PDF del plan (@react-pdf/renderer)
-│   ├── storage/            # Persistencia del PDF del plan en S3 (subida + URL de descarga firmada)
-│   ├── notifications/      # Envío del plan por correo (stub, con el PDF ya generado como adjunto)
-│   ├── openai/             # Cliente/wrapper del SDK de OpenAI, compartido por los módulos anteriores
-│   └── filters/            # ExceptionFilter global
+├── common/                 # Transversal: CognitoAuthGuard, @CognitoUser(), HttpExceptionFilter, API_PREFIX
+│
+├── modules/                # Módulos NestJS: controllers + casos de uso + DTOs validados
+│   ├── identity/           # /me, /me/sync, /me/summary + CurrentUserResolver (exportado)
+│   ├── consultation/       # chat de anamnesis + crear consulta (con su orden)
+│   ├── plans/              # catálogo estándar, mis planes, generación del plan (listener de order.paid)
+│   └── billing/            # ciclo de vida de la orden, pagos, webhooks; emite order.paid
 │
 ├── app.module.ts
-└── main.ts
+└── main.ts                 # app.setGlobalPrefix('api/v1')
 ```
 
-> Nota de nomenclatura: las rutas HTTP y varios nombres de campo JSON siguen deliberadamente en
-> español (`/consulta/chat`, `/ordenes/crear`), aunque las
-> carpetas, clases y la mayoría de campos internos ya están en inglés (`ConsultationService`,
-> `OrdersService`, `PlanGenerationService`, `orderId`, `paymentStatus`, etc.) — ver `CLAUDE.md`. Los
-> estados de la orden son enums en inglés (`PENDING`/`PAID`, `NOT_STARTED`/`GENERATING`/`COMPLETED`/`ERROR`).
+Cada módulo sigue la convención de `use-cases.md`: `<recurso>.controller.ts` (HTTP ↔ caso de uso),
+`dto/`, `use-cases/<verbo>-<recurso>.use-case.ts` (una clase con un único `execute`) y, si reacciona a
+eventos, `listeners/`. Los tests (`*.spec.ts`) van junto al archivo que prueban.
 
-`domain/` no importa nada de `presentation/` (dependencia en un solo sentido); los DTOs de `presentation`
-(los `*Impl`, con decoradores de `class-validator`) implementan las interfaces definidas en `domain/dtos`.
+Reglas de dependencia:
 
-### Módulos activos en `AppModule`
+- `domain/` no importa nada de `modules/`, `infrastructure/` ni `common/`. Los casos de uso dependen de
+  los puertos (`domain/ports`), nunca de OpenAI/S3/etc. directamente.
+- Entre módulos: `consultation`/`plans` → `billing` → nada, y todos → `identity` (solo para
+  `CurrentUserResolver`). `billing` avisa del pago confirmado emitiendo el evento `order.paid`
+  (`@nestjs/event-emitter`); `plans` lo escucha para generar el plan, así `billing` no depende de `plans`.
+- Solo `billing` escribe `order`/`payment`: la creación de órdenes pasa por `CreateOrderUseCase` y las
+  transiciones de generación por `OrderLifecycleService` (ambos exportados).
 
-`PrismaModule`, `ConsultationModule`, `OpenaiModule`, los módulos de infraestructura del dominio
-Postgres (`IdentityAuthDatasourcesModule`/`IdentityAuthRepositoriesModule`,
-`ClinicalDomainDatasourcesModule`/`ClinicalDomainRepositoriesModule`,
-`CommercialDomainDatasourcesModule`/`CommercialDomainRepositoriesModule` — ver
-[Base de datos](#base-de-datos-prisma)), `OrdersModule`, `WebhooksModule` (este último importa
-`PlanGenerationModule`, que a su vez importa `OrdersModule`, `OpenaiModule`, `NotificationsModule`,
-`PdfModule` y `StorageModule` directamente), `UserModule`, `PanelModule` y `ProductsModule` (catálogo
-público de planes predefinidos). En conjunto,
-`OrdersModule`/`WebhooksModule`/`PlanGenerationModule` forman la cadena: pago confirmado →
-generación del plan → PDF → subida a S3 → correo (con el mismo PDF ya generado como adjunto).
-`OrdersModule` importa los tres `*RepositoriesModule` (para los repositories que usa
-`OrdersService`) y también `StorageModule`, para firmar la URL de descarga del PDF que devuelven
-`GET /ordenes/obtener-estado/:id` y `GET /ordenes`. `NotificationsModule` ya no importa `PdfModule`:
-`EmailService` recibe el buffer del PDF ya generado en vez de generarlo internamente.
+Todas las rutas cuelgan de **`/api/v1`** (Swagger queda fuera, en `/api-docs`). Las rutas son
+sustantivos en inglés y plural; lo que pertenece al usuario autenticado vive bajo `/me` (el usuario sale
+siempre del token, nunca de un id externo). Los estados de la orden son enums en inglés
+(`PENDING`/`PAID`, `NOT_STARTED`/`GENERATING`/`COMPLETED`/`ERROR`).
 
-`AuthModule` (`presentation/auth/`, guard `CognitoAuthGuard` + `AuthIdentityService` — ver
-[doc/auth.md](./doc/auth.md)) no está en la lista de arriba porque no se importa directo en
-`AppModule`: lo importan `ConsultationModule`, `OrdersModule`, `UserModule` y `PanelModule`, cada uno
-para las rutas propias que exigen sesión de Cognito. `UserModule` importa además
-`IdentityAuthRepositoriesModule` (para `UserRepository`) y `PanelModule`
-`ClinicalDomainRepositoriesModule` (para `NutritionalConsultationRepository`).
+### Módulos en `AppModule`
+
+`ConfigModule`, `EventEmitterModule`, `PrismaModule` (global) y los cuatro módulos de negocio:
+`IdentityModule`, `ConsultationModule`, `PlansModule` y `BillingModule`. Cada módulo importa los
+módulos de repositorios (`*RepositoriesModule`) y de adaptadores (`LlmModule`, `FileStorageModule`,
+`EmailModule`, `PlanDocumentRendererModule`) que necesita. La cadena del plan personalizado es:
+`POST /consultations` (consultation + `CreateOrderUseCase` de billing) → pago confirmado
+(`ConfirmPaymentUseCase`, billing) → evento `order.paid` → `OrderPaidListener` (plans) →
+`GeneratePersonalizedPlanUseCase` → PDF → S3 → correo.
+
 
 ## Puesta en marcha
 
@@ -142,7 +137,7 @@ queda disponible en `GET /api-docs` (Swagger UI) y su schema OpenAPI crudo en `G
 `NODE_ENV` no está seteado, igual se monta (pensado para estar siempre activo salvo que se
 desactive explícitamente en producción). Los tipos de los DTOs que aparecen en el schema de Swagger
 se infieren automáticamente a partir de las clases `class-validator` ya existentes en
-`presentation/**/dto` — no hace falta (ni se usa en este proyecto) anotarlas manualmente con
+`modules/**/dto` — no hace falta (ni se usa en este proyecto) anotarlas manualmente con
 `@ApiProperty`, porque el CLI plugin de `@nestjs/swagger` está habilitado en `nest-cli.json`
 (`compilerOptions.plugins: ["@nestjs/swagger"]`) y genera esos metadatos en tiempo de compilación.
 
@@ -166,293 +161,180 @@ Definidas en `.env.template`:
 |---|---|
 | `PORT` | Puerto HTTP (`main.ts`, default `3001`) |
 | `URL_FRONTEND` | Origen permitido por CORS (`app.enableCors` en `main.ts`) |
-| `EMAIL` | Correo de contacto/soporte referenciado en la config (no consumido aún por `EmailService`, que hoy es un stub) |
+| `EMAIL` | Correo de contacto/soporte referenciado en la config (no consumido aún por `EmailSender`, que hoy es un stub) |
 | `DATABASE_URL` | Cadena de conexión PostgreSQL para Prisma (ej. `postgresql://user:pass@localhost:5432/db`) |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_ACCESS_EXPIRATION` / `JWT_REFRESH_EXPIRATION` | Heredadas de un módulo de auth que ya no está presente en `src/` |
 | `BCRYPT_SALT_OR_ROUNDS` | Idem, sin uso actual |
 | `NODE_ENV` | Controla si `HttpExceptionFilter` incluye detalle del error en la respuesta |
+| `ENABLE_PAYMENT_SIMULATION` | `true` habilita `POST /api/v1/dev/orders/:id/simulate-payment` (con cualquier otro valor responde 404). Mientras no haya pasarela real es el único camino de pago, así que va en `true` también en producción |
+| `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | User Pool y App Client con los que se valida el Access Token (ver [doc/auth.md](./doc/auth.md)) |
+| `AWS_REGION` / `AWS_S3_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Bucket S3 de los PDFs (`S3FileStorage`) |
 
-Adicionalmente, `OpenaiService` (`src/presentation/openai/openai.service.ts`) recibe el modelo y la
-temperature por parámetro en cada llamada a `chatJson`; cada caller resuelve su propio valor leyendo
-`process.env` (con fallback si no está seteada):
+Adicionalmente, `OpenaiLlmProvider` (`src/infrastructure/llm/openai/openai-llm.provider.ts`) recibe el
+modelo y la temperature por parámetro en cada llamada a `chatJson`; cada caso de uso resuelve su propio
+valor leyendo `process.env` (con fallback si no está seteada):
 
 - `OPENAI_API_KEY` (**requerida**, no está en `.env.template`)
 - `OPENAI_MODEL` (opcional, default `gpt-4o-mini`; fallback interno de `chatJson` si un caller no pasa
   `model` explícito)
-- `OPENAI_MODEL_CONSULTA` (opcional, default `gpt-4o-mini`; modelo usado por `POST /consulta/chat`
-  -`consulta.service.ts`-, endpoint público sin pago de por medio, priorizando costo bajo)
-- `OPENAI_MODEL_PLAN` (opcional, default `gpt-5-mini`; modelo usado por la generación del plan
-  -`generacion-plan.service.ts`-, disparada solo tras el pago de una orden. No se le fija `temperature`:
-  este modelo solo soporta su valor default, 1 -la API devuelve 400 con cualquier otro valor-)
+- `OPENAI_MODEL_CONSULTA` (opcional, default `gpt-4o-mini`; modelo del chat de anamnesis,
+  `ChatAnamnesisUseCase`, sin pago de por medio, priorizando costo bajo)
+- `OPENAI_MODEL_PLAN` (opcional, default `gpt-5-mini`; modelo de la generación del plan,
+  `GeneratePersonalizedPlanUseCase`, disparada solo tras el pago. No se le fija `temperature`: este
+  modelo solo soporta su valor default, 1 -la API devuelve 400 con cualquier otro valor-)
+
 
 ## Módulos y endpoints
 
-Ver también [flow-happy-path.md](./doc/flow-happy-path.md) para el orden real en que el frontend consume
-estos endpoints dentro de una consulta completa.
+Todas las rutas llevan el prefijo `/api/v1` (se omite abajo). Las que dicen "sesión" exigen
+`Authorization: Bearer <access_token de Cognito>` (`CognitoAuthGuard`) y resuelven el usuario con
+`CurrentUserResolver.resolve` (R1 de use-cases.md). El detalle de cada caso de uso (flujo, errores,
+salida) está en [`../doc/product/use-cases.md`](../doc/product/use-cases.md); el orden en que el frontend
+los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 
-### `POST /consulta/chat`
+| Método | Ruta | Sesión | Caso de uso | Módulo |
+|---|---|---|---|---|
+| POST | `/me/sync` | Sí | `SyncIdentityUseCase` | identity |
+| GET | `/me` | Sí | `GetMyProfileUseCase` | identity |
+| PATCH | `/me` | Sí | `UpdateMyProfileUseCase` | identity |
+| GET | `/me/summary` | Sí | `GetMySummaryUseCase` | identity |
+| POST | `/consultations/chat` | Sí | `ChatAnamnesisUseCase` | consultation |
+| POST | `/consultations` | Sí | `CreateConsultationUseCase` | consultation |
+| GET | `/plans/standard/previews` | No | `ListStandardPlanPreviewsUseCase` | plans |
+| GET | `/plans/standard/:code` | No | `GetStandardPlanUseCase` | plans |
+| POST | `/plans/standard/:code/purchase` | Sí | `PurchaseStandardPlanUseCase` | plans |
+| GET | `/me/plans` | Sí | `ListMyPlansUseCase` | plans |
+| GET | `/orders/:id/status` | Sí | `GetOrderStatusUseCase` | billing |
+| POST | `/webhooks/payments` | No (firma de la pasarela) | `ConfirmPaymentUseCase` | billing |
+| POST | `/dev/orders/:id/simulate-payment` | No (`ENABLE_PAYMENT_SIMULATION`) | `ConfirmPaymentUseCase` | billing |
 
-Maneja el chat entre el paciente y la IA para completar la ficha de anamnesis. Se llama una vez por
-cada turno de la conversación.
+### identity: `/me`
 
-- **Controller**: `ConsultaController` → `ConsultaService.chat`
-- **Request** (`InputChatDtoImpl`):
+- **`POST /me/sync`** (body `{ email }`): idempotente. La primera vez que ve el `sub` de Cognito crea
+  `AuthIdentity` + un `User` "esqueleto" (solo email); después devuelve el existente. El frontend lo
+  llama en el callback de login. Ver [doc/auth.md](./doc/auth.md).
+- **`GET /me`** / **`PATCH /me`**: perfil del usuario. `PATCH` recibe un único
+  `UpdateProfileDtoImpl` con **todos los campos opcionales** (`rut`, `rutCheckDigit`, `firstName`,
+  `middleName`, `paternalLastName`, `maternalLastName`, `gender`, `dateOfBirth`, `athlete`) y solo
+  actualiza los presentes (un campo en `null` se limpia). `email` y `photoUrl` no se editan por acá.
+  Unifica los antiguos `PATCH /auth/perfil` y `PATCH /user/me`.
+- Las tres responden el mismo `ProfileDto`:
   ```ts
-  {
-    messages: { role: 'user' | 'assistant'; content: string }[],
-    anamnesis?: AnamnesisDto   // estado parcial acumulado de turnos anteriores
-  }
+  { email, rut, rutCheckDigit, firstName, middleName, paternalLastName, maternalLastName,
+    gender, dateOfBirth, age, athlete, photoUrl, profileComplete }
   ```
-- **Response** (`OutputChatDtoImpl`):
-  ```ts
-  {
-    reply: string,          // mensaje de la IA para el paciente
-    titleReply: string,     // título corto que resume el tema del turno (para UI)
-    anamnesis: AnamnesisDto, // anamnesis fusionada (estado previo + info nueva)
-    isComplete: boolean,    // true cuando todos los campos obligatorios están completos
-  }
-  ```
+  `profileComplete` = nombre, apellido paterno, género y fecha de nacimiento presentes
+  (`CurrentUserResolver.isProfileComplete`), requisito para crear una consulta.
+- **`GET /me/summary`** (`SummaryDto`): datos del panel. Toma la última `NutritionalConsultation` del
+  paciente con plan generado
+  (`NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId`) y
+  devuelve nombre, edad (`calculateAge`), fecha de esa consulta, `goal` (`anamneses[0].goals[0].mainGoal`)
+  y el `nutritionalPlan` principal del `plan` activo (solo los `*Intake` y `dietRegimen`, nunca los
+  `*Requirement`). Todo es null-safe: sin consulta o sin plan, esos campos vuelven `null`.
 
-Lógica de `ConsultaService.chat`:
+### consultation: `/consultations`
 
-1. Construye un **system prompt** (`buildSystemPrompt`) que instruye a OpenAI a actuar como
-   nutricionista deportivo, define el esquema JSON de `AnamnesisDto` (objetivos, clínica,
-   alimentaria/r24h/preferencias/estrategia deportiva, estilo de vida), el orden estricto de
-   recopilación por secciones y las reglas de completitud. Incluye el estado actual de la anamnesis
-   para que el modelo sepa qué falta.
-2. Llama a `OpenaiService.chatJson` con ese prompt + el historial de `messages`.
-3. Si `reply` vuelve vacío, reintenta una vez antes de usar un mensaje de resguardo (`fallbackReply`),
-   para no propagar una respuesta vacía al historial del chat. Lo mismo aplica a `titleReply`
-   (`fallbackTitleReply`).
-4. Normaliza el `anamnesis` devuelto por el LLM con `normalizeAnamnesisPayload`
-   (`presentation/consulta/dto/anamnesis-normalizer.ts`), que repara desvíos de forma típicos de un
-   LLM (objetos anidados donde se esperan planos, tipos incorrectos, claves desconocidas) — en
-   particular el caso de `r24h`, que debe ser un array de objetos **planos** por comida.
-5. Recalcula `isComplete` en el servidor (`meetsCompletionRules`) en vez de confiar ciegamente en lo
-   que devuelve el modelo, verificando que los campos obligatorios (objetivo principal, patología,
-   alergias, intolerancias, fármacos, al menos un `r24h`, estrategia deportiva, nivel de actividad
-   física, al menos un deporte y las sesiones deportivas con sus 7 campos completos) tengan valor.
+**`POST /consultations/chat`** (`ChatAnamnesisUseCase`): un turno del chat de anamnesis.
 
-### `POST /ordenes/crear`
+- **Request** (`InputChatDtoImpl`): `{ messages: { role, content }[], anamnesis?: AnamnesisDto }`.
+- **Response** (`OutputChatDtoImpl`): `{ reply, titleReply, anamnesis, isComplete }`.
+- Lógica:
+  1. Construye el system prompt (`prompts/anamnesis-chat.prompt.ts`): rol de nutricionista deportivo,
+     esquema JSON completo de `AnamnesisDto`, orden de recopilación por secciones, reglas de completitud
+     y el estado actual de la anamnesis.
+  2. Llama a `LlmProvider.chatJson`. Si `reply` vuelve vacío reintenta una vez antes de usar un mensaje
+     de resguardo (igual con `titleReply`).
+  3. Normaliza el `anamnesis` con `normalizeAnamnesisPayload` (`dto/anamnesis-normalizer.ts`), que
+     repara desvíos típicos del LLM (por ejemplo, `r24h` debe ser un array de objetos planos por comida).
+  4. Recalcula `isComplete` en el servidor en vez de confiar en el modelo (objetivo principal,
+     patología, alergias, intolerancias, fármacos, al menos un `r24h`, estrategia deportiva, nivel de
+     actividad física, al menos un deporte y sesiones deportivas con sus 7 campos).
 
-Crea la orden de cobro **antes** de que el usuario pague, con toda la información recopilada hasta
-ese punto (información personal + anamnesis + mediciones). La IA de generación del plan no se ejecuta
-en este paso.
+**`POST /consultations`** (`CreateConsultationUseCase`): crea la consulta y su orden **antes** del pago.
 
-- **Controller**: `OrdersController.create` → `OrdersService.createOrder`
 - **Request** (`CompleteConsultationDtoImpl`): `personalInfo`, `anamnesis`, `measurements` (por ahora
-  solo `weight`/`height`; el resto de mediciones antropométricas —pliegues, perímetros, diámetros—
-  están definidas en `domain/dtos` pero comentadas/sin usar todavía).
-- **Response**: `{ orderId: string }`
-- Ya **no** persiste un payload JSON crudo: resuelve/crea el `User` por email
-  (`findOrCreateUserByEmail`), su `ClinicalRecord` (`findOrCreateClinicalRecordByPatientId`) y el
-  `Product` activo tipo `GENERATED` (`findOrCreateActiveGeneratedProduct`), crea la `Order`
-  (`paymentStatus='PENDING'`, `generationStatus='NOT_STARTED'`, `planJson=null`, `attempts=0`) y
-  crea, en una sola operación atómica, el árbol completo `NutritionalConsultation` +
-  `Anamnesis`/`Measurements` y sus hijas, vinculado a esa orden (`orderId`). Ver el detalle completo
-  del mapeo en [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md). Requiere que
-  el body incluya `personalInfo.email` (400 si falta).
+  solo `weight`/`height`/`somatotype`). `personalInfo` sigue siendo obligatorio en el contrato pero ya
+  no se lee: los datos personales salen del `User` del token.
+- **Response**: `{ orderId: string }`.
+- 400 si el perfil no está completo. Resuelve (find-or-create) el `ClinicalRecord` del paciente y el
+  `Product` activo `GENERATED`, crea la `Order` con `CreateOrderUseCase` (billing:
+  `paymentStatus='PENDING'`, `generationStatus='NOT_STARTED'`, sin archivos) y persiste el árbol
+  `NutritionalConsultation` (con `orderId` y `consultationNumber` correlativo) + `Anamnesis`/`Measurements`
+  y sus hijas en una escritura anidada. Orden y consulta hoy se escriben en dos operaciones separadas
+  (pendiente, ver CU-BIL-01 en use-cases.md). Mapeo completo: `consultation.mapper.ts` y
+  [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md).
 
-### `POST /ordenes/crear-predefinido`
+### plans: `/plans/standard` y `/me/plans`
 
-Crea la orden de un **plan predefinido** (PDF ya hecho, sin consulta previa). Ver
-[doc/flows/purchase-flow-predefined-plan.md](../doc/flows/purchase-flow-predefined-plan.md).
+Catálogo de planes estándar (`Product` `PREDEFINED`, identificados por `code` con formato
+`<plan>-<pesoMin>-<pesoMax>-<sexo>-<edad>`, ver `domain/services/utils/predefined-plan-code.ts`) y planes
+del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../doc/flows/purchase-flow-predefined-plan.md).
 
-- **Controller**: `OrdersController.createPredefined` → `OrdersService.createPredefinedOrder`. Requiere
-  sesión (`CognitoAuthGuard`), pero **no** exige perfil completo.
-- **Request** (`CreatePredefinedOrderDtoImpl`): `{ code: string }`, con el formato
-  `<plan>-<pesoMin>-<pesoMax>-<sexo>-<edad>` (p. ej. `plan-gimnasio-volumen-50-60-m-joven`; validado con
-  `PREDEFINED_PLAN_CODE_REGEX`, ver `domain/services/utils/predefined-plan-code.ts`). Un código con otro
-  formato responde 400.
-- **Response**: `{ orderId: string }`
-- Busca el `Product` activo `PREDEFINED` con ese `code` (404 si no existe, está inactivo o no tiene
-  `pdfKey`) y crea la `Order` (`paymentStatus='PENDING'`, `amount = product.price`) **sin**
-  `pdfKey`/`thumbnailKey`: se copian desde el producto recién al confirmarse el pago, para que una orden
-  impaga nunca exponga el PDF. No crea `ClinicalRecord` ni `NutritionalConsultation`.
+- **`GET /plans/standard/previews`** (público): una ficha por familia de plan para el carrusel del home,
+  `{ code, name, description, thumbnailUrl }[]`.
+- **`GET /plans/standard/:code`** (público): `{ code, name, description, price, currency, thumbnailUrl }`.
+  404 si el código tiene formato inválido o la versión no existe / está inactiva. Nunca expone
+  `pdfKey`/`thumbnailKey`, solo URLs firmadas (10 min).
+- **`POST /plans/standard/:code/purchase`** (sesión, sin body): crea la orden del plan con
+  `CreateOrderUseCase` (`amount = product.price`). No exige perfil completo ni crea ficha clínica. 404
+  con el mismo criterio que la ficha, o si la versión todavía no tiene PDF. La orden nace **sin**
+  `pdfKey`/`thumbnailKey`: se copian del producto recién al confirmarse el pago, para que una orden
+  impaga nunca exponga el PDF. Responde `{ orderId }`.
+- **`GET /me/plans`** (sesión): órdenes del usuario con plan listo y PDF (`generationStatus='COMPLETED'`
+  y `pdfKey` no nulo), más nuevas primero: `{ orderId, creationDate, pdfUrl, thumbnailUrl }[]`.
+  `pdfUrl` se firma como descarga (`Content-Disposition: attachment`,
+  `plan-nutricional-<YYYY-MM-DD>.pdf`); `thumbnailUrl` es la miniatura WebP de la página 1 o `null`.
 
-### `GET /productos/predefinidos/:code`
+### billing: `/orders`, `/webhooks/payments` y `/dev/orders`
 
-Ficha **pública** (sin sesión) de una versión de plan predefinido, para mostrar precio y vista previa
-antes de comprar. `ProductsController` → `ProductsService.getPredefinedProduct`.
-
-- **Response** (`PredefinedProductDto`): `{ code, name, description, price, currency, thumbnailUrl }`, con
-  `thumbnailUrl` firmada (10 min) o `null`. **No expone `pdfKey` ni `thumbnailKey`.**
-- 404 si el código tiene un formato inválido o si la versión no existe / está inactiva.
-
-### `GET /ordenes/obtener-estado/:id`
-
-Endpoint de **polling** que consume el frontend desde la pantalla de resultado (`/ordenes/[id]`) para
-saber si el plan ya está listo.
-
-- **Controller**: `OrdersController.getStatus` → `OrdersService.getStatus`
-- **Response** (`OrderStatusDto`, sin el árbol de la consulta ni datos del usuario — es información
-  interna del pipeline):
-  ```ts
-  {
-    paymentStatus: 'PENDING' | 'PAID',
-    generationStatus: 'NOT_STARTED' | 'GENERATING' | 'COMPLETED' | 'ERROR',
-    planJson: NutritionPlanDto | null,
-    pdfUrl: string | null, // URL firmada de S3 (10 min) para DESCARGAR el PDF (attachment), null hasta que el plan termine de generarse
-    thumbnailUrl: string | null, // URL firmada de S3 (10 min) de la miniatura WebP de la página 1; null si aún no hay plan o si no tiene miniatura
-  }
-  ```
-  El `pdfUrl` se firma igual que en `GET /ordenes` (`Content-Disposition: attachment` con nombre
-  `plan-nutricional-<YYYY-MM-DD>.pdf`), porque el frontend ya no incrusta el PDF en un `<iframe>`: muestra la
-  miniatura y un botón "Descargar". La miniatura ya está disponible cuando `generationStatus` pasa a
-  `COMPLETED` (`thumbnailKey` se persiste en la misma escritura que el estado).
-- Valida que la orden pertenezca al usuario del token (`order.userId` contra el `User` resuelto vía
-  `AuthIdentityService.getUserBySub`); si no coincide, responde `404` igual que si la orden no
-  existiera, para no filtrar cuál de los dos casos ocurrió. Esto corrige un gap de BOLA (Broken
-  Object Level Authorization) documentado anteriormente en `doc/auth.md`/`doc/technical-debt.md`.
-- 404 (`NotFoundException`) si el `id` no corresponde a ninguna orden, o si corresponde a una orden
-  de otro usuario.
-
-### `GET /ordenes`
-
-Lista las órdenes con plan generado y PDF disponible del usuario autenticado, usada por un panel del
-frontend para mostrar el historial de planes descargables.
-
-- **Controller**: `OrdersController.list` → `OrdersService.getOrdersForUser`
-- **Response** (`OrderSummaryDto[]`), ordenado por `creationDate` descendente:
-  ```ts
-  { orderId: string, creationDate: Date, pdfUrl: string, thumbnailUrl: string | null }[]
-  ```
-  - `pdfUrl`: URL firmada (600 s) para **descargar** el PDF. Se firma con
-    `ResponseContentDisposition: attachment; filename="plan-nutricional-<YYYY-MM-DD>.pdf"`, así que el
-    navegador lo descarga en vez de abrirlo (el atributo `download` de un `<a>` se ignora en
-    cross-origin). Por eso **no sirve para un `<iframe>`** (ningún endpoint sirve ya el PDF inline).
-  - `thumbnailUrl`: URL firmada de la miniatura WebP de la página 1 del plan, o `null` si la orden no
-    tiene miniatura (plan generado antes de esta función, o falló su rasterización). El frontend
-    muestra un placeholder en ese caso.
-- Solo incluye órdenes con `generationStatus='COMPLETED'` y `pdfKey` no nulo
-  (`OrderRepository.getPaidOrdersWithPdfByUserId`, `Prisma.findMany`). Filtra siempre por el usuario
-  del token y nunca recibe un id externo, por lo que no hay BOLA posible acá (a diferencia de
-  `GET /ordenes/obtener-estado/:id`).
-
-### `POST /webhooks/pago` y `POST /webhooks/ordenes/:id/simular-pago`
-
-Ambos endpoints ejecutan exactamente la misma lógica (`WebhooksService.processPayment`); la diferencia
-es quién los llama:
-
-- **`POST /webhooks/pago`** (`WebhookPagoDtoImpl { orden_id: string }` — este campo del body es de los
-  pocos que sigue en español): pensado para ser invocado por una pasarela de pago real (Mercado Pago,
-  Flow, Stripe, etc.). Antes de procesar, valida la firma del webhook vía
-  `WebhooksService.verifyWebhookSignature()` — **hoy siempre devuelve `true`** porque no hay ninguna
-  pasarela integrada aún; ese es el punto de extensión donde se validará la firma/secreto real.
-- **`POST /webhooks/ordenes/:id/simular-pago`**: sin body, usado hoy por el frontend
-  (`/pago/[ordenId]`) como sustituto de una pasarela real mientras no exista una integrada.
-
-Lógica de `WebhooksService.processPayment(orderId)`:
-
-1. `OrdersService.markAsPaid` carga la orden con su producto (404 si no existe).
-2. `OrderRepository.markOrderAsPaidWithPayment` ejecuta, **en una sola transacción**: marca
-   `paymentStatus: 'PENDING' → 'PAID'` (y `paymentDate`) de forma **idempotente**, y crea la fila
-   `payment` (`status: 'AUTHORIZED'`). Si la orden ya estaba pagada no crea otro `payment`, no la reprocesa
-   y responde `{ status: 'ya_procesado' }`. Mientras el pago es simulado, `payment.provider = 'SIMULATED'`
-   y sus campos de detalle son placeholders.
-3. Solo para productos `PREDEFINED`, en esa misma transacción copia `product.pdfKey`/`thumbnailKey` a la
-   orden y la deja `generationStatus: 'COMPLETED'` (el plan ya viene hecho). No se genera nada.
-4. Solo para productos `GENERATED`, si la marcó recién, dispara `PlanGenerationService.generatePlan(orderId)`
-   **fire-and-forget** (sin `await`) y responde de inmediato `{ status: 'procesado' }` — el webhook no
-   espera a que el plan termine de generarse.
+- **`GET /orders/:id/status`** (sesión, `id` UUID v4): endpoint de polling de la página de la orden.
+  Valida que la orden sea del usuario del token; si no existe o es de otro usuario responde 404 en
+  ambos casos (anti-BOLA). Responde
+  `{ paymentStatus, generationStatus, planJson, pdfUrl, thumbnailUrl }`, con las URLs firmadas igual que
+  `GET /me/plans` (`order-files.ts`).
+- **`POST /webhooks/payments`** (body `{ orderId }`, provisorio hasta integrar Transbank) y
+  **`POST /dev/orders/:id/simulate-payment`** ejecutan el mismo `ConfirmPaymentUseCase`. El webhook
+  valida antes la firma (`verifyWebhookSignature()`, **hoy siempre `true`**: es el punto de extensión de
+  la pasarela real). El simulador no tiene firma y solo responde con `ENABLE_PAYMENT_SIMULATION=true`
+  (`PaymentSimulationEnabledGuard`, 404 si no).
+- Lógica de `ConfirmPaymentUseCase`:
+  1. Carga la orden con su producto (404 si no existe).
+  2. `OrderRepository.markOrderAsPaidWithPayment` ejecuta **en una transacción**:
+     `paymentStatus: PENDING → PAID` (solo si estaba `PENDING`) + fila `payment` `AUTHORIZED`
+     (`provider = 'SIMULATED'` y detalle placeholder mientras el pago sea simulado). Para un producto
+     `PREDEFINED` copia además `pdfKey`/`thumbnailKey` del producto y deja la orden `COMPLETED`.
+  3. Si esta llamada marcó el pago emite `order.paid { orderId, productType }` y responde
+     `{ status: 'processed' }`; si ya estaba pagada responde `{ status: 'already_processed' }` sin crear
+     otro `payment` ni emitir el evento (idempotente). No espera a que termine la generación.
 
 ### Generación del plan (background)
 
-No es un endpoint HTTP: es un proceso asíncrono (`PlanGenerationService.generatePlan`, en
-`presentation/plan-generation/`) disparado por `WebhooksService.processPayment` una vez confirmado el
-pago. Ver el detalle paso a paso en
+No es un endpoint HTTP: `OrderPaidListener` (`modules/plans/listeners/`) escucha `order.paid` y, solo
+para productos `GENERATED`, ejecuta `GeneratePersonalizedPlanUseCase` sin esperarlo (fire-and-forget,
+con un `catch` de red de seguridad). Ver el detalle paso a paso en
 [flow-happy-path.md § Generación del plan](./doc/flow-happy-path.md#7-generación-del-plan-proceso-en-segundo-plano-sin-request-http-del-frontend).
 
 Resumen:
 
-1. Guard de estado (evita generar el plan dos veces ante disparos concurrentes).
-2. **`extraerInfoPromp`**: le pide a OpenAI (`EXTRAER_INFO_SYSTEM_PROMPT`) que clasifique, a partir de
-   la anamnesis, el `nivel_actividad_fisica` (1.4 sedentario / 1.5 moderado / 1.6 activo) y el
-   `objetivo` (`definicion` | `mantencion` | `volumen`).
-3. Calcula la edad (`calcularEdad`) y llama a `calculoRequerimientos` (ver
-   [fórmulas](#fórmulas-de-requerimientos-energéticos)) y `calculoSuplementos`, ambos **sin IA**.
-4. **`NUTRICIONISTA_SYSTEM_PROMPT`** (`generacion-plan.prompts.ts`) le pide a OpenAI que genere el plan
-   (`PlanNutricionalGenerado`, es decir `PlanNutricionalDto` sin `informacion_personal`) usando
-   **exactamente** los requerimientos ya calculados (no le permite recalcularlos), y expresando los
-   alimentos de cada tiempo de comida en **porciones por grupo de intercambio** (ver
-   [Porciones de alimentos](#porciones-de-alimentos)), no en alimentos/cantidades libres.
-5. Arma el plan final combinando `informacion_personal` (calculada localmente a partir de los datos
-   del `User` y de la `NutritionalConsultation` asociada a la orden — ver
-   [doc/orders-postgres-migration.md § 7](./doc/orders-postgres-migration.md#7-srcpresentationplan-generationplan-generationservicets),
-   que reemplazó al antiguo `payload_json`), el plan generado por la IA, y fuerza
-   `prescripcion.objetivo` al valor calculado en el paso 2 (por si el modelo lo omite o lo cambia).
-6. Reintenta hasta 4 veces con backoff exponencial ante cualquier error, incluyendo fallos al generar
-   el PDF o al subirlo a S3 (caen en el mismo loop de reintentos). Si tiene éxito: genera el PDF una
-   sola vez (`PdfService.generateBuffer`), lo sube a S3 (`StorageService.uploadPdf`, key
-   `productos-personalizados/<orderId>.pdf`), rasteriza su página 1 a una miniatura WebP
-   (`ThumbnailService.generateFirstPage`) y la sube a
-   `productos-personalizados/miniaturas/<orderId>.webp` (**best-effort**: si falla, se registra un
-   warning, `thumbnailKey` queda `null` y **no** consume un reintento ni falla el plan), y persiste el
-   plan junto al `pdfKey`/`thumbnailKey` en la orden en la misma llamada
-   (`generationStatus='COMPLETED'`) — luego llama a `EmailService.sendPlanByEmail`
-   reutilizando el mismo buffer del PDF para el adjunto, sin regenerarlo. Si agota los reintentos,
-   marca `generationStatus='ERROR'` y registra el evento.
+1. Guard de estado (`OrderLifecycleService.tryStartGeneration`: solo entra si estaba `NOT_STARTED` o
+   `ERROR`), para no generar el plan dos veces ante disparos concurrentes.
+2. Reconstruye la consulta por `nutritional_consultation.order_id` y el usuario desde la orden.
+3. Le pide al LLM (`EXTRACT_INFO_SYSTEM_PROMPT`) que clasifique el nivel de actividad física y el
+   objetivo (`definicion` | `mantencion` | `volumen`).
+4. Calcula edad, requerimientos (ver [fórmulas](#fórmulas-de-requerimientos-energéticos)) y suplementos
+   **sin IA**, y le pide al LLM (`NUTRITIONIST_SYSTEM_PROMPT`, `generation/plan-generation.prompts.ts`) que
+   genere el plan usando **exactamente** esos valores y expresando cada tiempo de comida en
+   **porciones por grupo de intercambio** (ver [Porciones de alimentos](#porciones-de-alimentos)). La
+   respuesta se valida en código contra las porciones calculadas.
+5. Reintenta hasta 4 veces con backoff exponencial. Si tiene éxito: renderiza el PDF una sola vez
+   (`PlanDocumentRenderer.renderPdf`), lo sube a `productos-personalizados/<orderId>.pdf`
+   (`FileStorage.uploadPdf`), genera y sube la miniatura WebP (`renderThumbnail`, **best-effort**: si
+   falla queda `thumbnailKey = null` sin consumir un reintento), guarda `plan` + `nutritional_plan`
+   principal (`PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`), marca la orden `COMPLETED`
+   con `planJson`/`pdfKey`/`thumbnailKey` (`OrderLifecycleService.completeGeneration`) y envía el correo
+   con el mismo buffer (`EmailSender.sendPlanByEmail`). Si agota los reintentos, la orden queda `ERROR`
+   (`recordFailedAttempt`) y se registra el evento.
 
-### `GET /user/me` y `PATCH /user/me`
-
-Endpoint dedicado de perfil para la pantalla `/perfil` del frontend (edición del perfil ya
-existente, fuera del wizard de onboarding). Ambas rutas están en `presentation/user/`
-(`UserController` → `UserService`), protegidas por `CognitoAuthGuard`, y resuelven el `User` vía
-`@CognitoUser()` + `AuthIdentityService.getUserBySub` (igual patrón que `PATCH /auth/perfil`, ver
-[doc/auth.md](./doc/auth.md)).
-
-- **`GET /user/me`** (`UserService.getProfile`)
-  - **Response** (`UserProfileResponseDto`, todos los campos nullable):
-    ```ts
-    { firstName: string | null, paternalLastName: string | null, dateOfBirth: Date | null, email: string | null }
-    ```
-- **`PATCH /user/me`** (`UserService.updateProfile`)
-  - **Request** (`UpdateUserProfileDtoImpl`): `{ firstName, paternalLastName, dateOfBirth }`, los
-    tres obligatorios (`class-validator`: `@IsString`/`@IsNotEmpty`, `dateOfBirth` con
-    `@IsDateString`).
-  - Actualiza solo esos tres campos vía `UserRepository.updateUserById`. **`email` es de solo
-    lectura y no se acepta en el body** — misma razón que en `PATCH /auth/perfil`: siempre viene de
-    la sesión de Cognito (`syncUser`), nunca de un formulario.
-  - **Response**: el mismo `UserProfileResponseDto` actualizado.
-
-Distinto de `PATCH /auth/perfil` (que completa el perfil durante el onboarding y además exige
-`gender`): este endpoint es la edición posterior desde `/perfil` y no toca `gender`.
-
-### `GET /panel/resumen`
-
-Endpoint de resumen para la pantalla `/panel` del frontend (dashboard con datos básicos del usuario
-+ objetivo y macros de su último plan). `presentation/panel/` (`PanelController` → `PanelService`),
-protegido por `CognitoAuthGuard`.
-
-- **Response** (`PanelSummaryDto`):
-  ```ts
-  {
-    firstName: string | null,
-    paternalLastName: string | null,
-    age: number | null,
-    goal: string | null,
-    nutritionalPlan: { calorieIntake, proteinIntake, carbohydrateIntake, lipidIntake } | null,
-  }
-  ```
-- Lógica de `PanelService.getSummary`:
-  1. Resuelve el `User` vía `AuthIdentityService.getUserBySub`.
-  2. Llama a
-     `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId(user.id)`
-     (nuevo método, ver [Base de datos](#base-de-datos-prisma)) para traer la
-     `NutritionalConsultation` más reciente del paciente, con `patient`, `anamneses.goals` y
-     `plans` activos (con su `nutritionalPlans` principal, `mainPlan = true`) incluidos en una sola consulta.
-  3. `goal` sale de `consultation.anamneses[0]?.goals[0]?.mainGoal`; `nutritionalPlan` sale de
-     `consultation.plans[0].nutritionalPlans[0]`, tomando **solo los campos `*Intake`** (`calorieIntake`,
-     `proteinIntake`, `carbohydrateIntake`, `lipidIntake`), nunca los `*Requirement`. `age` se
-     calcula con `calculateAge()` (`domain/services/utils/age.service.ts`) a partir de
-     `user.dateOfBirth`.
-  4. Todo es null-safe: si el usuario no tiene ninguna consulta o ningún plan, `goal` y
-     `nutritionalPlan` vuelven `null` en vez de fallar.
-- El bucket S3 para almacenar los PDFs ya existe y está en uso (ver
-  [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)), pero este endpoint todavía no expone
-  `pdfUrl` ni el historial de planes del usuario — eso hoy vive en el endpoint dedicado
-  [`GET /ordenes`](#get-ordenes), consumido por una pantalla separada del panel. Fusionarlo en este
-  resumen (o no) queda a criterio de una futura pasada de UX.
 
 ## Capa de dominio
 
@@ -494,21 +376,23 @@ modelo calcula cuántas porciones de cada grupo corresponden y arma los `ejemplo
 
 ## Integración con OpenAI
 
-`OpenaiService` (`src/presentation/openai/openai.service.ts`) es un wrapper delgado sobre el SDK de
-`openai`: expone `chatJson<T>(systemPrompt, messages, model?)`, que llama a
+Los casos de uso hablan con el modelo a través del puerto `LlmProvider` (`domain/ports`), implementado
+por `OpenaiLlmProvider` (`src/infrastructure/llm/openai/openai-llm.provider.ts`): un wrapper delgado
+sobre el SDK de `openai` que expone `chatJson<T>(systemPrompt, messages, model?, temperature?)`, llama a
 `chat.completions.create` con `response_format: { type: 'json_object' }`, hace `JSON.parse` del contenido
-devuelto y lanza `InternalServerErrorException` si la respuesta viene vacía. Es el único punto de acceso a
-OpenAI en todo el backend; se llama desde `ConsultaService` (chat de anamnesis) y desde
-`GeneracionPlanService` (extracción de nivel de actividad/objetivo y generación del plan), cada uno con
-sus propios prompts (`consulta.service.ts` y `generacion-plan.prompts.ts` respectivamente).
+y lanza `InternalServerErrorException` si la respuesta viene vacía. Es el único punto de acceso a
+OpenAI del backend; lo usan `ChatAnamnesisUseCase` (chat de anamnesis) y
+`GeneratePersonalizedPlanUseCase` (clasificación de actividad/objetivo y generación del plan), cada uno
+con sus propios prompts (`modules/consultation/prompts/` y `modules/plans/generation/`).
+
 
 ## PDF y almacenamiento en S3
 
-- **`PdfModule` (`presentation/pdf/`)**: `PdfService.generateBuffer(plan)` renderiza
+- **`PlanDocumentRendererModule` (`infrastructure/pdf/`)**: `ReactPdfPlanDocumentRenderer.renderPdf(plan)` (puerto `PlanDocumentRenderer`) renderiza
   `NutritionPlanDocument` (definido con primitivas de `@react-pdf/renderer`) a un `Buffer` PDF. El
   mismo componente de documento se reutiliza en el frontend para la descarga client-side del plan
   (pantalla `/ordenes/[id]`), sin duplicar el layout.
-- **`StorageModule` (`presentation/storage/`)**: `StorageService` envuelve `@aws-sdk/client-s3` +
+- **`FileStorageModule` (`infrastructure/storage/s3/`)**: `S3FileStorage` (puerto `FileStorage`) envuelve `@aws-sdk/client-s3` +
   `@aws-sdk/s3-request-presigner` y expone estos métodos:
   - `uploadPdf(buffer, key)`: sube el PDF al bucket privado `nutricionista-virtual-planes-pdfs`.
   - `uploadImage(buffer, key, contentType = 'image/webp')`: sube la miniatura del plan.
@@ -518,18 +402,18 @@ sus propios prompts (`consulta.service.ts` y `generacion-plan.prompts.ts` respec
     `Content-Disposition: attachment` (fuerza la descarga con ese nombre); sin él, el objeto se sirve
     inline.
   El bucket tiene dos carpetas: `productos-personalizados/` (planes generados por consulta, en uso —
-  key `<orderId>.pdf` vía el helper `buildPersonalizedPlanKey`, y sus miniaturas en
+  key `<orderId>.pdf` vía el helper `buildPersonalizedPlanKey` (`domain/services/utils/storage-keys.ts`), y sus miniaturas en
   `miniaturas/<orderId>.webp` vía `buildPlanThumbnailKey`) y `productos-estandarizados/` (planes
   predefinidos, subidos a mano: PDF en `<code>.pdf` vía `buildPredefinedPlanKey` y miniatura en
   `miniaturas/<code>.webp` vía `buildPredefinedPlanThumbnailKey`; el catálogo se carga con
   `npm run seed:predefined`, ver [doc/flows/purchase-flow-predefined-plan.md](../doc/flows/purchase-flow-predefined-plan.md)). Lee
   `AWS_REGION`/`AWS_S3_BUCKET_NAME`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` de `ConfigService`
   (`.env.template`).
-  `PlanGenerationService` genera el PDF **una sola vez** por generación exitosa
-  (`PdfService.generateBuffer`), lo sube a S3 y persiste su key en `Order.pdfKey`; el mismo buffer se
+  `GeneratePersonalizedPlanUseCase` genera el PDF **una sola vez** por generación exitosa
+  (`PlanDocumentRenderer.renderPdf`), lo sube a S3 y persiste su key en `Order.pdfKey`; el mismo buffer se
   reutiliza para el adjunto del correo, sin regenerarlo (ver
   [Generación del plan](#generación-del-plan-background)).
-- **Miniatura (`ThumbnailService`, en `PdfModule`)**: `generateFirstPage(pdfBuffer)` rasteriza la
+- **Miniatura (`ThumbnailService`, detrás de `PlanDocumentRenderer.renderThumbnail`)**: `generateFirstPage(pdfBuffer)` rasteriza la
   página 1 del PDF a WebP (800 px de ancho, calidad 80, ~30 KB) con `pdfjs-dist` (build `legacy`,
   cargado con `import()` dinámico porque es ESM puro y el build de Nest es CJS) sobre
   `@napi-rs/canvas` (binarios precompilados; no requiere instalar nada en el sistema). Puntos a
@@ -541,14 +425,14 @@ sus propios prompts (`consulta.service.ts` y `generacion-plan.prompts.ts` respec
     servicio **no tiene spec unitario**: los specs que lo consumen lo mockean, y su funcionamiento real
     se verifica con el build compilado (`nest build`).
   - En Linux, `@napi-rs/canvas` usa el binario `linux-x64-gnu` (o `musl` en Alpine), que `npm ci` resuelve.
-- **`NotificationsModule` (`presentation/notifications/`)**: `EmailService.sendPlanByEmail(email,
-  plan, attachment)` recibe el PDF ya generado como `Buffer` — **ya no depende de `PdfService`** —
+- **`EmailModule` (`infrastructure/email/`)**: `LogEmailSender.sendPlanByEmail(email,
+  plan, attachment)` recibe el PDF ya generado como `Buffer` — **ya no depende de `PlanDocumentRenderer`** —
   arma el asunto/cuerpo del correo y llama a `sendRealEmail` — **hoy un stub** que solo deja un log
   estructurado; no hay proveedor de correo (SendGrid/SES/Resend/etc.) conectado todavía.
 
 ## Manejo de errores
 
-`HttpExceptionFilter` (`src/presentation/filters/http-exception.filter.ts`) es un `ExceptionFilter` global
+`HttpExceptionFilter` (`src/common/filters/http-exception.filter.ts`) es un `ExceptionFilter` global
 (registrado en `main.ts`) que captura toda `HttpException`, normaliza el `message` (venga como string,
 array o `{ message | error }`), lo loguea con `Logger`, y responde `{ statusCode, message, timestamp,
 path }`. Fuera de `NODE_ENV=production`, además incluye `exception: { name, response }` para depuración.
@@ -558,7 +442,7 @@ path }`. Fuera de `NODE_ENV=production`, además incluye `exception: { name, res
 `prisma/schema.prisma` corre sobre **PostgreSQL** y modela el dominio completo del producto
 (identidad/auth, historial clínico, comercial) — 35 modelos en total, organizados en tres secciones
 del schema: `IDENTITY & AUTH`, `CLINICAL DOMAIN`, `COMMERCIAL DOMAIN`. El flujo comercial descrito en
-este README (`POST /ordenes/crear` → pago → generación del plan) persiste sobre este dominio real, no
+este README (`POST /consultations` → pago → generación del plan) persiste sobre este dominio real, no
 sobre una tabla plana con un payload JSON crudo. Ver el detalle completo de la arquitectura de esta
 capa (entidades, DTOs, datasources, repositories) en
 **[doc/postgres-domain-groundwork.md](./doc/postgres-domain-groundwork.md)**, y el detalle de cómo se
@@ -569,9 +453,9 @@ Modelos que participan directamente en el flujo comercial hoy:
 
 | Modelo | Rol |
 |---|---|
-| `User` (`identity-auth`) | Resuelto por el `sub` del Access Token de Cognito vía `AuthIdentityService.getUserBySub` (ver [doc/auth.md](./doc/auth.md)); `GET`/`PATCH /user/me` leen/actualizan sus campos de perfil |
+| `User` (`identity-auth`) | Resuelto por el `sub` del Access Token de Cognito vía `CurrentUserResolver.resolve` (ver [doc/auth.md](./doc/auth.md)); `GET`/`PATCH /me` leen/actualizan sus campos de perfil |
 | `ClinicalRecord` (`clinical-domain`) | Uno por paciente (`patientId` `@unique`), find-or-create |
-| `NutritionalConsultation` (`clinical-domain`) | Una por cada `POST /ordenes/crear`; vinculada 1:1 a la `Order` vía `orderId`; contiene el árbol `Anamnesis`+hijas y `Measurements`+hija que antes viajaba como `payload_json`. `NutritionalConsultationRepository` expone dos formas de traerla con detalle: `getNutritionalConsultationWithDetailsByOrderId` (`FULL_DETAILS_INCLUDE`, usado por la generación del plan) y la nueva `getLatestNutritionalConsultationWithDetailsByPatientId` (`PANEL_DETAILS_INCLUDE`: `patient`, `anamneses.goals`, `nutritionalPlans` — `findFirst` ordenado por `consultationNumber: 'desc'`, usada por `GET /panel/resumen`); son includes deliberadamente distintos para no alterar el comportamiento del lookup existente por orden |
+| `NutritionalConsultation` (`clinical-domain`) | Una por cada `POST /consultations`; vinculada 1:1 a la `Order` vía `orderId`; contiene el árbol `Anamnesis`+hijas y `Measurements`+hija que antes viajaba como `payload_json`. `NutritionalConsultationRepository` expone dos formas de traerla con detalle: `getNutritionalConsultationWithDetailsByOrderId` (`FULL_DETAILS_INCLUDE`, usado por la generación del plan) y la nueva `getLatestNutritionalConsultationWithDetailsByPatientId` (`PANEL_DETAILS_INCLUDE`: `patient`, `anamneses.goals`, `nutritionalPlans` — `findFirst` ordenado por `consultationNumber: 'desc'`, usada por `GET /me/summary`); son includes deliberadamente distintos para no alterar el comportamiento del lookup existente por orden |
 | `Product` (`commercial-domain`) | Dos usos: el producto `type='GENERATED' active=true` (uno solo, find-or-create con valores placeholder, ver deuda técnica) y las 112 versiones de plan `type='PREDEFINED'` (`code` único, `pdfKey`/`thumbnailKey` en `productos-estandarizados/`, cargadas con `npm run seed:predefined`) |
 | `Order` (`commercial-domain`) | Reemplaza al modelo `Order` legacy de SQLite (ya no existe en el schema); ver campos abajo |
 
@@ -579,7 +463,7 @@ Campos relevantes de `Order` (tabla `order`):
 
 | Campo | Uso |
 |---|---|
-| `id` | UUID, generado en `OrdersService.createOrder` |
+| `id` | UUID, generado en `CreateConsultationUseCase` |
 | `userId` / `productId` | FKs a `User` y `Product` |
 | `amount` / `currency` | Copiados de `Product` al crear la orden |
 | `paymentStatus` | `'PENDING'` \| `'PAID'` |
@@ -595,9 +479,9 @@ La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
 el detalle de esa migración y su deuda pendiente. `Payment` sí está conectado: el webhook de pago crea su fila (`AUTHORIZED`, hoy con datos simulados) en la misma transacción que marca la orden pagada. Buena parte del resto del dominio (la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
-la fila principal, no sus tablas hijas) sí está conectado: `PlanGenerationService` la **escribe**
+la fila principal, no sus tablas hijas) sí está conectado: `GeneratePersonalizedPlanUseCase` la **escribe**
 (`PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`, idempotente por `orderId`: crea el `Plan` de la orden con su `NutritionalPlan` principal o reemplaza este último) justo antes de
-marcar la orden como `COMPLETED`, y `GET /panel/resumen` la **lee** (`plans` → `nutritionalPlans` incluido en
+marcar la orden como `COMPLETED`, y `GET /me/summary` la **lee** (`plans` → `nutritionalPlans` incluido en
 `getLatestNutritionalConsultationWithDetailsByPatientId`, que solo considera consultas que ya tienen
 plan). Las órdenes completadas antes de este cambio no tienen fila `NutritionalPlan` (sin backfill).
 Desde la migración `20260925120000_plan_entity`, `NutritionalPlan` ya no cuelga directamente de la
@@ -609,8 +493,8 @@ No hay job de retención: `Order.planJson` (y el resto de la orden) se conserva 
 
 ## Testing
 
-Cada módulo de `presentation` y de `domain/services` trae su(s) `.spec.ts` co-localizado(s) junto
-al archivo que testea. Comandos: `npm run test` (unitarios), `npm run test:e2e`, `npm run
+Cada controller, caso de uso, adaptador y servicio de `domain/services` trae su(s) `.spec.ts`
+co-localizado(s) junto al archivo que testea. Comandos: `npm run test` (unitarios), `npm run test:e2e`, `npm run
 test:cov`. Ver **[doc/testing.md](./doc/testing.md)** para el detalle de qué cubre cada test, las
 decisiones de infraestructura (stub de `@react-pdf/renderer`), y la deuda pendiente
 (fórmulas sin consumidor sin testear, e2e sin verificar en CI).
@@ -630,10 +514,10 @@ datasources/repositories que ya no existe en el código actual).
 - Solo `weight` y `height` de `MeasurementsDto` están activos; el resto de mediciones antropométricas (y los
   servicios de fórmulas que las usan: composición corporal, somatocarta, etc.) están definidas pero no
   conectadas al flujo de generación del plan.
-- No hay pasarela de pago real integrada (`WebhooksService.verifyWebhookSignature` siempre devuelve
-  `true`) ni proveedor de correo real conectado (`EmailService.sendRealEmail` es un stub que solo
+- No hay pasarela de pago real integrada (`ConfirmPaymentUseCase.verifyWebhookSignature` siempre devuelve
+  `true`) ni proveedor de correo real conectado (`LogEmailSender.sendRealEmail` es un stub que solo
   logea).
-- `PlanGenerationService` persiste la fila `NutritionalPlan` pero no sus hijas (`PlanMealTime`,
+- `GeneratePersonalizedPlanUseCase` persiste la fila `NutritionalPlan` pero no sus hijas (`PlanMealTime`,
   `PlanSupplement`, `PlanSportsRecommendation`): el detalle del plan sigue viviendo solo en
   `Order.planJson`. Tampoco se hizo backfill de las órdenes completadas antes de que existiera la
   escritura de `NutritionalPlan`.

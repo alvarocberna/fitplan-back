@@ -1,5 +1,13 @@
 # Migración del flujo comercial a Postgres — `orders` → `webhooks` → `plan-generation`
 
+> **Documento histórico.** Describe una migración anterior al refactor de módulos
+> (`../../doc/product/refactor.md`): las rutas en español (`/ordenes/crear`, `/webhooks/pago`, ...), las
+> carpetas `src/presentation/**` y servicios como `OrdersService`/`PlanGenerationService` ya no existen.
+> Equivalencias: rutas → README (sección Módulos y endpoints, todas bajo `/api/v1`); servicios → casos
+> de uso en `src/modules/**` (`CreateConsultationUseCase`, `ConfirmPaymentUseCase`,
+> `GeneratePersonalizedPlanUseCase`, ...); `src/infrastructure/{orm,datasources,repositories}` →
+> `src/infrastructure/persistence/**`.
+
 Este documento describe cómo el flujo comercial (creación de orden → pago → generación del plan)
 dejó de usar el modelo `Order` legacy (SQLite, tabla `orden`, con `payloadJson`/`planJson` como
 strings JSON) y pasó a persistir de verdad sobre la capa de dominio Postgres que describe

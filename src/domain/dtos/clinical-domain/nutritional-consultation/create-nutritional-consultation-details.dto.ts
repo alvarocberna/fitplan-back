@@ -2,8 +2,8 @@
 // una sola operación la NutritionalConsultation junto con todo el árbol Anamnesis+hijas y
 // Measurements+hija (nested create de Prisma). Compone los Create*Dto ya existentes de cada
 // entidad hija, omitiendo la FK hacia su padre inmediato (Prisma la resuelve sola en un nested
-// create). Reemplaza al antiguo payloadJson: esto es lo que hoy arma OrdersService.createOrder a
-// partir del CompleteConsultationDto recibido por POST /ordenes/crear.
+// create). Reemplaza al antiguo payloadJson: esto es lo que hoy arma CreateConsultationUseCase a
+// partir del CompleteConsultationDto recibido por POST /consultations.
 
 import { CreateNutritionalConsultationDto } from './create-nutritional-consultation.dto';
 import { CreateGoalsDto } from '../goals/create-goals.dto';

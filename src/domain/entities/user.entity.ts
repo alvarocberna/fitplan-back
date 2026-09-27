@@ -29,7 +29,7 @@ export interface UserEntity {
   dateOfBirth: Date | null;
   photoUrl: string | null;
 
-  // Se captura en el perfil (PATCH /auth/perfil).
+  // Se captura en el perfil (PATCH /me).
   athlete: boolean;
 
   createdAt: Date;

@@ -8,11 +8,11 @@ código desde `adecuacion-porciones.service.ts` (ver `adecuacion-porciones.md`) 
 IA como contexto de solo lectura.
 
 Archivos involucrados:
-- `src/presentation/generacion-plan/prompts/tiempos-comida.prompt.ts`: arma el promp de esta sección
+- `src/modules/generacion-plan/prompts/tiempos-comida.prompt.ts`: arma el promp de esta sección
   (instrucciones + catálogo de alimentos por grupo).
-- `src/presentation/generacion-plan/prompts/nutricionista-system.prompt.ts`: declara la estructura JSON
+- `src/modules/generacion-plan/prompts/nutricionista-system.prompt.ts`: declara la estructura JSON
   exacta que debe devolver el modelo.
-- `src/presentation/generacion-plan/generacion-plan.service.ts`: valida la respuesta de la IA
+- `src/modules/generacion-plan/generacion-plan.service.ts`: valida la respuesta de la IA
   (`validarEjemplosGenerados`) y arma el resultado final.
 - `src/domain/services/alimentos/adecuacion-porciones.service.ts`: calcula, por código, las porciones
   exactas de cada grupo por tiempo de comida (`TiempoComidaCalculado.porcionesNumericas`), que es contra
