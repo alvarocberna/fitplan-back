@@ -27,7 +27,7 @@ describe('ListMyMeasurementsUseCase', () => {
         level: 'BIOIMPEDANCE',
         consultationId: null,
         basicMeasurements: [{ weight: 70, height: 172 }],
-        measurementResults: [{ bmi: null, bmiClassification: null, bfPercentage: 18, mmPercentage: null }],
+        measurementResults: [{ bmi: null, bmiClassification: null, bfKg: 12.6, bfPercentage: 18, mmKg: 30, mmPercentage: null }],
       },
       {
         id: 'm-1',
@@ -61,7 +61,9 @@ describe('ListMyMeasurementsUseCase', () => {
         height: 172,
         bmi: null,
         bmiClassification: null,
+        bfKg: 12.6,
         bfPercentage: 18,
+        mmKg: 30,
         mmPercentage: null,
       },
       {
@@ -76,7 +78,9 @@ describe('ListMyMeasurementsUseCase', () => {
         height: 172,
         bmi: null,
         bmiClassification: null,
+        bfKg: null,
         bfPercentage: null,
+        mmKg: null,
         mmPercentage: null,
       },
     ]);

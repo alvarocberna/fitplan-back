@@ -69,7 +69,7 @@ src/
 ├── modules/                    # NestJS business modules
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
 │   ├── consultation/           # /consultations/chat, /consultations
-│   ├── plans/                  # /plans/standard/*, /me/plans, /me/plans/:orderId, plan generation (listener of order.paid)
+│   ├── plans/                  # /plans/standard/*, /me/plans, /me/plans/latest/projection, /me/plans/:orderId, plan generation (listener of order.paid)
 │   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment;
 │   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid
 │   └── clinical/               # patient history: /me/consultations, /me/measurements (list/detail/record/edit); reads order
@@ -130,7 +130,8 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
 5. `GET /orders/:id/status` (`GetOrderStatusUseCase`) — polling endpoint; validates ownership (404 for
    missing or foreign orders). `GET /me/plans` lists the user's ready plans (with name, type and summary);
-   `GET /me/plans/:orderId` returns one plan's full detail (child tables, or `order.planJson` for older plans).
+   `GET /me/plans/:orderId` returns one plan's full detail (child tables, or `order.planJson` for older plans);
+   `GET /me/plans/latest/projection` returns the latest dated plan's period and its `Projection` (404 if none).
 
 `LlmProvider.chatJson<T>` is the single point of access to the model: `OpenaiLlmProvider` calls
 `chat.completions.create` with `response_format: json_object` and returns the parsed result. Each use
@@ -185,7 +186,7 @@ portions from the calculation), `PlanSupplement` (one row per supplement, + note
 `PlanSportsRecommendation` — see `modules/plans/generation/plan-generation.mapper.ts`; children are
 replaced via `ON DELETE CASCADE` on retries), `Order`, and `Product`;
 `AuthIdentity` is used by `modules/identity/` (see below). The
-rest (`Projection`, several `clinical-domain` leaf entities)
+rest (`Projection` is only read, by `GET /me/plans/latest/projection`; several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
 the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
 written by the payment webhook (`OrderRepository.markOrderAsPaidWithPayment`, same transaction that

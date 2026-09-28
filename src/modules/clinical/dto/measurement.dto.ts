@@ -135,7 +135,7 @@ export class ListMeasurementsQueryImpl {
 // No es columna: se deriva de consultation_id (nulo = registrada por el usuario).
 export type MeasurementOrigin = 'CONSULTATION' | 'SELF_REPORTED';
 
-// Ítem de GET /me/measurements. bmi/bmiClassification/bfPercentage/mmPercentage salen de
+// Ítem de GET /me/measurements. bmi/bmiClassification/bf*/mm* salen de
 // measurement_results tal como están guardados (null si no se ingresaron o calcularon).
 export interface MeasurementSummaryDto {
   measurementId: string;
@@ -149,7 +149,9 @@ export interface MeasurementSummaryDto {
   height: number | null;
   bmi: number | null;
   bmiClassification: string | null;
+  bfKg: number | null;
   bfPercentage: number | null;
+  mmKg: number | null;
   mmPercentage: number | null;
 }
 
@@ -170,7 +172,7 @@ export interface MeasurementResultDto {
 // (para el gráfico de interpretación) quedan para cuando existan las fórmulas.
 export interface MeasurementDetailDto extends Omit<
   MeasurementSummaryDto,
-  'weight' | 'height' | 'bmi' | 'bmiClassification' | 'bfPercentage' | 'mmPercentage'
+  'weight' | 'height' | 'bmi' | 'bmiClassification' | 'bfKg' | 'bfPercentage' | 'mmKg' | 'mmPercentage'
 > {
   // Hoy toda medición es editable (también las de consulta).
   editable: boolean;

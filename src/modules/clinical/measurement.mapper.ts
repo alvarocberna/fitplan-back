@@ -39,7 +39,9 @@ export function toMeasurementSummary(
     height: basic?.height ?? null,
     bmi: results?.bmi ?? null,
     bmiClassification: results?.bmiClassification ?? null,
+    bfKg: results?.bfKg ?? null,
     bfPercentage: results?.bfPercentage ?? null,
+    mmKg: results?.mmKg ?? null,
     mmPercentage: results?.mmPercentage ?? null,
   };
 }

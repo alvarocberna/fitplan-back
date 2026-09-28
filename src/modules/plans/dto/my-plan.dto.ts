@@ -106,6 +106,29 @@ export interface MyPredefinedPlanDetailDto {
   summary: MyPlanSummaryInfoDto | null;
 }
 
+// Valores que el plan proyecta alcanzar al final de su período (tabla projection). bf*/mm* solo
+// vienen si la proyección se hizo sobre una medición que los tiene (bioimpedancia).
+export interface MyPlanProjectionValuesDto {
+  projectedStartDate: string; // ISO (fecha)
+  projectedEndDate: string; // ISO (fecha)
+  weight: number;
+  bmi: number | null;
+  bfKg: number | null;
+  bfPercentage: number | null;
+  mmKg: number | null;
+  mmPercentage: number | null;
+}
+
+// Respuesta de GET /me/plans/latest/projection (CU-PLN-07): período del último plan con fecha de
+// término y su proyección (null si el plan no tiene).
+export interface MyLatestPlanProjectionDto {
+  orderId: string;
+  planName: string;
+  startDate: string; // ISO (fecha)
+  endDate: string; // ISO (fecha)
+  projection: MyPlanProjectionValuesDto | null;
+}
+
 // Respuesta de GET /me/plans/:orderId (CU-PLN-05). Trae `generated` o `predefined` según `type`
 // (el otro va en null). `generated` es null si la orden no tiene ni NutritionalPlan ni planJson.
 export interface MyPlanDetailDto extends Omit<MyPlanSummaryDto, 'summary'> {

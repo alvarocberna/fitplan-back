@@ -40,4 +40,18 @@ export class NutritionalPlanDatasourceImpl
   async deleteNutritionalPlanById(id: string): Promise<void> {
     await this.prisma.nutritionalPlan.delete({ where: { id } });
   }
+
+  async getLatestDatedMainPlanWithProjectionByUserId(
+    userId: string,
+  ): Promise<NutritionalPlanEntity | null> {
+    return this.prisma.nutritionalPlan.findFirst({
+      where: { mainPlan: true, endDate: { not: null }, plan: { order: { userId } } },
+      orderBy: { startDate: 'desc' },
+      include: {
+        plan: {
+          include: { projections: { orderBy: { projectedEndDate: 'desc' }, take: 1 } },
+        },
+      },
+    });
+  }
 }

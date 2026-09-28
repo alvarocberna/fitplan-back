@@ -36,4 +36,10 @@ export class NutritionalPlanRepositoryImpl
   deleteNutritionalPlanById(id: string): Promise<void> {
     return this.datasource.deleteNutritionalPlanById(id);
   }
+
+  getLatestDatedMainPlanWithProjectionByUserId(
+    userId: string,
+  ): Promise<NutritionalPlanEntity | null> {
+    return this.datasource.getLatestDatedMainPlanWithProjectionByUserId(userId);
+  }
 }

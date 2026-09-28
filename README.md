@@ -205,6 +205,7 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 | GET | `/plans/standard/:code` | No | `GetStandardPlanUseCase` | plans |
 | POST | `/plans/standard/:code/purchase` | Sí | `PurchaseStandardPlanUseCase` | plans |
 | GET | `/me/plans` | Sí | `ListMyPlansUseCase` | plans |
+| GET | `/me/plans/latest/projection` | Sí | `GetMyLatestPlanProjectionUseCase` | plans |
 | GET | `/me/plans/:orderId` | Sí | `GetMyPlanUseCase` | plans |
 | GET | `/me/consultations` | Sí | `ListMyConsultationsUseCase` | clinical |
 | GET | `/me/consultations/:consultationId` | Sí | `GetMyConsultationUseCase` | clinical |
@@ -287,7 +288,7 @@ están en `modules/clinical/measurement.mapper.ts` y las reglas de entrada en `m
 - **`GET /me/measurements`** (`ListMyMeasurementsUseCase`, CU-CLI-03; query opcional `from`/`to`):
   `MeasurementSummaryDto[]` más reciente primero: `{ measurementId, measurementNumber, measuredAt, level,
   origin: 'CONSULTATION'|'SELF_REPORTED', consultationId, consultationNumber, weight, height, bmi,
-  bmiClassification, bfPercentage, mmPercentage }`. `origin` se deriva de `consultation_id`.
+  bmiClassification, bfKg, bfPercentage, mmKg, mmPercentage }`. `origin` se deriva de `consultation_id`.
 - **`GET /me/measurements/:measurementId`** (`GetMyMeasurementUseCase`, CU-CLI-04): `MeasurementDetailDto`
   con `raw` (`basic`, `skinfolds`, `circumferences`, `diameters`: solo los valores presentes) y `results`
   (`{ indicator, value, unit, classification, method }` de los campos no nulos de `measurement_results`;
@@ -381,6 +382,12 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
   notas, suplementos con efectos/consideraciones y recomendaciones deportivas) o `predefined` (`description`
   + resumen del producto). Los planes generados antes de poblarse las tablas hijas caen a `order.planJson`,
   pasado por el mismo `mapPlanToNutritionalPlanDto` de la generación (`my-plan.mapper.ts`).
+- **`GET /me/plans/latest/projection`** (sesión, `GetMyLatestPlanProjectionUseCase`, CU-PLN-07): período del
+  último `NutritionalPlan` principal del usuario con `end_date` (el de `start_date` más reciente,
+  `NutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId`) y la última `projection` de su
+  `plan`. Devuelve `MyLatestPlanProjectionDto`: `{ orderId, planName, startDate, endDate, projection: {
+  projectedStartDate, projectedEndDate, weight, bmi, bfKg, bfPercentage, mmKg, mmPercentage } | null }`
+  (fechas `YYYY-MM-DD`). Sin plan con período → **404**. Alimenta el gráfico de evolución del front.
 
 ### billing: `/orders`, `/webhooks/payments` y `/dev/orders`
 
@@ -624,7 +631,8 @@ datasources/repositories que ya no existe en el código actual).
 - `GeneratePersonalizedPlanUseCase` persiste `NutritionalPlan` y sus hijas desde la migración
   `20260927120000_nutritional_plan_children`, pero no se hizo backfill: las órdenes completadas antes
   solo tienen el detalle en `Order.planJson` (y las anteriores a la escritura de `NutritionalPlan`, ni
-  siquiera esa fila). `Projection` no se puebla.
+  siquiera esa fila). `Projection` no se puebla desde la generación (solo se lee en CU-PLN-07; los
+  datos actuales se cargaron a mano en la BD local); `NutritionalPlan.endDate` tampoco se completa.
 - El bucket S3 para los PDFs de planes ya existe y está en uso (`productos-personalizados/` y
   `productos-estandarizados/`, ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)). Los
   archivos predefinidos se suben **a mano** (no hay un flujo de subida automatizado): tras subirlos hay
