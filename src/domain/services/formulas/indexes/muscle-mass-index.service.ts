@@ -1,4 +1,4 @@
-import { EvaClassification } from './classifications.enum';
+import { EvaClassification } from '../classifications.enum';
 
 type MuscleMassIndexType = {
     weight: number

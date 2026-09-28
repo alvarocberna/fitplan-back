@@ -1,5 +1,5 @@
-import { EvaClassification } from './classifications.enum';
-import {sumSkinfolds6, Skinfolds6Type} from './skinfold-sum.service';
+import { EvaClassification } from '../classifications.enum';
+import {sumSkinfolds6, Skinfolds6Type} from '../skinfolds/skinfold-sum.service';
 
 type FaulknerType = {
     gender: string,

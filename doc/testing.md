@@ -40,7 +40,7 @@ Correr un archivo puntual (Jest `rootDir` es `src`, así que el patrón no inclu
 
 ```bash
 npm test -- confirm-payment.use-case
-npm test -- src/domain/services/formulas/requirements.service.spec.ts
+npm test -- src/domain/services/formulas/requirements/requirements.service.spec.ts
 ```
 
 ## 3. Infraestructura de testing (cambios en `package.json` / `test/`)
@@ -77,9 +77,9 @@ junto con los imports que quedaron sin uso.
 | Archivo | Test | Foco |
 |---|---|---|
 | `utils/age.service.ts` | `age.service.spec.ts` | cumpleaños pasado/no pasado, hoy, año bisiesto |
-| `formulas/requirements.service.ts` | `requirements.service.spec.ts` | BMR Mifflin/Carrasco/FAO-OMS-UNU, ramas de `goal` (`definicion`/`volumen`/`mantencion`), athlete+somatotype, invariante calorías=macros |
-| `formulas/supplements.service.ts` | `supplements.service.spec.ts` | las 4 prescripciones (creatina/cafeína/nitrato/bicarbonato), escalado por peso |
-| `formulas/sport-session.service.ts` | `sport-session.service.spec.ts` | catálogo `SPORT_SESSIONS`, recomendación por código y fallback |
+| `formulas/requirements/requirements.service.ts` | `requirements.service.spec.ts` | BMR Mifflin/Carrasco/FAO-OMS-UNU, ramas de `goal` (`definicion`/`volumen`/`mantencion`), athlete+somatotype, invariante calorías=macros |
+| `formulas/requirements/supplements.service.ts` | `supplements.service.spec.ts` | las 4 prescripciones (creatina/cafeína/nitrato/bicarbonato), escalado por peso |
+| `formulas/requirements/sport-session.service.ts` | `sport-session.service.spec.ts` | catálogo `SPORT_SESSIONS`, recomendación por código y fallback |
 | `alimentos/meal-times.service.ts` | `meal-times.service.spec.ts` | completado de tiempos de comida (1→3+colación, 4+volumen, preservación de reportados) |
 | `alimentos/portion-adequacy.service.ts` | `portion-adequacy.service.spec.ts` | `defineFoodGroups` (reglas de eliminación por tiempo de comida) + un escenario de `calculateFoodsAndIntake`/`calculateTotalPlanIntake`/`calculateTotalAdequacy` **trazado a mano y verificado contra el algoritmo real** (test de regresión "congelado": si el algoritmo cambia, este test detecta el cambio de números) |
 | `alimentos/food-portions.ts` | `food-portions.spec.ts` | `findFoodGroup` (caso válido / lanza si no existe) |

@@ -10,7 +10,7 @@ import {
 import { NutritionalConsultationRepository } from '../../../domain/repositories/clinical-domain/nutritional-consultation.repository';
 import { PlanRepository } from '../../../domain/repositories/clinical-domain/plan.repository';
 import { calculateAge } from '../../../domain/services/utils/age.service';
-import { calculateRequirements } from '../../../domain/services/formulas/requirements.service';
+import { calculateRequirements } from '../../../domain/services/formulas/requirements/requirements.service';
 import { determineMealTimes } from '../../../domain/services/alimentos/meal-times.service';
 import {
   defineFoodGroups,

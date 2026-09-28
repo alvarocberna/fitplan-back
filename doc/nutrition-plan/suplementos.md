@@ -4,7 +4,7 @@
 - Las reocmendaciones deportivas solo incluyen a los suplementos pertenecientes al grupo A
   acorde al Australian Institute of Sports. Específicamente, suplementos enfocados en la mejora
   de rendimiento deportivo.
-- El archivo src/domain/services/formulas/suplementos.service.ts hace el calculo de la dosis de suplementos recomendada
+- El archivo src/domain/services/formulas/requirements/supplements.service.ts hace el calculo de la dosis de suplementos recomendada
   para el usuario, además entrega la recomendación de ingesta, beneficios y consideraciones. Esto se genera independiente 
   de si se entregará la recomendación.
 - El archivo src/modules/consulta/consulta.prompts.ts evalúa la disciplina del usuario y decide que suplementos deportivos

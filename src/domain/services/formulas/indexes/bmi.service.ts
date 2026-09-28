@@ -1,4 +1,4 @@
-import { BmiClassification } from './classifications.enum';
+import { BmiClassification } from '../classifications.enum';
 
 type BmiType = {
     weight: number

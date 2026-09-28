@@ -7,7 +7,7 @@ import {
   PortionAdequacyResult,
   CalculatedIntake,
 } from './portion-adequacy.service';
-import { Requirements } from '../formulas/requirements.service';
+import { Requirements } from '../formulas/requirements/requirements.service';
 import { Meal } from '../../dtos/consultation.dto';
 
 function makeMeal(mealTime: string, overrides: Partial<Meal> = {}): Meal {

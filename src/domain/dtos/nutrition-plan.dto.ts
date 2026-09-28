@@ -1,4 +1,4 @@
-import { SupplementPrescription } from '../services/formulas/supplements.service';
+import { SupplementPrescription } from '../services/formulas/requirements/supplements.service';
 
 // Un grupo de alimentos de un tiempo de comida: "portion" es el texto ya calculado por código (ej "2
 // porciones"); "equivalence" son 3 alimentos alternativos de ese mismo grupo, cada uno ya escalado a

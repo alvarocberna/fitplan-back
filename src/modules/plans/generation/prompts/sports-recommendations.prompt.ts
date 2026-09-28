@@ -1,5 +1,5 @@
 import { HealthyLifestyleDto } from '../../../../domain/dtos/consultation.dto';
-import { SPORT_SESSIONS, getSportSessionRecommendation } from '../../../../domain/services/formulas/sport-session.service';
+import { SPORT_SESSIONS, getSportSessionRecommendation } from '../../../../domain/services/formulas/requirements/sport-session.service';
 
 //recomendaciones deportivas (paso 6 doc)
 

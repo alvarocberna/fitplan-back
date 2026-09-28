@@ -19,11 +19,11 @@ import { NutritionalConsultationRepository } from '../../../domain/repositories/
 import { AnamnesisEntity } from '../../../domain/entities/anamnesis.entity';
 import { MeasurementsEntity } from '../../../domain/entities/measurements.entity';
 import { calculateAge } from '../../../domain/services/utils/age.service';
-import { calculateRequirements } from '../../../domain/services/formulas/requirements.service';
+import { calculateRequirements } from '../../../domain/services/formulas/requirements/requirements.service';
 import {
   calculateSupplements,
   SupplementPrescription,
-} from '../../../domain/services/formulas/supplements.service';
+} from '../../../domain/services/formulas/requirements/supplements.service';
 import { determineMealTimes } from '../../../domain/services/alimentos/meal-times.service';
 import {
   defineFoodGroups,

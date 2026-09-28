@@ -426,7 +426,7 @@ Resumen:
 
 ### Fórmulas de requerimientos energéticos
 
-`src/domain/services/formulas/requerimientos.service.ts`:
+`src/domain/services/formulas/requirements/requirements.service.ts`:
 
 - **`tasaMetabolicaBasal` (TMB)**: Harris-Benedict (1919) para mayores de 18 años; FAO/OMS/UNU (1985) para
   menores (con corte adicional en 10 años), separado por sexo.
@@ -438,7 +438,7 @@ Resumen:
   - `carbohidrato`: 50% de la energía (definición) o 55% (volumen/mantención), convertido a gramos (÷4).
   - `lipido`: el resto de la energía tras descontar proteína y carbohidrato, convertido a gramos (÷9).
 
-`src/domain/services/formulas/suplementos.service.ts` calcula `calculoSuplementos(peso)`, una
+`src/domain/services/formulas/requirements/supplements.service.ts` calcula `calculoSuplementos(peso)`, una
 prescripción de suplementos (ej. creatina, proteína) en función del peso del paciente, usada como
 input fijo del prompt de generación del plan (igual que los requerimientos: la IA no la recalcula).
 

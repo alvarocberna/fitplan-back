@@ -1,8 +1,8 @@
 //domain
 import { CompleteConsultationDto } from '../../../domain/dtos/consultation.dto';
-import { Requirements } from '../../../domain/services/formulas/requirements.service';
+import { Requirements } from '../../../domain/services/formulas/requirements/requirements.service';
 import { CalculatedMealTime, CalculatedIntake } from '../../../domain/services/alimentos/portion-adequacy.service';
-import { SupplementsPrescription } from '../../../domain/services/formulas/supplements.service';
+import { SupplementsPrescription } from '../../../domain/services/formulas/requirements/supplements.service';
 //prompts
 import { buildPrescriptionPrompt } from './prompts/prescription.prompt';
 import { buildMealTimesPrompt } from './prompts/meal-times.prompt';

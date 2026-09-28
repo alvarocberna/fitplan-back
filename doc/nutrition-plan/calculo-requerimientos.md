@@ -1,7 +1,7 @@
 
 # Fórmulas de requerimientos energéticos
 
-`src/domain/services/formulas/requerimientos.service.ts`:
+`src/domain/services/formulas/requirements/requirements.service.ts`:
 
 ## tasaMetabolicaBasal (TMB) 
   **Menores de edad con corte en 10 años**

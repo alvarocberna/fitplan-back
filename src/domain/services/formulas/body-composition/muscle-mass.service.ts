@@ -1,4 +1,4 @@
-import {correctedArmGirth, correctedCalfGirth, correctedThighGirth} from './corrected-girths.service';
+import {correctedArmGirth, correctedCalfGirth, correctedThighGirth} from '../perimeters/corrected-girths.service';
 
 type LeeMuscleMassKgType = {
     gender: string

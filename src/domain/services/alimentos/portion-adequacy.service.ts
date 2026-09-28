@@ -9,7 +9,7 @@
 // completamente determinísticas, por lo que se implementan acá como código para que el resultado
 // sea siempre reproducible.
 import { Meal } from '../../dtos/consultation.dto';
-import { Requirements } from '../formulas/requirements.service';
+import { Requirements } from '../formulas/requirements/requirements.service';
 import { FOOD_GROUP_PORTIONS, findFoodGroup } from './food-portions';
 import { MealTimeType, isMainMealTime, normalizeMealTime } from './meal-times.service';
 

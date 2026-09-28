@@ -55,7 +55,7 @@ src/
 │   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (*Entity suffix)
 │   ├── datasources/ repositories/  # Abstract persistence contracts per entity (use cases depend on repositories/)
 │   └── services/
-│       ├── formulas/            # TMB, GET, requirements, body composition, somatocarta, supplements...
+│       ├── formulas/            # indexes/ (BMI, muscle-mass index), body-composition/, skinfolds/, perimeters/, phantom/, somatotype/, requirements/ (requirements, supplements, sport sessions); classifications.enum.ts shared
 │       ├── alimentos/           # Food exchange-portion table
 │       └── utils/                # Age, predefined plan codes, S3 keys (storage-keys.ts)
 ├── infrastructure/             # Adapters: implement domain/ports and domain repositories
@@ -140,9 +140,9 @@ default `temperature=1` — passing any other value causes a 400).
 
 ### Domain formulas
 
-`domain/services/formulas/requerimientos.service.ts` computes TMB (Harris-Benedict for 18+,
+`domain/services/formulas/requirements/requirements.service.ts` computes TMB (Harris-Benedict for 18+,
 FAO/OMS/UNU for minors) → GET (TMB adjusted for activity + thermogenesis) → energy/macro targets
-based on `objetivo` (`definicion` | `mantencion` | `volumen`). `suplementos.service.ts` computes a
+based on `objetivo` (`definicion` | `mantencion` | `volumen`). `requirements/supplements.service.ts` computes a
 supplement prescription from weight alone. Both are computed once in `GeneratePersonalizedPlanUseCase` and handed
 to the AI as fixed inputs it must not recalculate.
 

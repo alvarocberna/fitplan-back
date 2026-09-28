@@ -1,4 +1,4 @@
-import { SupplementsPrescription } from '../../../../domain/services/formulas/supplements.service';
+import { SupplementsPrescription } from '../../../../domain/services/formulas/requirements/supplements.service';
 import { CalculatedIntake } from '../../../../domain/services/alimentos/portion-adequacy.service';
 
 //suplementos (paso 5 doc)
