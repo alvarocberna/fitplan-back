@@ -14,6 +14,7 @@ import { ListStandardPlanPreviewsUseCase } from './use-cases/list-standard-plan-
 import { GetStandardPlanUseCase } from './use-cases/get-standard-plan.use-case';
 import { PurchaseStandardPlanUseCase } from './use-cases/purchase-standard-plan.use-case';
 import { ListMyPlansUseCase } from './use-cases/list-my-plans.use-case';
+import { GetMyPlanUseCase } from './use-cases/get-my-plan.use-case';
 import { GeneratePersonalizedPlanUseCase } from './use-cases/generate-personalized-plan.use-case';
 
 // Planes desde la perspectiva del usuario: catálogo estándar, mis planes y generación del plan
@@ -35,6 +36,7 @@ import { GeneratePersonalizedPlanUseCase } from './use-cases/generate-personaliz
     GetStandardPlanUseCase,
     PurchaseStandardPlanUseCase,
     ListMyPlansUseCase,
+    GetMyPlanUseCase,
     GeneratePersonalizedPlanUseCase,
     OrderPaidListener,
   ],

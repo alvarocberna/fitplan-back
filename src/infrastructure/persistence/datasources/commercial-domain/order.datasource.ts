@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Order as PrismaOrder } from '../../../../../generated/prisma';
+import { Prisma, Order as PrismaOrder } from '../../../../../generated/prisma';
 import { PrismaService } from '../../orm/prisma/prisma.service';
 import {
   OrderDatasource,
@@ -15,6 +15,42 @@ import {
   CreatePaymentDto,
   UpdateOrderDto,
 } from '../../../../domain';
+
+// Campos de product que exponen GET /me/plans y /me/plans/:orderId (sin `price`, que es Decimal).
+const PRODUCT_PLAN_SELECT = {
+  type: true,
+  name: true,
+  description: true,
+  goal: true,
+  dietRegimen: true,
+  calorieIntake: true,
+  proteinIntake: true,
+  carbohydrateIntake: true,
+  lipidIntake: true,
+} satisfies Prisma.ProductSelect;
+
+// Lista de mis planes: product + resumen del NutritionalPlan principal (sin tablas hijas).
+const PLAN_SUMMARY_INCLUDE = {
+  product: { select: PRODUCT_PLAN_SELECT },
+  plan: { include: { nutritionalPlans: { where: { mainPlan: true } } } },
+} satisfies Prisma.OrderInclude;
+
+// Detalle de un plan: lo mismo más todas las tablas hijas del NutritionalPlan principal.
+const PLAN_DETAIL_INCLUDE = {
+  product: { select: PRODUCT_PLAN_SELECT },
+  plan: {
+    include: {
+      nutritionalPlans: {
+        where: { mainPlan: true },
+        include: {
+          mealTimes: { include: { notes: true } },
+          supplements: { include: { notes: true } },
+          sportsRecommendations: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.OrderInclude;
 
 @Injectable()
 export class OrderDatasourceImpl implements OrderDatasource {
@@ -91,8 +127,26 @@ export class OrderDatasourceImpl implements OrderDatasource {
     const orders = await this.prisma.order.findMany({
       where: { userId, generationStatus: GenerationStatus.COMPLETED, pdfKey: { not: null } },
       orderBy: { creationDate: 'desc' },
+      include: PLAN_SUMMARY_INCLUDE,
     });
-    return orders.map((order) => this.toEntity(order));
+    // product viene parcial (select), por eso el cast.
+    return orders.map((order) => this.toEntity(order) as unknown as OrderEntity);
+  }
+
+  async getReadyOrderWithPlanDetailByIdAndUserId(
+    id: string,
+    userId: string,
+  ): Promise<OrderEntity | null> {
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id,
+        userId,
+        generationStatus: GenerationStatus.COMPLETED,
+        pdfKey: { not: null },
+      },
+      include: PLAN_DETAIL_INCLUDE,
+    });
+    return order ? (this.toEntity(order) as unknown as OrderEntity) : null;
   }
 
   async markOrderAsPaidIfPending(id: string): Promise<boolean> {

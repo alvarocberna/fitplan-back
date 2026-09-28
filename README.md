@@ -87,7 +87,7 @@ src/
 │   ├── consultation/       # chat de anamnesis + crear consulta (con su orden)
 │   ├── plans/              # catálogo estándar, mis planes, generación del plan (listener de order.paid)
 │   ├── billing/            # ciclo de vida de la orden, pagos, webhooks; emite order.paid
-│   └── clinical/           # historial clínico: /me/consultations (mediciones, pendiente)
+│   └── clinical/           # historial clínico: /me/consultations y /me/measurements
 │
 ├── app.module.ts
 └── main.ts                 # app.setGlobalPrefix('api/v1')
@@ -205,8 +205,13 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 | GET | `/plans/standard/:code` | No | `GetStandardPlanUseCase` | plans |
 | POST | `/plans/standard/:code/purchase` | Sí | `PurchaseStandardPlanUseCase` | plans |
 | GET | `/me/plans` | Sí | `ListMyPlansUseCase` | plans |
+| GET | `/me/plans/:orderId` | Sí | `GetMyPlanUseCase` | plans |
 | GET | `/me/consultations` | Sí | `ListMyConsultationsUseCase` | clinical |
 | GET | `/me/consultations/:consultationId` | Sí | `GetMyConsultationUseCase` | clinical |
+| GET | `/me/measurements` | Sí | `ListMyMeasurementsUseCase` | clinical |
+| GET | `/me/measurements/:measurementId` | Sí | `GetMyMeasurementUseCase` | clinical |
+| POST | `/me/measurements` | Sí | `RecordMeasurementUseCase` | clinical |
+| PATCH | `/me/measurements/:measurementId` | Sí | `UpdateMyMeasurementUseCase` | clinical |
 | GET | `/orders/:id/status` | Sí | `GetOrderStatusUseCase` | billing |
 | POST | `/webhooks/payments` | No (firma de la pasarela) | `ConfirmPaymentUseCase` | billing |
 | POST | `/dev/orders/:id/simulate-payment` | No (`ENABLE_PAYMENT_SIMULATION`) | `ConfirmPaymentUseCase` | billing |
@@ -273,6 +278,35 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
   registradas por el usuario. El DTO de medición es una versión reducida de `MeasurementDetailDto`
   (CU-CLI-04). `toPlanStatus` (`modules/clinical/plan-status.ts`) es compartido con el listado.
 
+### clinical: `/me/measurements`
+
+Mediciones del historial clínico del usuario del token (de consulta y registradas por él). Los mapeos
+están en `modules/clinical/measurement.mapper.ts` y las reglas de entrada en `measurement-input.ts`.
+
+- **`GET /me/measurements`** (`ListMyMeasurementsUseCase`, CU-CLI-03; query opcional `from`/`to`):
+  `MeasurementSummaryDto[]` más reciente primero: `{ measurementId, measurementNumber, measuredAt, level,
+  origin: 'CONSULTATION'|'SELF_REPORTED', consultationId, consultationNumber, weight, height, bmi,
+  bmiClassification, bfPercentage, mmPercentage }`. `origin` se deriva de `consultation_id`.
+- **`GET /me/measurements/:measurementId`** (`GetMyMeasurementUseCase`, CU-CLI-04): `MeasurementDetailDto`
+  con `raw` (`basic`, `skinfolds`, `circumferences`, `diameters`: solo los valores presentes) y `results`
+  (`{ indicator, value, unit, classification, method }` de los campos no nulos de `measurement_results`;
+  sin `pha_*` ni rangos de referencia todavía). Inexistente o ajena → 404 (R2, filtra por
+  `clinicalRecord.patientId` en la misma query).
+- **`POST /me/measurements`** (`RecordMeasurementUseCase`, CU-CLI-05; `RecordMeasurementDtoImpl`):
+  `{ level: 'BASIC'|'BIOIMPEDANCE', measuredAt?, weight (20-300), height (100-250), bodyFat?, muscleMass? }`
+  (`bodyFat`/`muscleMass` = `{ value, unit: 'PERCENTAGE'|'KG' }`, obligatorios en bioimpedancia y
+  prohibidos en básica; fecha no futura; % 1-80; kg < peso → si no, 400). Hace find-or-create del
+  `clinical_record`, asigna `measurement_number` = máximo del historial + 1 y crea la medición
+  (`consultation_id = null`) con `basic_measurements` en una escritura. `measurement_results` guarda
+  **solo lo ingresado**: en bioimpedancia, grasa y masa muscular en la unidad ingresada con
+  `*_method = 'BIOIMPEDANCE'`; en básica no se crea. IMC, conversiones % ↔ kg y clasificaciones quedan
+  para las fórmulas (`MeasurementResultsCalculator`, pendiente). Responde 201 con el detalle.
+- **`PATCH /me/measurements/:measurementId`** (`UpdateMyMeasurementUseCase`, CU-CLI-06;
+  `UpdateMeasurementDtoImpl`, sin `level`): corrige fecha, peso, talla y, en bioimpedancia, grasa y masa
+  muscular. **Se pueden editar todas las mediciones**, también las de una consulta. Valida el resultado
+  de combinar lo guardado con lo enviado; actualiza padre + hijas en una transacción
+  (`MeasurementsRepository.updateMeasurementWithDetails`).
+
 ### consultation: `/consultations`
 
 **`POST /consultations/chat`** (`ChatAnamnesisUseCase`): un turno del chat de anamnesis.
@@ -321,10 +355,21 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
   con el mismo criterio que la ficha, o si la versión todavía no tiene PDF. La orden nace **sin**
   `pdfKey`/`thumbnailKey`: se copian del producto recién al confirmarse el pago, para que una orden
   impaga nunca exponga el PDF. Responde `{ orderId }`.
-- **`GET /me/plans`** (sesión): órdenes del usuario con plan listo y PDF (`generationStatus='COMPLETED'`
-  y `pdfKey` no nulo), más nuevas primero: `{ orderId, creationDate, pdfUrl, thumbnailUrl }[]`.
-  `pdfUrl` se firma como descarga (`Content-Disposition: attachment`,
-  `plan-nutricional-<YYYY-MM-DD>.pdf`); `thumbnailUrl` es la miniatura WebP de la página 1 o `null`.
+- **`GET /me/plans`** (sesión, `ListMyPlansUseCase`, CU-PLN-04): órdenes del usuario con plan listo y PDF
+  (`generationStatus='COMPLETED'` y `pdfKey` no nulo), más nuevas primero, como `MyPlanSummaryDto[]`:
+  `{ orderId, type: 'GENERATED'|'PREDEFINED', name, purchasedAt, pdfUrl, thumbnailUrl, summary }`.
+  `name` y `summary` (`goal`, `dietRegimen`, `*Intake`) salen del `NutritionalPlan` principal en los
+  personalizados y de `product` en los estándar (hoy `product` no tiene esos campos cargados → `summary: null`).
+  `purchasedAt` = `paymentDate` (o `creationDate`). `pdfUrl` se firma como descarga (`Content-Disposition:
+  attachment`, `plan-nutricional-<YYYY-MM-DD>.pdf`); `thumbnailUrl` es la miniatura WebP o `null`.
+- **`GET /me/plans/:orderId`** (sesión, `GetMyPlanUseCase`, CU-PLN-05): detalle de solo lectura. Busca la orden
+  por (`id`, `userId` del token) y lista (`COMPLETED` + `pdfKey`) en una sola consulta
+  (`OrderRepository.getReadyOrderWithPlanDetailByIdAndUserId`); si no, **404** (R2); id no UUID v4 → 400.
+  Devuelve `MyPlanDetailDto` (`modules/plans/dto/my-plan.dto.ts`): lo mismo que la lista más `generated`
+  (personalizado: `NutritionalPlan` principal con requerimientos, ingesta, tiempos de comida con porciones y
+  notas, suplementos con efectos/consideraciones y recomendaciones deportivas) o `predefined` (`description`
+  + resumen del producto). Los planes generados antes de poblarse las tablas hijas caen a `order.planJson`,
+  pasado por el mismo `mapPlanToNutritionalPlanDto` de la generación (`my-plan.mapper.ts`).
 
 ### billing: `/orders`, `/webhooks/payments` y `/dev/orders`
 

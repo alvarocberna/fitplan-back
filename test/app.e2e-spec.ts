@@ -15,6 +15,7 @@ import { AuthIdentityRepository } from '../src/domain/repositories/identity-auth
 import { UserRepository } from '../src/domain/repositories/identity-auth/user.repository';
 import { ClinicalRecordRepository } from '../src/domain/repositories/clinical-domain/clinical-record.repository';
 import { NutritionalConsultationRepository } from '../src/domain/repositories/clinical-domain/nutritional-consultation.repository';
+import { MeasurementsRepository } from '../src/domain/repositories/clinical-domain/measurements.repository';
 import { ProductRepository } from '../src/domain/repositories/commercial-domain/product.repository';
 import { OrderRepository } from '../src/domain/repositories/commercial-domain/order.repository';
 import {
@@ -37,6 +38,8 @@ describe('App (e2e)', () => {
   let nutritionalConsultationRepository: jest.Mocked<NutritionalConsultationRepository>;
   let productRepository: jest.Mocked<ProductRepository>;
   let orderRepository: jest.Mocked<OrderRepository>;
+  let measurementsRepository: jest.Mocked<MeasurementsRepository>;
+  let fileStorage: { getSignedDownloadUrl: jest.Mock };
 
   const api = (path: string) => `/${API_PREFIX}${path}`;
   const AUTH = { Authorization: 'Bearer token-e2e' };
@@ -87,6 +90,15 @@ describe('App (e2e)', () => {
         getNutritionalConsultationsWithStatusByPatientId: jest.fn(),
         getNutritionalConsultationDetailByIdAndPatientId: jest.fn(),
       })
+      .overrideProvider(MeasurementsRepository)
+      .useValue({
+        getLatestMeasurementsWithResultsByPatientId: jest.fn(),
+        listMeasurementsByPatientId: jest.fn(),
+        getMeasurementDetailByIdAndPatientId: jest.fn(),
+        getMaxMeasurementNumberByClinicalRecordId: jest.fn(),
+        createMeasurementWithDetails: jest.fn(),
+        updateMeasurementWithDetails: jest.fn(),
+      })
       .overrideProvider(ProductRepository)
       .useValue({
         findOrCreateActiveGeneratedProduct: jest.fn(),
@@ -100,6 +112,7 @@ describe('App (e2e)', () => {
         getOrderWithUserById: jest.fn(),
         getOrderWithProductById: jest.fn(),
         getPaidOrdersWithPdfByUserId: jest.fn(),
+        getReadyOrderWithPlanDetailByIdAndUserId: jest.fn(),
         markOrderAsPaidWithPayment: jest.fn(),
         tryTransitionOrderToGenerating: jest.fn(),
         updateOrderById: jest.fn(),
@@ -134,6 +147,8 @@ describe('App (e2e)', () => {
     nutritionalConsultationRepository = moduleFixture.get(NutritionalConsultationRepository);
     productRepository = moduleFixture.get(ProductRepository);
     orderRepository = moduleFixture.get(OrderRepository);
+    measurementsRepository = moduleFixture.get(MeasurementsRepository);
+    fileStorage = moduleFixture.get(FileStorage);
   });
 
   beforeEach(() => {
@@ -313,6 +328,169 @@ describe('App (e2e)', () => {
           propiedadInventada: true,
         })
         .expect(400);
+    });
+  });
+
+  describe('/me/measurements', () => {
+    const measurementId = '8b1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+    const measurement = {
+      id: measurementId,
+      measurementNumber: 1,
+      measuredAt: new Date('2026-05-10T12:00:00.000Z'),
+      level: 'BASIC',
+      consultationId: null,
+      basicMeasurements: [{ weight: 70, height: 172 }],
+      skinfolds: [],
+      circumferences: [],
+      diameters: [],
+      measurementResults: [],
+    };
+
+    it('GET /me/measurements lista las mediciones del usuario del token', async () => {
+      measurementsRepository.listMeasurementsByPatientId.mockResolvedValue([measurement] as any);
+
+      const response = await request(app.getHttpServer()).get(api('/me/measurements')).set(AUTH).expect(200);
+
+      expect(measurementsRepository.listMeasurementsByPatientId).toHaveBeenCalledWith('user-1', {
+        from: undefined,
+        to: undefined,
+      });
+      expect(response.body).toEqual([
+        expect.objectContaining({ measurementId, origin: 'SELF_REPORTED', weight: 70, bmi: null }),
+      ]);
+    });
+
+    it('GET /me/measurements/:id devuelve el detalle, o 404 si no existe o es de otro usuario (BOLA)', async () => {
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValueOnce(measurement as any);
+      const response = await request(app.getHttpServer())
+        .get(api(`/me/measurements/${measurementId}`))
+        .set(AUTH)
+        .expect(200);
+      expect(response.body).toMatchObject({ measurementId, raw: { basic: { weight: 70, height: 172 } }, results: [] });
+
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValueOnce(null);
+      await request(app.getHttpServer()).get(api(`/me/measurements/${measurementId}`)).set(AUTH).expect(404);
+    });
+
+    it('POST /me/measurements registra una medición en el historial del usuario y devuelve 201 con el detalle', async () => {
+      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue({ id: 'cr-1' } as any);
+      measurementsRepository.getMaxMeasurementNumberByClinicalRecordId.mockResolvedValue(0);
+      measurementsRepository.createMeasurementWithDetails.mockResolvedValue({ id: measurementId } as any);
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(measurement as any);
+
+      const response = await request(app.getHttpServer())
+        .post(api('/me/measurements'))
+        .set(AUTH)
+        .send({ level: 'BASIC', measuredAt: '2026-05-10T12:00:00.000Z', weight: 70, height: 172 })
+        .expect(201);
+
+      expect(measurementsRepository.createMeasurementWithDetails).toHaveBeenCalledWith(
+        expect.objectContaining({ clinicalRecordId: 'cr-1', measurementNumber: 1, level: 'BASIC' }),
+      );
+      expect(response.body).toMatchObject({ measurementId, editable: true });
+    });
+
+    it('POST /me/measurements con un body inválido devuelve 400 sin escribir nada', async () => {
+      await request(app.getHttpServer())
+        .post(api('/me/measurements'))
+        .set(AUTH)
+        .send({ level: 'ISAK_1', weight: 5, height: 172 })
+        .expect(400);
+      expect(measurementsRepository.createMeasurementWithDetails).not.toHaveBeenCalled();
+    });
+
+    it('PATCH /me/measurements/:id corrige la medición', async () => {
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(measurement as any);
+
+      await request(app.getHttpServer())
+        .patch(api(`/me/measurements/${measurementId}`))
+        .set(AUTH)
+        .send({ weight: 69 })
+        .expect(200);
+
+      expect(measurementsRepository.updateMeasurementWithDetails).toHaveBeenCalledWith(
+        measurementId,
+        expect.objectContaining({ basic: { weight: 69 } }),
+      );
+    });
+
+    it('sin token devuelve 401', async () => {
+      await request(app.getHttpServer()).get(api('/me/measurements')).expect(401);
+    });
+  });
+
+  describe('GET /me/plans y GET /me/plans/:orderId', () => {
+    const orderId = '7a1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+    const predefinedOrder = {
+      id: orderId,
+      creationDate: new Date('2026-01-01T00:00:00.000Z'),
+      paymentDate: new Date('2026-01-02T10:00:00.000Z'),
+      pdfKey: 'productos-estandarizados/plan-running.pdf',
+      thumbnailKey: null,
+      planJson: null,
+      product: {
+        type: 'PREDEFINED',
+        name: 'Plan Running',
+        description: 'Plan para corredores',
+        goal: null,
+        dietRegimen: null,
+        calorieIntake: null,
+        proteinIntake: null,
+        carbohydrateIntake: null,
+        lipidIntake: null,
+      },
+      plan: null,
+    };
+
+    beforeEach(() => {
+      fileStorage.getSignedDownloadUrl.mockResolvedValue('https://signed.example/plan.pdf');
+    });
+
+    it('GET /me/plans lista los planes del usuario del token con tipo, nombre y URL de descarga', async () => {
+      orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([predefinedOrder] as any);
+
+      const response = await request(app.getHttpServer()).get(api('/me/plans')).set(AUTH).expect(200);
+
+      expect(orderRepository.getPaidOrdersWithPdfByUserId).toHaveBeenCalledWith('user-1');
+      expect(response.body).toEqual([
+        {
+          orderId,
+          type: 'PREDEFINED',
+          name: 'Plan Running',
+          purchasedAt: '2026-01-02T10:00:00.000Z',
+          pdfUrl: 'https://signed.example/plan.pdf',
+          thumbnailUrl: null,
+          summary: null,
+        },
+      ]);
+    });
+
+    it('GET /me/plans/:orderId devuelve el detalle del plan del usuario del token', async () => {
+      orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(predefinedOrder as any);
+
+      const response = await request(app.getHttpServer()).get(api(`/me/plans/${orderId}`)).set(AUTH).expect(200);
+
+      expect(orderRepository.getReadyOrderWithPlanDetailByIdAndUserId).toHaveBeenCalledWith(orderId, 'user-1');
+      expect(response.body).toMatchObject({
+        orderId,
+        type: 'PREDEFINED',
+        generated: null,
+        predefined: { description: 'Plan para corredores', summary: null },
+      });
+    });
+
+    it('GET /me/plans/:orderId responde 404 si el plan no existe, es de otro usuario o no está listo (BOLA)', async () => {
+      orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(null);
+
+      await request(app.getHttpServer()).get(api(`/me/plans/${orderId}`)).set(AUTH).expect(404);
+    });
+
+    it('GET /me/plans/:orderId con un id que no es UUID v4 devuelve 400', async () => {
+      await request(app.getHttpServer()).get(api('/me/plans/no-es-uuid')).set(AUTH).expect(400);
+    });
+
+    it('sin token devuelve 401', async () => {
+      await request(app.getHttpServer()).get(api(`/me/plans/${orderId}`)).expect(401);
     });
   });
 

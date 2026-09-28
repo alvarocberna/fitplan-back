@@ -25,6 +25,13 @@ export abstract class OrderDatasource {
   // órdenes con plan generado y PDF ya subido a S3, de un usuario, más nuevas primero (usado por
   // el listado del panel/GET /me/plans).
   abstract getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]>;
+  // Orden lista (COMPLETED + pdfKey) SOLO si es del usuario (R2: null si no existe, no es suya o no
+  // está lista), con su product y el plan -> nutritionalPlan principal con todas sus tablas hijas.
+  // Usada por GET /me/plans/:orderId (CU-PLN-05).
+  abstract getReadyOrderWithPlanDetailByIdAndUserId(
+    id: string,
+    userId: string,
+  ): Promise<OrderEntity | null>;
 
   // idempotente: devuelve true solo si esta llamada fue la que efectivamente marcó el pago.
   abstract markOrderAsPaidIfPending(id: string): Promise<boolean>;

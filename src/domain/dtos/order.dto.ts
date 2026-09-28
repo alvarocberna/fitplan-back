@@ -33,17 +33,3 @@ export interface OrderStatusDto {
   // plan, o si la orden no tiene miniatura (falló su generación, que es best-effort).
   thumbnailUrl: string | null;
 }
-
-// Forma que se expone en GET /me/plans: un ítem por cada orden con plan generado y PDF
-// disponible, del usuario autenticado.
-export interface OrderSummaryDto {
-  orderId: string;
-  creationDate: Date;
-  // URL firmada (corta duración) para DESCARGAR el PDF: viene con Content-Disposition: attachment y
-  // nombre de archivo, por lo que no sirve para incrustarlo en un <iframe> (para eso, GET
-  // /orders/:id/status).
-  pdfUrl: string;
-  // URL firmada (corta duración) de la miniatura WebP de la página 1 del plan; null si la orden no
-  // tiene miniatura (plan anterior a esta función, o falló su generación).
-  thumbnailUrl: string | null;
-}

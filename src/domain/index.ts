@@ -68,6 +68,7 @@ export * from './dtos/clinical-domain/sports-strategy/create-sports-strategy.dto
 export * from './dtos/clinical-domain/sports-strategy/update-sports-strategy.dto';
 export * from './dtos/clinical-domain/measurements/create-measurements.dto';
 export * from './dtos/clinical-domain/measurements/update-measurements.dto';
+export * from './dtos/clinical-domain/measurements/measurement-details.dto';
 export * from './dtos/clinical-domain/basic-measurements/create-basic-measurements.dto';
 export * from './dtos/clinical-domain/basic-measurements/update-basic-measurements.dto';
 export * from './dtos/clinical-domain/skinfolds/create-skinfolds.dto';

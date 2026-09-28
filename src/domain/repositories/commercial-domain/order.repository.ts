@@ -13,6 +13,10 @@ export abstract class OrderRepository {
   abstract getOrderWithUserById(id: string): Promise<OrderEntity | null>;
   abstract getOrderWithProductById(id: string): Promise<OrderEntity | null>;
   abstract getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]>;
+  abstract getReadyOrderWithPlanDetailByIdAndUserId(
+    id: string,
+    userId: string,
+  ): Promise<OrderEntity | null>;
   abstract markOrderAsPaidIfPending(id: string): Promise<boolean>;
   abstract markOrderAsPaidWithPayment(
     id: string,

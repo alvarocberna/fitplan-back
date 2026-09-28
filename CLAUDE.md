@@ -69,10 +69,10 @@ src/
 ├── modules/                    # NestJS business modules
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
 │   ├── consultation/           # /consultations/chat, /consultations
-│   ├── plans/                  # /plans/standard/*, /me/plans, plan generation (listener of order.paid)
+│   ├── plans/                  # /plans/standard/*, /me/plans, /me/plans/:orderId, plan generation (listener of order.paid)
 │   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment;
 │   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid
-│   └── clinical/               # patient history: /me/consultations (measurements pending); reads order
+│   └── clinical/               # patient history: /me/consultations, /me/measurements (list/detail/record/edit); reads order
 │                                # statuses via the consultation repository (no billing import)
 ├── app.module.ts
 └── main.ts                     # app.setGlobalPrefix('api/v1'), Swagger at /api-docs (outside the prefix)
@@ -129,7 +129,8 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan`, completes the order
    (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
 5. `GET /orders/:id/status` (`GetOrderStatusUseCase`) — polling endpoint; validates ownership (404 for
-   missing or foreign orders). `GET /me/plans` lists the user's ready plans.
+   missing or foreign orders). `GET /me/plans` lists the user's ready plans (with name, type and summary);
+   `GET /me/plans/:orderId` returns one plan's full detail (child tables, or `order.planJson` for older plans).
 
 `LlmProvider.chatJson<T>` is the single point of access to the model: `OpenaiLlmProvider` calls
 `chat.completions.create` with `response_format: json_object` and returns the parsed result. Each use
