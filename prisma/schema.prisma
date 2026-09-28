@@ -534,7 +534,8 @@ model MeasurementResults {
   measurementsId String       @map("measurements_id") @db.Uuid
   measurements   Measurements @relation(fields: [measurementsId], references: [id])
 
-  // El ERD los define NOT NULL, pero hoy ningún flujo puebla measurement_results: quedan nullable.
+  // Los calcula calculateMeasurementResults al crear/editar una medición; nullable porque una
+  // medición sin peso o talla no tiene IMC.
   bmi               Float?
   bmiClassification String? @map("bmi_classification")
 

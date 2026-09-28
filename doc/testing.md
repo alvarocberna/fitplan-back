@@ -17,8 +17,8 @@ Se priorizó el **pipeline core**: la infraestructura de testing en sí, las fó
 están efectivamente conectadas a un endpoint (`plan-generation`), y los servicios de
 `modules/` que arman el flujo `POST /consultations` → webhook de pago → generación del plan.
 
-**Fuera de esta fase** (deuda pendiente, ver §6): las 8 fórmulas de `domain/services/formulas/`
-que hoy no tiene ningún consumidor real (`bmi.service.ts`, `body-fat.service.ts`,
+**Fuera de esta fase** (deuda pendiente, ver §6): las fórmulas de `domain/services/formulas/`
+que hoy no tienen ningún consumidor real (`body-fat.service.ts`,
 `corrected-girths.service.ts`, `muscle-mass.service.ts`, `muscle-mass-index.service.ts`,
 `skinfold-sum.service.ts`, y los archivos vacíos `phantom.service.ts`/`somatochart.service.ts`).
 
@@ -80,6 +80,8 @@ junto con los imports que quedaron sin uso.
 | `formulas/requirements/requirements.service.ts` | `requirements.service.spec.ts` | BMR Mifflin/Carrasco/FAO-OMS-UNU, ramas de `goal` (`definicion`/`volumen`/`mantencion`), athlete+somatotype, invariante calorías=macros |
 | `formulas/requirements/supplements.service.ts` | `supplements.service.spec.ts` | las 4 prescripciones (creatina/cafeína/nitrato/bicarbonato), escalado por peso |
 | `formulas/requirements/sport-session.service.ts` | `sport-session.service.spec.ts` | catálogo `SPORT_SESSIONS`, recomendación por código y fallback |
+| `formulas/indexes/bmi.service.ts` | `bmi.service.spec.ts` | IMC con talla en cm y en m; límites de cada rango de `getBmiClassification` (incl. OBESITY_II/III) |
+| `measurements/measurement-results.calculator.ts` | `measurement-results.calculator.spec.ts` | BASIC (solo IMC), sin peso/talla, bioimpedancia kg→% y %→kg con método, grasa visceral/masa ósea opcionales (null si faltan), redondeo a 2 decimales |
 | `alimentos/meal-times.service.ts` | `meal-times.service.spec.ts` | completado de tiempos de comida (1→3+colación, 4+volumen, preservación de reportados) |
 | `alimentos/portion-adequacy.service.ts` | `portion-adequacy.service.spec.ts` | `defineFoodGroups` (reglas de eliminación por tiempo de comida) + un escenario de `calculateFoodsAndIntake`/`calculateTotalPlanIntake`/`calculateTotalAdequacy` **trazado a mano y verificado contra el algoritmo real** (test de regresión "congelado": si el algoritmo cambia, este test detecta el cambio de números) |
 | `alimentos/food-portions.ts` | `food-portions.spec.ts` | `findFoodGroup` (caso válido / lanza si no existe) |
@@ -169,15 +171,15 @@ por válido con un `sub` fijo; sin él, 401). Cubre:
 
 ## 7. Deuda pendiente / Fase 2 (no incluida en esta pasada)
 
-- **Fórmulas muertas sin test** (`bmi.service.ts`, `body-fat.service.ts`,
+- **Fórmulas muertas sin test** (`body-fat.service.ts`,
   `corrected-girths.service.ts`, `muscle-mass.service.ts`, `muscle-mass-index.service.ts`,
   `skinfold-sum.service.ts`) — no están conectadas a ningún endpoint hoy (ver
-  `doc/technical-debt.md`), quedaron fuera de esta fase a propósito.
-- **2 bugs reales detectados en esas fórmulas muertas, sin corregir** (decisión explícita: no tocar
-  lógica clínica sin confirmación de un humano, dado que son fórmulas médicas):
-  - `bmi.service.ts` → `getBmiClassification`: el caso `bmi >= 30` no tiene tope superior, así que
-    intercepta cualquier IMC ≥30 antes de llegar a los casos `OBESITY_II`/`OBESITY_III`
-    (`bmi >= 35`/`bmi >= 40`), que quedan **inalcanzables**.
+  `doc/technical-debt.md`), quedaron fuera de esta fase a propósito. `bmi.service.ts` ya no está en
+  esta lista: lo usa `calculateMeasurementResults` y tiene su spec.
+- **Bug detectado en esas fórmulas muertas, sin corregir** (decisión explícita: no tocar lógica
+  clínica sin confirmación de un humano, dado que son fórmulas médicas). El de
+  `getBmiClassification` (el caso `bmi >= 30` sin tope dejaba inalcanzables `OBESITY_II`/`OBESITY_III`)
+  se corrigió al conectar el IMC a las mediciones (30-34.9 → I, 35-39.9 → II, ≥40 → III):
   - `body-fat.service.ts` → `getBodyFatClassification`: el bloque `case age < 60:` (rama hombres)
     no tiene `break`, así que cae al bloque `case age >= 60:` y **sobreescribe** el resultado ya
     calculado — afecta a cualquier hombre entre 40 y 59 años.

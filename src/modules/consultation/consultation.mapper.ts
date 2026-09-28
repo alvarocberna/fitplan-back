@@ -13,7 +13,8 @@ import {
   AnamnesisDetailsInput,
   MeasurementsDetailsInput,
 } from '../../domain/dtos/clinical-domain/nutritional-consultation/create-nutritional-consultation-details.dto';
-import { SportsEventType } from '../../domain/entities/enums';
+import { MeasurementLevel, SportsEventType } from '../../domain/entities/enums';
+import { calculateMeasurementResults } from '../../domain/services/measurements/measurement-results.calculator';
 
 export function mapMealDtoToEntity(
   meal: Meal,
@@ -143,27 +144,35 @@ export function mapAnamnesisDtoToDetails(
 }
 
 //measuredAt: fecha de la medición; en el flujo de consulta es la misma consultationDate.
+// La consulta solo recoge peso y talla: es una medición BASIC, con su IMC en measurement_results.
 export function mapMeasurementsDtoToDetails(
   measurements: MeasurementsDto | null,
   measuredAt: Date,
 ): MeasurementsDetailsInput | null {
   if (!measurements) return null;
+  const hasBasic = measurements.weight != null && measurements.height != null;
   return {
     measuredAt,
     // Este flujo siempre crea una sola tanda de measurements por consulta.
     measurementNumber: 1,
-    level: null,
+    level: MeasurementLevel.BASIC,
     // El nuevo schema no tiene un campo dedicado para "somatotype"; se persiste como texto libre
     // acá (limitación documentada, ver doc/postgres-domain-groundwork.md).
     description: measurements.somatotype ?? null,
-    basicMeasurements:
-      measurements.weight != null && measurements.height != null
-        ? {
-            weight: measurements.weight,
-            height: measurements.height,
-            sittingHeight: null,
-            armSpan: null,
-          }
-        : undefined,
+    basicMeasurements: hasBasic
+      ? {
+          weight: measurements.weight!,
+          height: measurements.height!,
+          sittingHeight: null,
+          armSpan: null,
+        }
+      : undefined,
+    measurementResults: hasBasic
+      ? calculateMeasurementResults({
+          level: MeasurementLevel.BASIC,
+          weight: measurements.weight,
+          height: measurements.height,
+        })
+      : undefined,
   };
 }

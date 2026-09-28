@@ -131,4 +131,21 @@ describe('CreateConsultationUseCase', () => {
     expect(details.measurements!.measuredAt).toBeInstanceOf(Date);
     expect(details.measurements!.measuredAt).toBe(details.consultation.consultationDate);
   });
+
+  it('guarda la medición como BASIC con su IMC en measurement_results', async () => {
+    const dto = {
+      ...baseDto,
+      measurements: { weight: 70, height: 175, somatotype: null },
+    } as unknown as CompleteConsultationDtoImpl;
+
+    await useCase.execute({ claims, consultation: dto });
+
+    const [details] =
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mock.calls[0];
+    expect(details.measurements!.level).toBe('BASIC');
+    expect(details.measurements!.measurementResults).toEqual({
+      bmi: 22.86,
+      bmiClassification: 'NORMAL_WEIGHT',
+    });
+  });
 });

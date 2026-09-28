@@ -26,7 +26,7 @@ export function getBmiClassification(bmi: number): BmiClassification{
         case bmi >= 25 && bmi < 30:
             classification = BmiClassification.OVERWEIGHT;
             break;
-        case bmi >= 30:
+        case bmi >= 30 && bmi < 35:
             classification = BmiClassification.OBESITY_I;
             break;
         case bmi >= 35 && bmi < 40:

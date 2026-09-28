@@ -10,19 +10,21 @@ import {
   ValidateNested,
 } from 'class-validator';
 import type { MeasurementLevel } from '../../../domain/entities/enums';
+import type { MeasurementValueUnit } from '../../../domain/dtos/clinical-domain/measurements/measurement-details.dto';
 
 // ---------------------------------------------------------------------------------------------
 // Entrada
 // ---------------------------------------------------------------------------------------------
 
-export const MEASUREMENT_VALUE_UNITS = ['PERCENTAGE', 'KG'] as const;
-export type MeasurementValueUnit = (typeof MEASUREMENT_VALUE_UNITS)[number];
+export type { MeasurementValueUnit };
+export const MEASUREMENT_VALUE_UNITS: readonly MeasurementValueUnit[] = ['PERCENTAGE', 'KG'];
 
 // Tipos que el usuario puede registrar por su cuenta (ISAK 1 requiere un antropometrista).
 export const RECORDABLE_LEVELS = ['BASIC', 'BIOIMPEDANCE'] as const;
 export type RecordableLevel = (typeof RECORDABLE_LEVELS)[number];
 
-// Grasa corporal o masa muscular de una bioimpedancia, en % o en kg (lo que muestre la balanza).
+// Componente de una bioimpedancia (grasa corporal, masa muscular, grasa visceral o masa ósea), en %
+// o en kg (lo que muestre la balanza), nunca ambos: el otro lo calcula el backend.
 export class MeasurementValueDtoImpl {
   @IsNumber()
   @IsPositive()
@@ -33,7 +35,8 @@ export class MeasurementValueDtoImpl {
 }
 
 // Body de POST /me/measurements (CU-CLI-05). Las reglas que cruzan campos (fecha no futura,
-// bodyFat/muscleMass según el tipo, % y kg coherentes con el peso) viven en measurement-input.ts.
+// componentes según el tipo, % y kg coherentes con el peso) viven en measurement-input.ts. En una
+// bioimpedancia bodyFat y muscleMass son obligatorios; visceralFat y boneMass, opcionales.
 export class RecordMeasurementDtoImpl {
   @IsIn(RECORDABLE_LEVELS)
   level!: RecordableLevel;
@@ -61,10 +64,20 @@ export class RecordMeasurementDtoImpl {
   @Type(() => MeasurementValueDtoImpl)
   @IsOptional()
   muscleMass?: MeasurementValueDtoImpl;
+
+  @ValidateNested()
+  @Type(() => MeasurementValueDtoImpl)
+  @IsOptional()
+  visceralFat?: MeasurementValueDtoImpl;
+
+  @ValidateNested()
+  @Type(() => MeasurementValueDtoImpl)
+  @IsOptional()
+  boneMass?: MeasurementValueDtoImpl;
 }
 
 // Body de PATCH /me/measurements/:id (CU-CLI-06): solo lo que cambia. Sin `level`: cambiar de tipo
-// es registrar otra medición.
+// es registrar otra medición. Los resultados (IMC, kg y %) se recalculan con el estado final.
 export class UpdateMeasurementDtoImpl {
   @IsDateString()
   @IsOptional()
@@ -91,6 +104,17 @@ export class UpdateMeasurementDtoImpl {
   @Type(() => MeasurementValueDtoImpl)
   @IsOptional()
   muscleMass?: MeasurementValueDtoImpl;
+
+  // Opcionales: ausente mantiene lo guardado; null lo quita.
+  @ValidateNested()
+  @Type(() => MeasurementValueDtoImpl)
+  @IsOptional()
+  visceralFat?: MeasurementValueDtoImpl | null;
+
+  @ValidateNested()
+  @Type(() => MeasurementValueDtoImpl)
+  @IsOptional()
+  boneMass?: MeasurementValueDtoImpl | null;
 }
 
 // Query de GET /me/measurements (CU-CLI-03): rango opcional de measured_at.

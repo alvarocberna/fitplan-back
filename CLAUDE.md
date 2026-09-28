@@ -146,9 +146,16 @@ based on `objetivo` (`definicion` | `mantencion` | `volumen`). `requirements/sup
 supplement prescription from weight alone. Both are computed once in `GeneratePersonalizedPlanUseCase` and handed
 to the AI as fixed inputs it must not recalculate.
 
-Several other formula services exist (BMI, skinfolds, muscle mass, body fat %, phantom, IMM,
+`domain/services/measurements/measurement-results.calculator.ts` (`calculateMeasurementResults`) builds
+the `measurement_results` row whenever a measurement is created or edited (CU-CON-02, CU-CLI-05,
+CU-CLI-06): BMI + classification from weight/height (`formulas/indexes/bmi.service.ts`) and, for
+`BIOIMPEDANCE`, kg and % of body fat, muscle mass, visceral fat and bone mass — the user enters one
+unit per component and the other is derived from weight (`formulas/body-composition/mass-conversion.service.ts`).
+On edit, the stored **percentage** is the source of truth (a weight change keeps % and recalculates kg).
+
+Several other formula services exist (skinfolds, muscle mass, body fat % from skinfolds, phantom, IMM,
 corrected perimeters, somatocarta, sports-session expenditure) but are **not yet wired into the
-plan-generation flow** — only weight and height (`peso`/`talla`) from `MedicionesDto` are currently
+plan-generation flow** (nor into measurements) — only weight and height (`peso`/`talla`) from `MedicionesDto` are currently
 used. See the README's "Deuda técnica" section and `doc/technical-debt.md` before assuming any of
 these are live.
 

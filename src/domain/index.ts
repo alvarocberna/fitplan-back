@@ -9,6 +9,7 @@ export * from './services/formulas/indexes/bmi.service';
 export * from './services/formulas/skinfolds/skinfold-sum.service';
 export * from './services/formulas/body-composition/muscle-mass.service';
 export * from './services/formulas/body-composition/body-fat.service';
+export * from './services/formulas/body-composition/mass-conversion.service';
 export * from './services/formulas/phantom/phantom.service';
 export * from './services/formulas/indexes/muscle-mass-index.service';
 export * from './services/formulas/perimeters/corrected-girths.service';
@@ -17,6 +18,9 @@ export * from './services/formulas/requirements/supplements.service';
 export * from './services/utils/age.service';
 export * from './services/utils/predefined-plan-code';
 export * from './services/formulas/requirements/requirements.service';
+
+//measurements
+export * from './services/measurements/measurement-results.calculator';
 
 //objects
 export * from './services/objects/r24h.object';

@@ -1,6 +1,6 @@
 // Input para NutritionalConsultationDatasource.createNutritionalConsultationWithDetails: crea en
 // una sola operación la NutritionalConsultation junto con todo el árbol Anamnesis+hijas y
-// Measurements+hija (nested create de Prisma). Compone los Create*Dto ya existentes de cada
+// Measurements+hijas (nested create de Prisma). Compone los Create*Dto ya existentes de cada
 // entidad hija, omitiendo la FK hacia su padre inmediato (Prisma la resuelve sola en un nested
 // create). Reemplaza al antiguo payloadJson: esto es lo que hoy arma CreateConsultationUseCase a
 // partir del CompleteConsultationDto recibido por POST /consultations.
@@ -13,6 +13,7 @@ import { CreateFoodPreferenceGroupDto } from '../food-preference-group/create-fo
 import { CreateSportsSessionDto } from '../sports-session/create-sports-session.dto';
 import { CreateSportsStrategyDto } from '../sports-strategy/create-sports-strategy.dto';
 import { CreateBasicMeasurementsDto } from '../basic-measurements/create-basic-measurements.dto';
+import { MeasurementResultsInput } from '../measurements/measurement-details.dto';
 import { MeasurementLevel } from '../../../entities/enums';
 
 export interface AnamnesisDetailsInput {
@@ -44,6 +45,8 @@ export interface MeasurementsDetailsInput {
   level: MeasurementLevel | null;
   description: string | null;
   basicMeasurements?: Omit<CreateBasicMeasurementsDto, 'measurementsId'>;
+  // Calculado con calculateMeasurementResults (IMC y su clasificación).
+  measurementResults?: MeasurementResultsInput;
 }
 
 export interface CreateNutritionalConsultationDetailsDto {

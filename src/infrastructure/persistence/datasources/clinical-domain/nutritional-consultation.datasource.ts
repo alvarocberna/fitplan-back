@@ -216,6 +216,9 @@ export class NutritionalConsultationDatasourceImpl
                   basicMeasurements: measurements.basicMeasurements
                     ? { create: measurements.basicMeasurements }
                     : undefined,
+                  measurementResults: measurements.measurementResults
+                    ? { create: [measurements.measurementResults] }
+                    : undefined,
                 },
               ],
             }

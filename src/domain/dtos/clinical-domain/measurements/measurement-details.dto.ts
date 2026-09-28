@@ -12,11 +12,19 @@ export type MeasurementBasicInput = Pick<
 > &
   Partial<Pick<BasicMeasurementsEntity, 'sittingHeight' | 'armSpan'>>;
 
-// Columnas de measurement_results que se escriben (hoy solo las que ingresa el usuario en una
-// bioimpedancia: grasa y masa muscular, en % o kg, con su método).
+// Columnas de measurement_results que se escriben (las calcula calculateMeasurementResults).
 export type MeasurementResultsInput = Partial<
   Omit<MeasurementResultsEntity, 'id' | 'measurementsId' | 'measurements'>
 >;
+
+// Un componente de una bioimpedancia (grasa corporal, masa muscular, grasa visceral o masa ósea)
+// tal como lo ingresa el usuario: en % o en kg, nunca ambos.
+export type MeasurementValueUnit = 'PERCENTAGE' | 'KG';
+
+export interface MeasurementValueInput {
+  value: number;
+  unit: MeasurementValueUnit;
+}
 
 // Medición registrada por el usuario (sin consulta: consultation_id = null), con sus hijas, en una
 // sola escritura (CU-CLI-05).

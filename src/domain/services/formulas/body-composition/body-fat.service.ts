@@ -1,5 +1,6 @@
 import { EvaClassification } from '../classifications.enum';
 import {sumSkinfolds6, Skinfolds6Type} from '../skinfolds/skinfold-sum.service';
+import { calculateKgFromPercentage, calculatePercentageFromKg } from './mass-conversion.service';
 
 type FaulknerType = {
     gender: string,
@@ -25,6 +26,11 @@ type BodyDensityType = {
 type BodyFatKgType = {
     weight: number
     bodyFatPercentage: number
+}
+
+type BodyFatPercentageType = {
+    weight: number
+    bodyFatKg: number
 }
 
 type BodyFatClassificationType = {
@@ -104,8 +110,11 @@ export function calculateBodyDensity({age, gender, skinfoldSum4}: BodyDensityTyp
 }
 
 export function calculateBodyFatKg({weight, bodyFatPercentage}: BodyFatKgType): number{
-    const bodyFat = ( bodyFatPercentage * weight ) / 100;
-    return bodyFat;
+    return calculateKgFromPercentage({weight, percentage: bodyFatPercentage});
+}
+
+export function calculateBodyFatPercentage({weight, bodyFatKg}: BodyFatPercentageType): number{
+    return calculatePercentageFromKg({weight, kg: bodyFatKg});
 }
 
 export function getBodyFatClassification({gender, age, bodyFatPercentage}: BodyFatClassificationType): EvaClassification{

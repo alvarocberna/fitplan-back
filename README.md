@@ -242,8 +242,9 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
   bmiClassification, bfPercentage }`): la medición de `measuredAt` más reciente del historial clínico,
   sea de consulta o registrada por el usuario
   (`MeasurementsRepository.getLatestMeasurementsWithResultsByPatientId`). `bmi`, su clasificación y
-  `bfPercentage` salen solo de `measurement_results` (no se calculan al leer; hoy ningún flujo los
-  puebla, así que vuelven `null`). Todo es null-safe: sin consulta, plan o medición, esos campos
+  `bfPercentage` salen solo de `measurement_results` (no se calculan al leer: los calcula
+  `calculateMeasurementResults` al crear o editar la medición; `bfPercentage` solo existe en una
+  bioimpedancia). Todo es null-safe: sin consulta, plan o medición, esos campos
   vuelven `null`.
 
 ### clinical: `/me/consultations`
@@ -293,19 +294,29 @@ están en `modules/clinical/measurement.mapper.ts` y las reglas de entrada en `m
   sin `pha_*` ni rangos de referencia todavía). Inexistente o ajena → 404 (R2, filtra por
   `clinicalRecord.patientId` en la misma query).
 - **`POST /me/measurements`** (`RecordMeasurementUseCase`, CU-CLI-05; `RecordMeasurementDtoImpl`):
-  `{ level: 'BASIC'|'BIOIMPEDANCE', measuredAt?, weight (20-300), height (100-250), bodyFat?, muscleMass? }`
-  (`bodyFat`/`muscleMass` = `{ value, unit: 'PERCENTAGE'|'KG' }`, obligatorios en bioimpedancia y
-  prohibidos en básica; fecha no futura; % 1-80; kg < peso → si no, 400). Hace find-or-create del
-  `clinical_record`, asigna `measurement_number` = máximo del historial + 1 y crea la medición
-  (`consultation_id = null`) con `basic_measurements` en una escritura. `measurement_results` guarda
-  **solo lo ingresado**: en bioimpedancia, grasa y masa muscular en la unidad ingresada con
-  `*_method = 'BIOIMPEDANCE'`; en básica no se crea. IMC, conversiones % ↔ kg y clasificaciones quedan
-  para las fórmulas (`MeasurementResultsCalculator`, pendiente). Responde 201 con el detalle.
+  `{ level: 'BASIC'|'BIOIMPEDANCE', measuredAt?, weight (20-300), height (100-250), bodyFat?, muscleMass?,
+  visceralFat?, boneMass? }` (cada componente = `{ value, unit: 'PERCENTAGE'|'KG' }`: un solo valor, en %
+  **o** en kg. `bodyFat`/`muscleMass` obligatorios en bioimpedancia, `visceralFat`/`boneMass` opcionales, y
+  los cuatro prohibidos en básica; fecha no futura; % 1-80; kg < peso → si no, 400). Hace find-or-create
+  del `clinical_record`, asigna `measurement_number` = máximo del historial + 1 y crea la medición
+  (`consultation_id = null`) con `basic_measurements` y `measurement_results` en una escritura.
+  `measurement_results` lo calcula `calculateMeasurementResults`
+  (`domain/services/measurements/measurement-results.calculator.ts`): siempre `bmi` + `bmi_classification`;
+  en bioimpedancia, además `*_kg` y `*_percentage` de cada componente ingresado (el que falta se calcula
+  con el peso, redondeado a 2 decimales) con `*_method = 'BIOIMPEDANCE'`; las clasificaciones de
+  bf/mm/vf/bm quedan en `null` (pendientes). Responde 201 con el detalle.
 - **`PATCH /me/measurements/:measurementId`** (`UpdateMyMeasurementUseCase`, CU-CLI-06;
-  `UpdateMeasurementDtoImpl`, sin `level`): corrige fecha, peso, talla y, en bioimpedancia, grasa y masa
-  muscular. **Se pueden editar todas las mediciones**, también las de una consulta. Valida el resultado
-  de combinar lo guardado con lo enviado; actualiza padre + hijas en una transacción
+  `UpdateMeasurementDtoImpl`, sin `level`): corrige fecha, peso, talla y, en bioimpedancia, los cuatro
+  componentes (`visceralFat`/`boneMass: null` quita el guardado). **Se pueden editar todas las
+  mediciones**, también las de una consulta. Valida y **recalcula `measurement_results`** con el resultado
+  de combinar lo guardado con lo enviado: de lo no enviado se toma el **% guardado** (fuente de verdad),
+  así que si cambia solo el peso se mantienen los % y se recalculan los kg y el IMC. Solo la fecha no
+  recalcula nada. Actualiza padre + hijas en una transacción
   (`MeasurementsRepository.updateMeasurementWithDetails`).
+
+La medición que crea `POST /consultations` (CU-CON-02) se guarda como `level = 'BASIC'` con su IMC en
+`measurement_results`, calculado con la misma función. La migración
+`20260928120000_backfill_measurement_results` completó lo mismo para las mediciones anteriores.
 
 ### consultation: `/consultations`
 
@@ -442,10 +453,17 @@ Resumen:
 prescripción de suplementos (ej. creatina, proteína) en función del peso del paciente, usada como
 input fijo del prompt de generación del plan (igual que los requerimientos: la IA no la recalcula).
 
-Otros servicios de fórmulas presentes en `domain/services/formulas/` (IMC, suma de pliegues, masa
-muscular, % grasa corporal, phantom, IMM, perímetros corregidos, somatocarta, sesión deportiva)
-implementan cálculos de evaluación antropométrica y deportiva clásicos en nutrición deportiva, pero
-**aún no están conectados** al flujo de generación del plan (los `mediciones` que llegan hoy solo
+### Resultados de una medición
+
+`src/domain/services/measurements/measurement-results.calculator.ts` → `calculateMeasurementResults`
+arma la fila de `measurement_results` al crear o editar una medición (CU-CON-02, CU-CLI-05, CU-CLI-06):
+IMC y su clasificación (`formulas/indexes/bmi.service.ts`) con peso y talla y, en una bioimpedancia, kg y
+% de grasa corporal, masa muscular, grasa visceral y masa ósea (`formulas/body-composition/mass-conversion.service.ts`).
+
+Otros servicios de fórmulas presentes en `domain/services/formulas/` (suma de pliegues, masa
+muscular, % grasa corporal por pliegues, phantom, IMM, perímetros corregidos, somatocarta, sesión
+deportiva) implementan cálculos de evaluación antropométrica y deportiva clásicos en nutrición
+deportiva, pero **aún no están conectados** al flujo de generación del plan (los `mediciones` que llegan hoy solo
 traen peso y talla; `sesion-deportiva.service.ts` tiene la intención de calcular el gasto de cada
 sesión de entrenamiento pero no está enchufado — ver `doc/technical-debt.md`).
 

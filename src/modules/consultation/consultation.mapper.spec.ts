@@ -181,12 +181,13 @@ describe('mapMeasurementsDtoToDetails', () => {
     expect(mapMeasurementsDtoToDetails(null, measuredAt)).toBeNull();
   });
 
-  it('mapea weight/height a basicMeasurements y somatotype a description', () => {
+  it('mapea weight/height a basicMeasurements, somatotype a description, y calcula el IMC de una medición BASIC', () => {
     const measurements: MeasurementsDto = { weight: 70, height: 175, somatotype: 'MESO' };
     const result = mapMeasurementsDtoToDetails(measurements, measuredAt)!;
 
     expect(result.measuredAt).toBe(measuredAt);
     expect(result.measurementNumber).toBe(1);
+    expect(result.level).toBe('BASIC');
     expect(result.description).toBe('MESO');
     expect(result.basicMeasurements).toEqual({
       weight: 70,
@@ -194,14 +195,19 @@ describe('mapMeasurementsDtoToDetails', () => {
       sittingHeight: null,
       armSpan: null,
     });
+    expect(result.measurementResults).toEqual({
+      bmi: 22.86,
+      bmiClassification: 'NORMAL_WEIGHT',
+    });
   });
 
-  it('omite basicMeasurements si falta weight o height', () => {
+  it('omite basicMeasurements y measurementResults si falta weight o height', () => {
     const result = mapMeasurementsDtoToDetails(
       { weight: null, height: 175, somatotype: null },
       measuredAt,
     )!;
     expect(result.basicMeasurements).toBeUndefined();
+    expect(result.measurementResults).toBeUndefined();
     expect(result.description).toBeNull();
   });
 });

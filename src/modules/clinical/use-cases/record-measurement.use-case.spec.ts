@@ -49,7 +49,7 @@ describe('RecordMeasurementUseCase', () => {
     height: 172,
   };
 
-  it('registra una medición básica en el historial del usuario (lo crea si no existe) con el siguiente número y sin resultados', async () => {
+  it('registra una medición básica en el historial del usuario (lo crea si no existe) con el siguiente número y su IMC', async () => {
     const detail = await useCase.execute({ claims, data: basic });
 
     expect(clinicalRecordRepository.findOrCreateClinicalRecordByPatientId).toHaveBeenCalledWith('user-1');
@@ -60,7 +60,7 @@ describe('RecordMeasurementUseCase', () => {
       level: 'BASIC',
       measurementNumber: 3,
       basic: { weight: 70, height: 172 },
-      results: null,
+      results: { bmi: 23.66, bmiClassification: 'NORMAL_WEIGHT' },
     });
     // R6: devuelve lo creado, releído con sus hijas
     expect(measurementsRepository.getMeasurementDetailByIdAndPatientId).toHaveBeenCalledWith('m-new', 'user-1');
@@ -76,7 +76,7 @@ describe('RecordMeasurementUseCase', () => {
     expect(measuredAt.getTime()).toBeGreaterThanOrEqual(before);
   });
 
-  it('en bioimpedancia guarda la grasa y la masa muscular tal como se ingresaron, con método BIOIMPEDANCE', async () => {
+  it('en bioimpedancia calcula el IMC y completa kg y % de cada componente, con método BIOIMPEDANCE', async () => {
     await useCase.execute({
       claims,
       data: {
@@ -84,16 +84,25 @@ describe('RecordMeasurementUseCase', () => {
         level: 'BIOIMPEDANCE',
         bodyFat: { value: 18, unit: 'PERCENTAGE' },
         muscleMass: { value: 32, unit: 'KG' },
+        visceralFat: { value: 2.1, unit: 'KG' },
       },
     });
 
     expect(measurementsRepository.createMeasurementWithDetails.mock.calls[0][0].results).toEqual({
+      bmi: 23.66,
+      bmiClassification: 'NORMAL_WEIGHT',
       bfPercentage: 18,
-      bfKg: null,
+      bfKg: 12.6,
       bfMethod: 'BIOIMPEDANCE',
-      mmPercentage: null,
+      mmPercentage: 45.71,
       mmKg: 32,
       mmMethod: 'BIOIMPEDANCE',
+      vfPercentage: 3,
+      vfKg: 2.1,
+      vfMethod: 'BIOIMPEDANCE',
+      bmPercentage: null,
+      bmKg: null,
+      bmMethod: null,
     });
   });
 
@@ -101,6 +110,17 @@ describe('RecordMeasurementUseCase', () => {
     ['una fecha futura', { ...basic, measuredAt: '2999-01-01T00:00:00.000Z' }],
     ['bioimpedancia sin masa muscular', { ...basic, level: 'BIOIMPEDANCE', bodyFat: { value: 18, unit: 'PERCENTAGE' } }],
     ['grasa corporal en una medición básica', { ...basic, bodyFat: { value: 18, unit: 'PERCENTAGE' } }],
+    ['masa ósea en una medición básica', { ...basic, boneMass: { value: 3, unit: 'KG' } }],
+    [
+      'grasa visceral en kg mayores que el peso',
+      {
+        ...basic,
+        level: 'BIOIMPEDANCE',
+        bodyFat: { value: 18, unit: 'PERCENTAGE' },
+        muscleMass: { value: 30, unit: 'KG' },
+        visceralFat: { value: 75, unit: 'KG' },
+      },
+    ],
     [
       'un % fuera de rango',
       { ...basic, level: 'BIOIMPEDANCE', bodyFat: { value: 90, unit: 'PERCENTAGE' }, muscleMass: { value: 30, unit: 'KG' } },
