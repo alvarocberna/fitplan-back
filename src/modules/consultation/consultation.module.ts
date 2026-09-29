@@ -7,6 +7,7 @@ import { BillingModule } from '../billing/billing.module';
 import { ConsultationsController } from './consultations.controller';
 import { ChatAnamnesisUseCase } from './use-cases/chat-anamnesis.use-case';
 import { CreateConsultationUseCase } from './use-cases/create-consultation.use-case';
+import { EvaluateGoalFeasibilityUseCase } from './use-cases/evaluate-goal-feasibility.use-case';
 
 @Module({
   imports: [
@@ -17,6 +18,10 @@ import { CreateConsultationUseCase } from './use-cases/create-consultation.use-c
     BillingModule,
   ],
   controllers: [ConsultationsController],
-  providers: [ChatAnamnesisUseCase, CreateConsultationUseCase],
+  providers: [
+    ChatAnamnesisUseCase,
+    CreateConsultationUseCase,
+    EvaluateGoalFeasibilityUseCase,
+  ],
 })
 export class ConsultationModule {}

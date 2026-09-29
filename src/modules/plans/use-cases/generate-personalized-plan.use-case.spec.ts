@@ -9,6 +9,7 @@ import {
 } from '../../../domain/ports';
 import { NutritionalConsultationRepository } from '../../../domain/repositories/clinical-domain/nutritional-consultation.repository';
 import { PlanRepository } from '../../../domain/repositories/clinical-domain/plan.repository';
+import { MeasurementsRepository } from '../../../domain/repositories/clinical-domain/measurements.repository';
 import { calculateAge } from '../../../domain/services/utils/age.service';
 import { calculateRequirements } from '../../../domain/services/formulas/requirements/requirements.service';
 import { determineMealTimes } from '../../../domain/services/alimentos/meal-times.service';
@@ -77,6 +78,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   let fileStorage: jest.Mocked<FileStorage>;
   let nutritionalConsultationRepository: jest.Mocked<NutritionalConsultationRepository>;
   let planRepository: jest.Mocked<PlanRepository>;
+  let measurementsRepository: jest.Mocked<MeasurementsRepository>;
 
   const dateOfBirth = new Date('1996-01-01');
   const weight = 70;
@@ -108,6 +110,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
   const orderEntity = {
     id: 'order-1',
+    userId: 'user-1',
     product: { name: 'Plan personalizado' },
     user: {
       rut: null,
@@ -185,6 +188,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
           useValue: { getNutritionalConsultationWithDetailsByOrderId: jest.fn() },
         },
         { provide: PlanRepository, useValue: { upsertPlanWithMainNutritionalPlanByOrderId: jest.fn() } },
+        { provide: MeasurementsRepository, useValue: { listMeasurementsByPatientId: jest.fn() } },
       ],
     }).compile();
 
@@ -196,8 +200,10 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     fileStorage = module.get(FileStorage);
     nutritionalConsultationRepository = module.get(NutritionalConsultationRepository);
     planRepository = module.get(PlanRepository);
+    measurementsRepository = module.get(MeasurementsRepository);
 
     planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mockResolvedValue({} as any);
+    measurementsRepository.listMeasurementsByPatientId.mockResolvedValue([]);
     orderLifecycle.tryStartGeneration.mockResolvedValue(true);
     orderLifecycle.findByIdWithUser.mockResolvedValue(orderEntity);
     nutritionalConsultationRepository.getNutritionalConsultationWithDetailsByOrderId.mockResolvedValue(consultationEntity);
@@ -209,7 +215,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
   // Deja al mock de OpenAI respondiendo "perfecto" (calza con las porciones calculadas por el
   // código) y devuelve lo calculado para que cada test pueda contrastarlo con el plan resultante.
-  function mockMatchingAiResponses() {
+  function mockMatchingAiResponses(classifiedGoal: string = goal) {
     const age = calculateAge(dateOfBirth);
     const requirements = calculateRequirements({
       weight,
@@ -217,18 +223,18 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       gender,
       age,
       physicalActivityLevel,
-      goal,
+      goal: classifiedGoal,
       athlete: false,
       somatotype,
     });
-    const finalMealTimes = determineMealTimes(r24h, goal);
+    const finalMealTimes = determineMealTimes(r24h, classifiedGoal);
     const mealTimeGroups = defineFoodGroups(finalMealTimes);
     const portionAdequacyResult = calculateFoodsAndIntake(mealTimeGroups, requirements);
     const totalIntake = calculateTotalPlanIntake(portionAdequacyResult);
     const adequacy = calculateTotalAdequacy(totalIntake, requirements);
 
     llm.chatJson
-      .mockResolvedValueOnce({ physicalActivityLevel, goal }) // extractInfoPrompt
+      .mockResolvedValueOnce({ physicalActivityLevel, goal: classifiedGoal }) // extractInfoPrompt
       .mockResolvedValueOnce({
         prescription: { regimen: 'Plan personalizado', goal },
         mealTimes: buildMatchingGeneratedMealTimes(portionAdequacyResult.calculatedMealTimes),
@@ -288,6 +294,43 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     );
   });
 
+  it('en mantención fija el end_date del plan en 3 meses desde el inicio', async () => {
+    mockMatchingAiResponses();
+
+    await service.execute({ orderId: 'order-1' });
+
+    const [{ nutritionalPlan }] =
+      planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock.calls[0];
+    const expectedEnd = new Date(nutritionalPlan.startDate);
+    expectedEnd.setUTCMonth(expectedEnd.getUTCMonth() + 3);
+    expect(nutritionalPlan.endDate).toEqual(expectedEnd);
+  });
+
+  it('en definición persiste la proyección (usando la composición corporal más reciente) y su end_date', async () => {
+    measurementsRepository.listMeasurementsByPatientId.mockResolvedValue([
+      { measurementResults: [{ bfPercentage: null, mmKg: null }] },
+      { measurementResults: [{ bfPercentage: 30, mmKg: 25 }] },
+    ] as any);
+    mockMatchingAiResponses('definicion');
+
+    await service.execute({ orderId: 'order-1' });
+
+    expect(measurementsRepository.listMeasurementsByPatientId).toHaveBeenCalledWith('user-1');
+    const [{ nutritionalPlan, projection }] =
+      planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock.calls[0];
+    // 70 kg / 175 cm, 30% GC, mujer: -2 kg/mes x 3 meses -> 64 kg, IMC 20,9, 23,4% GC
+    expect(projection).toEqual({
+      projectedStartDate: nutritionalPlan.startDate,
+      projectedEndDate: nutritionalPlan.endDate,
+      projectedWeight: 64,
+      projectedBmi: 20.9,
+      projectedBfKg: 15,
+      projectedBfPercentage: 23.4,
+      projectedMmKg: 25,
+      projectedMmPercentage: 39.1,
+    });
+  });
+
   it('persiste el Plan (por orderId) con su NutritionalPlan principal y sus tablas hijas, antes de marcar la orden como completada', async () => {
     const { requirements, totalIntake, portionAdequacyResult } = mockMatchingAiResponses();
 
@@ -302,7 +345,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         period: null,
         mainPlan: true,
         startDate: expect.any(Date),
-        endDate: null,
+        endDate: expect.any(Date),
         goal,
         dietRegimen: 'Plan personalizado',
         calorieRequirement: requirements.calories,
@@ -316,6 +359,8 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         supplements: [],
         sportsRecommendations: [],
       }),
+      // objetivo "mantencion": sin proyección de peso
+      projection: null,
     });
 
     // un plan_meal_time por tiempo de comida calculado, con las porciones numéricas del cálculo real

@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { CreateConsultationUseCase } from './create-consultation.use-case';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { CreateOrderUseCase } from '../../billing/use-cases/create-order.use-case';
+import { EvaluateGoalFeasibilityUseCase } from './evaluate-goal-feasibility.use-case';
 import { ClinicalRecordRepository } from '../../../domain/repositories/clinical-domain/clinical-record.repository';
 import { NutritionalConsultationRepository } from '../../../domain/repositories/clinical-domain/nutritional-consultation.repository';
 import { ProductRepository } from '../../../domain/repositories/commercial-domain/product.repository';
@@ -18,6 +19,7 @@ describe('CreateConsultationUseCase', () => {
   };
   let productRepository: { findOrCreateActiveGeneratedProduct: jest.Mock };
   let createOrder: { execute: jest.Mock };
+  let evaluateGoalFeasibility: { execute: jest.Mock };
 
   const claims: CognitoUserClaims = { sub: 'test-sub' };
   const product = { id: 'product-1', price: 10000, currency: 'CLP' };
@@ -55,6 +57,9 @@ describe('CreateConsultationUseCase', () => {
       findOrCreateActiveGeneratedProduct: jest.fn().mockResolvedValue(product),
     };
     createOrder = { execute: jest.fn().mockResolvedValue({ id: 'order-1' }) };
+    evaluateGoalFeasibility = {
+      execute: jest.fn().mockResolvedValue({ feasible: true, goal: 'mantencion', message: null }),
+    };
 
     useCase = new CreateConsultationUseCase(
       currentUser as unknown as CurrentUserResolver,
@@ -62,6 +67,7 @@ describe('CreateConsultationUseCase', () => {
       nutritionalConsultationRepository as unknown as NutritionalConsultationRepository,
       productRepository as unknown as ProductRepository,
       createOrder as unknown as CreateOrderUseCase,
+      evaluateGoalFeasibility as unknown as EvaluateGoalFeasibilityUseCase,
     );
   });
 
@@ -82,6 +88,32 @@ describe('CreateConsultationUseCase', () => {
     );
     expect(clinicalRecordRepository.findOrCreateClinicalRecordByPatientId).not.toHaveBeenCalled();
     expect(createOrder.execute).not.toHaveBeenCalled();
+  });
+
+  it('lanza BadRequestException con el mensaje de CU-CON-03 si el objetivo no es factible, sin crear orden', async () => {
+    evaluateGoalFeasibility.execute.mockResolvedValue({
+      feasible: false,
+      goal: 'definicion',
+      message: 'peso bajo',
+    });
+    const dto = {
+      ...baseDto,
+      anamnesis: { goals: { primaryGoal: 'bajar de peso', secondaryGoal: null } },
+      measurements: { weight: 50, height: 170, somatotype: null },
+    } as unknown as CompleteConsultationDtoImpl;
+
+    await expect(useCase.execute({ claims, consultation: dto })).rejects.toThrow(
+      new BadRequestException('peso bajo'),
+    );
+    expect(evaluateGoalFeasibility.execute).toHaveBeenCalledWith({
+      claims,
+      goals: { primaryGoal: 'bajar de peso', secondaryGoal: null },
+      measurements: { weight: 50, height: 170, somatotype: null },
+    });
+    expect(createOrder.execute).not.toHaveBeenCalled();
+    expect(
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails,
+    ).not.toHaveBeenCalled();
   });
 
   it('crea ficha clínica, orden (vía billing) y consulta nutricional enlazada a la orden, devolviendo el orderId', async () => {

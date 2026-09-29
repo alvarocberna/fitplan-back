@@ -5,6 +5,7 @@ import { ProductRepository } from '../../../domain/repositories/commercial-domai
 import { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { CreateOrderUseCase } from '../../billing/use-cases/create-order.use-case';
+import { EvaluateGoalFeasibilityUseCase } from './evaluate-goal-feasibility.use-case';
 import { CompleteConsultationDtoImpl } from '../dto/consultation.dto';
 import {
   mapAnamnesisDtoToDetails,
@@ -21,6 +22,7 @@ export class CreateConsultationUseCase {
     private readonly nutritionalConsultationRepository: NutritionalConsultationRepository,
     private readonly productRepository: ProductRepository,
     private readonly createOrder: CreateOrderUseCase,
+    private readonly evaluateGoalFeasibility: EvaluateGoalFeasibilityUseCase,
   ) {}
 
   async execute(input: {
@@ -40,6 +42,17 @@ export class CreateConsultationUseCase {
       throw new BadRequestException(
         'Completa tu información personal antes de generar una orden',
       );
+    }
+
+    // Respaldo de CU-CON-03 (el frontend ya lo evalúa al terminar la evaluación física): no se
+    // cobra ni se genera un plan de pérdida de peso para alguien cuyo peso ya es bajo.
+    const feasibility = await this.evaluateGoalFeasibility.execute({
+      claims: input.claims,
+      goals: dto.anamnesis?.goals ?? null,
+      measurements: dto.measurements,
+    });
+    if (!feasibility.feasible) {
+      throw new BadRequestException(feasibility.message);
     }
 
     const clinicalRecord =

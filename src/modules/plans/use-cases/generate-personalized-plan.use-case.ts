@@ -16,9 +16,15 @@ import { UserEntity } from '../../../domain/entities/user.entity';
 import { NutritionalConsultationEntity } from '../../../domain/entities/clinical-record.entity';
 import { PlanRepository } from '../../../domain/repositories/clinical-domain/plan.repository';
 import { NutritionalConsultationRepository } from '../../../domain/repositories/clinical-domain/nutritional-consultation.repository';
+import { MeasurementsRepository } from '../../../domain/repositories/clinical-domain/measurements.repository';
+import { UpsertPlanWithMainNutritionalPlanDto } from '../../../domain/dtos/clinical-domain/plan/upsert-plan-with-main-nutritional-plan.dto';
 import { AnamnesisEntity } from '../../../domain/entities/anamnesis.entity';
 import { MeasurementsEntity } from '../../../domain/entities/measurements.entity';
 import { calculateAge } from '../../../domain/services/utils/age.service';
+import {
+  calculateProjection,
+  findLatestBodyComposition,
+} from '../../../domain/services/projection/projection.service';
 import { calculateRequirements } from '../../../domain/services/formulas/requirements/requirements.service';
 import {
   calculateSupplements,
@@ -123,6 +129,8 @@ type ExtractedInfo = {
   goal: string;
 };
 
+type BaselineComposition = ReturnType<typeof findLatestBodyComposition>;
+
 // Lanzado por implicitPortions()/validateGeneratedExamples()/validateGeneratedEquivalences() cuando
 // la respuesta del LLM no calza con las porciones ya calculadas por código. Es una subclase de Error
 // solo para poder distinguir en los logs de execute() un reintento por "la IA se equivocó en el
@@ -141,6 +149,7 @@ export class GeneratePersonalizedPlanUseCase {
     private readonly fileStorage: FileStorage,
     private readonly planRepository: PlanRepository,
     private readonly nutritionalConsultationRepository: NutritionalConsultationRepository,
+    private readonly measurementsRepository: MeasurementsRepository,
   ) {}
 
   //CU-PLN-06. Lo dispara (sin await, "fire and forget") OrderPaidListener cuando billing emite
@@ -161,6 +170,7 @@ export class GeneratePersonalizedPlanUseCase {
     const order = await this.orderLifecycle.findByIdWithUser(orderId);
     const consultation = await this.getConsultationForOrder(orderId);
     const payload = this.buildCompleteConsultationDto(order, consultation);
+    const baseline = await this.getBaselineComposition(order.userId);
 
     const totalStart = Date.now();
     let validationRejections = 0;
@@ -168,7 +178,7 @@ export class GeneratePersonalizedPlanUseCase {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const attemptStart = Date.now();
       try {
-        const { plan, numericPortions } = await this.processPlan(payload);
+        const { plan, numericPortions, goal } = await this.processPlan(payload);
         const attemptDurationMs = Date.now() - attemptStart;
         this.logger.log(
           `Orden ${orderId}: intento ${attempt}/${MAX_ATTEMPTS} generado en ${attemptDurationMs}ms`,
@@ -185,14 +195,18 @@ export class GeneratePersonalizedPlanUseCase {
         // Se persiste el Plan (con su NutritionalPlan principal y todas sus tablas hijas) ANTES de
         // marcar la orden como COMPLETED, así una orden completada siempre tiene su plan normalizado.
         // Es un upsert por orderId, por lo que un reintento del loop (ej. si falla el correo más
-        // abajo) no duplica ni rompe el @unique: reemplaza el NutritionalPlan principal y sus hijos.
+        // abajo) no duplica ni rompe el @unique: reemplaza el NutritionalPlan principal, sus hijos y
+        // la proyección (que define también el end_date del plan).
         await this.planRepository.upsertPlanWithMainNutritionalPlanByOrderId({
           consultationId: consultation.id,
           orderId,
-          nutritionalPlan: mapPlanToNutritionalPlanDto(
+          ...this.buildPlanWithProjection(
             plan,
             order.product?.name ?? null,
             numericPortions,
+            goal,
+            payload,
+            baseline,
           ),
         });
 
@@ -243,6 +257,67 @@ export class GeneratePersonalizedPlanUseCase {
     }
   }
 
+  //CU-PLN-06 - proyección (doc/nutrition-plan/proyeccion.md) según el objetivo clasificado: fija el
+  //end_date del NutritionalPlan y, si el objetivo implica cambio de peso, la fila de projection.
+  private buildPlanWithProjection(
+    plan: NutritionPlanDto,
+    planName: string | null,
+    numericPortions: NumericMealTimePortions[],
+    goal: string,
+    payload: CompleteConsultationDto,
+    baseline: BaselineComposition,
+  ): Pick<UpsertPlanWithMainNutritionalPlanDto, 'nutritionalPlan' | 'projection'> {
+    const startDate = new Date();
+    const { endDate, projected } = calculateProjection({
+      goal,
+      weight: payload.measurements?.weight!,
+      height: payload.measurements?.height!,
+      gender: payload.personalInfo?.gender ?? null,
+      bfPercentage: baseline.bfPercentage,
+      mmKg: baseline.mmKg,
+      startDate,
+    });
+    return {
+      nutritionalPlan: mapPlanToNutritionalPlanDto(
+        plan,
+        planName,
+        numericPortions,
+        startDate,
+        endDate,
+      ),
+      projection: projected
+        ? {
+            projectedStartDate: startDate,
+            projectedEndDate: endDate,
+            projectedWeight: projected.weight,
+            projectedBmi: projected.bmi,
+            projectedBfKg: projected.bfKg,
+            projectedBfPercentage: projected.bfPercentage,
+            projectedMmKg: projected.mmKg,
+            projectedMmPercentage: projected.mmPercentage,
+          }
+        : null,
+    };
+  }
+
+  //helper de execute() - %GC y masa muscular de la medición más reciente que los tenga. Es
+  //best-effort: sin ella (o si falla la lectura) se proyecta solo con peso e IMC.
+  private async getBaselineComposition(
+    userId: string,
+  ): Promise<BaselineComposition> {
+    try {
+      return findLatestBodyComposition(
+        await this.measurementsRepository.listMeasurementsByPatientId(userId),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo leer la composición corporal de base del usuario ${userId} ` +
+          `(${(error as Error).message})`,
+      );
+      return { bfPercentage: null, mmKg: null };
+    }
+  }
+
   //miniatura (página 1 del PDF) para el panel del frontend. Es best-effort: cualquier fallo se
   //registra y devuelve null, porque no debe fallar el plan ya pagado ni consumir un reintento (que
   //volvería a llamar a OpenAI). Sin miniatura el frontend muestra un placeholder con el botón de descarga.
@@ -284,7 +359,11 @@ export class GeneratePersonalizedPlanUseCase {
   //columnas numéricas de plan_meal_time.
   private async processPlan(
     body: CompleteConsultationDto,
-  ): Promise<{ plan: NutritionPlanDto; numericPortions: NumericMealTimePortions[] }> {
+  ): Promise<{
+    plan: NutritionPlanDto;
+    numericPortions: NumericMealTimePortions[];
+    goal: string;
+  }> {
     //se extrae informacion del prompt: NAF y objetivo
     const { physicalActivityLevel, goal } = await this.extractInfoPrompt(body);
     //se extrae informacion del body
@@ -420,6 +499,7 @@ export class GeneratePersonalizedPlanUseCase {
     return {
       plan,
       numericPortions: calculatedMealTimes.map((calculated) => calculated.numericPortions),
+      goal,
     };
   }
 

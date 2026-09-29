@@ -21,13 +21,16 @@ export class PlanDatasourceImpl implements PlanDatasource {
   // Una sola escritura anidada (atómica): Plan -> NutritionalPlan principal -> PlanMealTime (+ notas),
   // PlanSupplement (+ notas) y PlanSportsRecommendation. En el update se borra el NutritionalPlan
   // principal previo y se crea el nuevo; sus tablas hijas se borran por ON DELETE CASCADE, así un
-  // reintento de la generación reemplaza el árbol completo sin duplicarlo.
+  // reintento de la generación reemplaza el árbol completo sin duplicarlo. La proyección se trata
+  // igual: en el update se borran las previas y se crea la nueva (si la hay).
   async upsertPlanWithMainNutritionalPlanByOrderId({
     consultationId,
     orderId,
     nutritionalPlan,
+    projection,
   }: UpsertPlanWithMainNutritionalPlanDto): Promise<PlanEntity> {
     const nutritionalPlanCreate = toNestedCreate(nutritionalPlan);
+    const projectionCreate = projection ? { create: projection } : {};
     return this.prisma.plan.upsert({
       where: { orderId },
       create: {
@@ -35,12 +38,14 @@ export class PlanDatasourceImpl implements PlanDatasource {
         orderId,
         active: true,
         nutritionalPlans: { create: nutritionalPlanCreate },
+        projections: projectionCreate,
       },
       update: {
         nutritionalPlans: {
           deleteMany: { mainPlan: true },
           create: nutritionalPlanCreate,
         },
+        projections: { deleteMany: {}, ...projectionCreate },
       },
       include: {
         nutritionalPlans: {

@@ -48,22 +48,24 @@ const PORTION_COLUMN: Record<keyof NumericMealTimePortions, PortionColumn> = {
 };
 
 // `numericPortions` va alineado por índice con plan.mealTimes: son las porciones exactas que calculó
-// el código (NutritionPlanDto solo trae su texto, ej "2 porciones").
+// el código (NutritionPlanDto solo trae su texto, ej "2 porciones"). `endDate` es el término del
+// período proyectado (ver domain/services/projection/projection.service.ts).
 export function mapPlanToNutritionalPlanDto(
   plan: NutritionPlanDto,
   planName: string | null,
   numericPortions: NumericMealTimePortions[],
   startDate: Date = new Date(),
+  endDate: Date | null = null,
 ): NutritionalPlanTreeDto {
   const { prescription, planIntake } = plan;
 
   return {
     planName: planName ?? DEFAULT_PLAN_NAME,
-    // La generación automática produce un único plan, sin periodización ni fecha de término.
+    // La generación automática produce un único plan, sin periodización.
     period: null,
     mainPlan: true,
     startDate,
-    endDate: null,
+    endDate,
     goal: prescription.goal,
     dietRegimen: prescription.regimen,
     calorieRequirement: prescription.calories,

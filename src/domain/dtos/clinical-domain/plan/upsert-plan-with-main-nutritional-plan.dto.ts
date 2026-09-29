@@ -4,6 +4,7 @@ import { CreatePlanMealTimeNoteDto } from '../plan-meal-time-note/create-plan-me
 import { CreatePlanSupplementDto } from '../plan-supplement/create-plan-supplement.dto';
 import { CreatePlanSupplementNoteDto } from '../plan-supplement-note/create-plan-supplement-note.dto';
 import { CreatePlanSportsRecommendationDto } from '../plan-sports-recommendation/create-plan-sports-recommendation.dto';
+import { CreateProjectionDto } from '../projection/create-projection.dto';
 
 // NutritionalPlan con todas sus tablas hijas, tal como se crea en una sola escritura anidada: las
 // FKs hacia el padre (planId, planMealTimeId, planSupplementId) las resuelve Prisma.
@@ -23,4 +24,7 @@ export interface UpsertPlanWithMainNutritionalPlanDto {
   consultationId: string;
   orderId: string;
   nutritionalPlan: NutritionalPlanTreeDto;
+  // Proyección del plan (null si el objetivo no implica cambio de peso o no es factible). Reemplaza
+  // la(s) proyección(es) previa(s) del Plan, igual que el NutritionalPlan principal.
+  projection?: Omit<CreateProjectionDto, 'planId'> | null;
 }

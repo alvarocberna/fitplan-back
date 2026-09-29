@@ -588,7 +588,8 @@ model MeasurementResults {
   @@map("measurement_results")
 }
 
-// Proyección de composición corporal asociada a un Plan (un Plan puede tener N). Hoy no se puebla.
+// Proyección de composición corporal asociada a un Plan (un Plan puede tener N). La crea la
+// generación del plan personalizado (CU-PLN-06) según doc/nutrition-plan/proyeccion.md.
 model Projection {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
@@ -636,7 +637,8 @@ model NutritionalPlan {
   period    PlanPeriod?
   mainPlan  Boolean     @default(true) @map("main_plan")
   startDate DateTime    @map("start_date") @db.Date
-  // El ERD lo define NOT NULL, pero la generación automática no tiene fecha de término: queda nullable.
+  // El ERD lo define NOT NULL; la generación lo fija con el período proyectado, pero los planes
+  // anteriores no lo tienen: queda nullable.
   endDate   DateTime?   @map("end_date") @db.Date
 
   goal        String

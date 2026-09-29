@@ -68,7 +68,7 @@ src/
 ├── common/                     # CognitoAuthGuard, @CognitoUser(), HttpExceptionFilter, API_PREFIX
 ├── modules/                    # NestJS business modules
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
-│   ├── consultation/           # /consultations/chat, /consultations
+│   ├── consultation/           # /consultations/chat, /consultations/goal-feasibility, /consultations
 │   ├── plans/                  # /plans/standard/*, /me/plans, /me/plans/latest/projection, /me/plans/:orderId, plan generation (listener of order.paid)
 │   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment;
 │   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid
@@ -111,24 +111,30 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    (`modules/consultation/prompts/anamnesis-chat.prompt.ts`) describing the full `AnamnesisDto` schema and
    current fill-state, calls the LLM, normalizes the model's JSON (`dto/anamnesis-normalizer.ts`) and
    **recomputes `isComplete` on the server** rather than trusting the model.
-2. `POST /consultations` (`CreateConsultationUseCase`, requires a **complete** profile — 400 otherwise)
-   — resolves the user and their `ClinicalRecord`, the active `GENERATED` `Product`, creates the `Order`
+2. `POST /consultations/goal-feasibility` (`EvaluateGoalFeasibilityUseCase`, CU-CON-03) — called by the
+   frontend when the physical assessment ends: classifies the goal via the LLM
+   (`prompts/classify-goal.prompt.ts`) and applies `evaluateGoalFeasibility`
+   (`domain/services/projection/projection.service.ts`): losing weight is not feasible if not even 1 month
+   (−2 kg) keeps BMI ≥ 20 and body fat % above the per-sex floor. Always 200 with `{ feasible, goal, message }`.
+3. `POST /consultations` (`CreateConsultationUseCase`, requires a **complete** profile — 400 otherwise;
+   also 400 if the goal is not feasible, re-running CU-CON-03 as a backstop) — resolves the user and their `ClinicalRecord`, the active `GENERATED` `Product`, creates the `Order`
    through billing's `CreateOrderUseCase` (`paymentStatus='PENDING'`), and persists the full
    `NutritionalConsultation` (with `orderId`) + `Anamnesis`/`Measurements` in one nested Prisma write
    (`consultation.mapper.ts`). Order and consultation are two separate writes (no shared transaction yet).
    `personalInfo` is still required by the contract but not read.
-3. Payment (`POST /webhooks/payments` or the simulated `POST /dev/orders/:id/simulate-payment`, enabled
+4. Payment (`POST /webhooks/payments` or the simulated `POST /dev/orders/:id/simulate-payment`, enabled
    only with `ENABLE_PAYMENT_SIMULATION=true`) → `ConfirmPaymentUseCase` marks the order paid
    **idempotently** (+ `payment` row, same transaction; for `PREDEFINED` products it also copies the PDF
    keys and completes the order) and emits `order.paid` only if this call marked it. It responds
    immediately (`processed` | `already_processed`).
-4. `OrderPaidListener` runs `GeneratePersonalizedPlanUseCase` fire-and-forget for `GENERATED` products:
+5. `OrderPaidListener` runs `GeneratePersonalizedPlanUseCase` fire-and-forget for `GENERATED` products:
    rebuilds the consultation by `order_id` → classifies activity level/objective via the LLM → computes
    energy/macro requirements and supplements **without AI** → asks the LLM for the plan using those numbers
    verbatim, as exchange-group portions (validated in code) → retries up to 4x with exponential backoff →
-   renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan`, completes the order
-   (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
-5. `GET /orders/:id/status` (`GetOrderStatusUseCase`) — polling endpoint; validates ownership (404 for
+   renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan` (its `endDate`) + its
+   `Projection` (`calculateProjection`, rules in `doc/nutrition-plan/proyeccion.md`; none for
+   "mantencion"), completes the order (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
+6. `GET /orders/:id/status` (`GetOrderStatusUseCase`) — polling endpoint; validates ownership (404 for
    missing or foreign orders). `GET /me/plans` lists the user's ready plans (with name, type and summary);
    `GET /me/plans/:orderId` returns one plan's full detail (child tables, or `order.planJson` for older plans);
    `GET /me/plans/latest/projection` returns the latest dated plan's period and its `Projection` (404 if none).
@@ -186,7 +192,8 @@ portions from the calculation), `PlanSupplement` (one row per supplement, + note
 `PlanSportsRecommendation` — see `modules/plans/generation/plan-generation.mapper.ts`; children are
 replaced via `ON DELETE CASCADE` on retries), `Order`, and `Product`;
 `AuthIdentity` is used by `modules/identity/` (see below). The
-rest (`Projection` is only read, by `GET /me/plans/latest/projection`; several `clinical-domain` leaf entities)
+rest (`Projection` is written by plan generation, nested in the same `Plan` upsert, and read by
+`GET /me/plans/latest/projection`; several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
 the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
 written by the payment webhook (`OrderRepository.markOrderAsPaidWithPayment`, same transaction that

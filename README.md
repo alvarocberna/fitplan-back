@@ -200,6 +200,7 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 | PATCH | `/me` | Sí | `UpdateMyProfileUseCase` | identity |
 | GET | `/me/summary` | Sí | `GetMySummaryUseCase` | identity |
 | POST | `/consultations/chat` | Sí | `ChatAnamnesisUseCase` | consultation |
+| POST | `/consultations/goal-feasibility` | Sí | `EvaluateGoalFeasibilityUseCase` | consultation |
 | POST | `/consultations` | Sí | `CreateConsultationUseCase` | consultation |
 | GET | `/plans/standard/previews` | No | `ListStandardPlanPreviewsUseCase` | plans |
 | GET | `/plans/standard/:code` | No | `GetStandardPlanUseCase` | plans |
@@ -337,13 +338,28 @@ La medición que crea `POST /consultations` (CU-CON-02) se guarda como `level = 
      patología, alergias, intolerancias, fármacos, al menos un `r24h`, estrategia deportiva, nivel de
      actividad física, al menos un deporte y sesiones deportivas con sus 7 campos).
 
+**`POST /consultations/goal-feasibility`** (`EvaluateGoalFeasibilityUseCase`, CU-CON-03): el frontend lo
+llama al terminar la evaluación física, antes de generar la orden.
+
+- **Request** (`GoalFeasibilityRequestDtoImpl`): `goals` (el `GoalsDto` del chat, puede ser null) y
+  `measurements: { weight, height }`. El sexo y el %GC salen del usuario del token (el %GC, de la medición
+  más reciente del historial que lo tenga).
+- **Response** (siempre 200): `{ feasible, goal: 'definicion'|'mantencion'|'volumen', message }`.
+- Clasifica el objetivo con el LLM (`prompts/classify-goal.prompt.ts`, mismo criterio que
+  `extract-info.prompt.ts` de la generación; `OPENAI_MODEL_CONSULTA`; sin objetivo declarado no llama al
+  LLM y es `mantencion`). Solo "definicion" puede no ser factible: si ni 1 mes de pérdida (2 kg) deja al
+  paciente con IMC ≥ 20 y %GC sobre el mínimo por sexo (H 10 %, M 20 %), `feasible = false` con el mensaje
+  para el paciente. Reglas en `domain/services/projection/projection.service.ts`
+  ([doc/nutrition-plan/proyeccion.md](./doc/nutrition-plan/proyeccion.md)).
+
 **`POST /consultations`** (`CreateConsultationUseCase`): crea la consulta y su orden **antes** del pago.
 
 - **Request** (`CompleteConsultationDtoImpl`): `personalInfo`, `anamnesis`, `measurements` (por ahora
   solo `weight`/`height`/`somatotype`). `personalInfo` sigue siendo obligatorio en el contrato pero ya
   no se lee: los datos personales salen del `User` del token.
 - **Response**: `{ orderId: string }`.
-- 400 si el perfil no está completo. Resuelve (find-or-create) el `ClinicalRecord` del paciente y el
+- 400 si el perfil no está completo, o si el objetivo no es factible (re-ejecuta CU-CON-03 como
+  respaldo del chequeo del frontend; el 400 lleva el mismo mensaje). Resuelve (find-or-create) el `ClinicalRecord` del paciente y el
   `Product` activo `GENERATED`, crea la `Order` con `CreateOrderUseCase` (billing:
   `paymentStatus='PENDING'`, `generationStatus='NOT_STARTED'`, sin archivos) y persiste el árbol
   `NutritionalConsultation` (con `orderId` y `consultationNumber` correlativo) + `Anamnesis`/`Measurements`
@@ -598,7 +614,15 @@ plan). Las órdenes completadas antes de este cambio no tienen fila `Nutritional
 Desde la migración `20260925120000_plan_entity`, `NutritionalPlan` ya no cuelga directamente de la
 consulta ni de la orden: cuelga de `Plan` (`consultationId`, `orderId @unique`, `active`), que puede
 agrupar varios `NutritionalPlan` (hoy uno solo, `mainPlan = true`, con `planName` = nombre del
-producto y `startDate` = fecha de generación; `period`/`endDate` quedan en null).
+producto y `startDate` = fecha de generación; `period` queda en null). `endDate` y la `Projection` del
+`Plan` los fija la generación según el objetivo clasificado (`calculateProjection`,
+`domain/services/projection/projection.service.ts`, reglas en
+[doc/nutrition-plan/proyeccion.md](./doc/nutrition-plan/proyeccion.md)): "definicion" proyecta −2 kg/mes de
+grasa por 3 meses, acortando a 2 o 1 mes si el resultado baja de IMC 20 o del %GC mínimo por sexo;
+"volumen" proyecta +1 % del peso inicial/mes de músculo por 3 meses; "mantencion" no crea `Projection`.
+`endDate` = inicio + meses proyectados (3 si no hay proyección). La `Projection` se crea en el mismo upsert
+(en un reintento se reemplaza). %GC/masa muscular de base salen de la medición más reciente del historial
+que los tenga; sin ella, la proyección lleva solo peso e IMC.
 
 No hay job de retención: `Order.planJson` (y el resto de la orden) se conserva sin límite de tiempo.
 
@@ -631,8 +655,8 @@ datasources/repositories que ya no existe en el código actual).
 - `GeneratePersonalizedPlanUseCase` persiste `NutritionalPlan` y sus hijas desde la migración
   `20260927120000_nutritional_plan_children`, pero no se hizo backfill: las órdenes completadas antes
   solo tienen el detalle en `Order.planJson` (y las anteriores a la escritura de `NutritionalPlan`, ni
-  siquiera esa fila). `Projection` no se puebla desde la generación (solo se lee en CU-PLN-07; los
-  datos actuales se cargaron a mano en la BD local); `NutritionalPlan.endDate` tampoco se completa.
+  siquiera esa fila). `Projection` y `NutritionalPlan.endDate` se pueblan desde la generación solo para
+  los planes nuevos (sin backfill de los anteriores).
 - El bucket S3 para los PDFs de planes ya existe y está en uso (`productos-personalizados/` y
   `productos-estandarizados/`, ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3)). Los
   archivos predefinidos se suben **a mano** (no hay un flujo de subida automatizado): tras subirlos hay

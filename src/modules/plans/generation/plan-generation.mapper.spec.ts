@@ -94,14 +94,21 @@ describe('mapPlanToNutritionalPlanDto', () => {
 
   it('mapea prescription a los *Requirement y planIntake.totalIntake a los *Intake (fat → lipid)', () => {
     const startDate = new Date('2026-09-25T00:00:00Z');
-    const result = mapPlanToNutritionalPlanDto(plan, 'Plan personalizado', numericPortions, startDate);
+    const endDate = new Date('2026-12-25T00:00:00Z');
+    const result = mapPlanToNutritionalPlanDto(
+      plan,
+      'Plan personalizado',
+      numericPortions,
+      startDate,
+      endDate,
+    );
 
     expect(result).toMatchObject({
       planName: 'Plan personalizado',
       period: null,
       mainPlan: true,
       startDate,
-      endDate: null,
+      endDate,
       goal: 'Bajar de peso',
       dietRegimen: 'Régimen hipocalórico hiperproteico.',
       calorieRequirement: 2000,
@@ -120,6 +127,7 @@ describe('mapPlanToNutritionalPlanDto', () => {
 
     expect(result.planName).toBe('Plan Nutricional Personalizado');
     expect(result.startDate).toBeInstanceOf(Date);
+    expect(result.endDate).toBeNull();
   });
 
   describe('tiempos de comida', () => {
