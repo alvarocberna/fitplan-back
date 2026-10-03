@@ -17,7 +17,8 @@ export class OrderExpiredListener {
   @OnEvent(ORDER_EXPIRED)
   handle(event: OrderExpiredEvent): void {
     // fire-and-forget: quien expira la orden (job, pago o consulta de estado) no espera el borrado.
-    // Si falla, la consulta queda oculta igual (las lecturas excluyen las de órdenes expiradas).
+    // Si falla, la consulta queda oculta igual (las lecturas excluyen las de órdenes expiradas) y la
+    // borra más tarde el barrido de PurgeExpiredConsultationsJob.
     this.deleteExpiredConsultation
       .execute({ orderId: event.orderId })
       .catch((error: Error) => {

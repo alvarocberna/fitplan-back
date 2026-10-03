@@ -90,6 +90,7 @@ describe('App (e2e)', () => {
         getNutritionalConsultationsWithStatusByPatientId: jest.fn(),
         getNutritionalConsultationDetailByIdAndPatientId: jest.fn(),
         deleteNutritionalConsultationByOrderId: jest.fn(),
+        getOrderIdsOfConsultationsWithExpiredOrder: jest.fn(),
       })
       .overrideProvider(MeasurementsRepository)
       .useValue({

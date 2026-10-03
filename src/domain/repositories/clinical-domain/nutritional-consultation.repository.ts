@@ -29,6 +29,9 @@ export abstract class NutritionalConsultationRepository {
   abstract deleteNutritionalConsultationByOrderId(
     orderId: string,
   ): Promise<boolean>;
+  abstract getOrderIdsOfConsultationsWithExpiredOrder(
+    limit: number,
+  ): Promise<string[]>;
   abstract getMaxConsultationNumberByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number>;

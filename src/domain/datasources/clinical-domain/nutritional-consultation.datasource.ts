@@ -45,6 +45,13 @@ export abstract class NutritionalConsultationDatasource {
     orderId: string,
   ): Promise<boolean>;
 
+  // order_id de las consultas que siguen existiendo aunque su orden ya expiró (el borrado disparado
+  // por order.expired falló o el evento se perdió), las más antiguas primero. Excluye las que tienen
+  // un plan, que deleteNutritionalConsultationByOrderId tampoco borra.
+  abstract getOrderIdsOfConsultationsWithExpiredOrder(
+    limit: number,
+  ): Promise<string[]>;
+
   // Mayor consultation_number de la ficha clínica (0 si no tiene consultas). Se usa max y no count
   // porque las consultas de órdenes expiradas se borran: count + 1 repetiría números.
   abstract getMaxConsultationNumberByClinicalRecordId(

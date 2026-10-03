@@ -119,6 +119,8 @@ su caso de uso con los argumentos correctos.
 | `billing/use-cases/expire-unpaid-orders` | `expire-unpaid-orders.use-case.spec.ts` | `OrderRepository`, `OrderLifecycleService`: expira cada orden vencida; una que falla no frena al resto |
 | `billing/jobs/expire-unpaid-orders.job.ts` | `expire-unpaid-orders.job.spec.ts` | `ExpireUnpaidOrdersUseCase`: un error queda contenido |
 | `consultation/use-cases/delete-expired-consultation` | `delete-expired-consultation.use-case.spec.ts` | `NutritionalConsultationRepository` |
+| `consultation/use-cases/purge-expired-consultations` | `purge-expired-consultations.use-case.spec.ts` | `NutritionalConsultationRepository`, `DeleteExpiredConsultationUseCase`: borra cada consulta con orden expirada; una que falla no frena al resto |
+| `consultation/jobs/purge-expired-consultations.job.ts` | `purge-expired-consultations.job.spec.ts` | `PurgeExpiredConsultationsUseCase`: un error queda contenido |
 | `consultation/listeners/order-expired.listener.ts` | `order-expired.listener.spec.ts` | `DeleteExpiredConsultationUseCase`: un error inesperado queda contenido |
 | `billing/use-cases/confirm-payment` | `confirm-payment.use-case.spec.ts` | `OrderRepository`, `EventEmitter2`: `payment` `AUTHORIZED`, copia del PDF para `PREDEFINED`, emite `order.paid` solo si marcó el pago, idempotencia, 409 si la orden expiró |
 | `billing/use-cases/get-order-status` | `get-order-status.use-case.spec.ts` | `CurrentUserResolver`, `OrderRepository`, `FileStorage`: 404 por orden ajena o inexistente (BOLA) |

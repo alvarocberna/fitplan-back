@@ -307,6 +307,23 @@ export class NutritionalConsultationDatasourceImpl
     });
   }
 
+  async getOrderIdsOfConsultationsWithExpiredOrder(
+    limit: number,
+  ): Promise<string[]> {
+    const consultations = await this.prisma.nutritionalConsultation.findMany({
+      where: {
+        order: { paymentStatus: PaymentStatus.EXPIRED },
+        plans: { none: {} },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+      select: { orderId: true },
+    });
+    return consultations
+      .map((consultation) => consultation.orderId)
+      .filter((orderId): orderId is string => orderId !== null);
+  }
+
   async getMaxConsultationNumberByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number> {

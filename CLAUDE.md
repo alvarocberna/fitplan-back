@@ -93,7 +93,9 @@ domain service or an internal use case (e.g. `CreateOrderUseCase`).
   `CurrentUserResolver`. `billing` never imports `plans`: it emits `order.paid`
   (`modules/billing/events/order-paid.event.ts`, `@nestjs/event-emitter` v3 — v12 is ESM-only and breaks
   Jest) and `plans/listeners/order-paid.listener.ts` reacts. Same for `order.expired`:
-  `consultation/listeners/order-expired.listener.ts` deletes the expired order's consultation.
+  `consultation/listeners/order-expired.listener.ts` deletes the expired order's consultation, with
+  `consultation/jobs/purge-expired-consultations.job.ts` (hourly) as the safety net for a failed delete
+  or a lost in-memory event.
 - Only `billing` writes `order`/`payment`. New orders go through `CreateOrderUseCase`; generation state
   transitions through `OrderLifecycleService`.
 
@@ -122,7 +124,7 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    also 400 if the goal is not feasible, re-running CU-CON-03 as a backstop) — resolves the user and their `ClinicalRecord`, the active `GENERATED` `Product`, creates the `Order`
    through billing's `CreateOrderUseCase` (`paymentStatus='PENDING'`), and persists the full
    `NutritionalConsultation` (with `orderId`) + `Anamnesis`/`Measurements` in one nested Prisma write
-   (`consultation.mapper.ts`). Order and consultation are two separate writes (no shared transaction yet).
+   (`consultation.mapper.ts`). Order and consultation are two separate writes, by design (no shared transaction): if the second fails the orphan `PENDING` order can't be paid (its id never reaches the client) and expires after 24h.
    `personalInfo` is still required by the contract but not read.
 4. Payment (`POST /webhooks/payments` or the simulated `POST /dev/orders/:id/simulate-payment`, enabled
    only with `ENABLE_PAYMENT_SIMULATION=true`) → `ConfirmPaymentUseCase` marks the order paid
@@ -265,7 +267,10 @@ integrations when reasoning about behavior or writing tests:
 
 - `ConfirmPaymentUseCase.verifyWebhookSignature()` always returns `true` — no real payment gateway
   signature validation.
-- `LogEmailSender.sendRealEmail()` only logs — no real email provider wired.
+- `LogEmailSender.sendRealEmail()` only logs — no real email provider wired. Decided: Amazon SES, to be
+  implemented later as a new `EmailSender` adapter; when doing it, move the email out of the generation
+  retry loop (today a mail failure would re-generate an already `COMPLETED` plan) and use it for
+  `notifyGenerationFailure` alerts. See `../doc/flows/purchase-flow-personalized-plan.md` §9.
 - Payments are simulated: `POST /dev/orders/:id/simulate-payment` (behind `ENABLE_PAYMENT_SIMULATION`)
   is the only payment path until Transbank is integrated; `payment.provider = 'SIMULATED'`.
   `POST /dev/orders/:id/simulate-payment-rejection` simulates a rejected payment (`RejectPaymentUseCase`).

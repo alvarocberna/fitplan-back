@@ -68,6 +68,10 @@ export class NutritionalConsultationRepositoryImpl
     return this.datasource.deleteNutritionalConsultationByOrderId(orderId);
   }
 
+  getOrderIdsOfConsultationsWithExpiredOrder(limit: number): Promise<string[]> {
+    return this.datasource.getOrderIdsOfConsultationsWithExpiredOrder(limit);
+  }
+
   getMaxConsultationNumberByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number> {

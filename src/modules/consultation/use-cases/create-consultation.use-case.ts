@@ -62,8 +62,9 @@ export class CreateConsultationUseCase {
     const product =
       await this.productRepository.findOrCreateActiveGeneratedProduct();
 
-    // Pendiente (CU-BIL-01): orden y consulta se escriben en dos operaciones separadas, no en una
-    // misma transacción.
+    // Orden y consulta se escriben en dos operaciones separadas, no en una misma transacción. Si la
+    // consulta falla, la orden queda huérfana pero inofensiva: su id nunca llega al cliente (no se
+    // puede pagar) y expira a las 24 h (ExpireUnpaidOrdersUseCase).
     const order = await this.createOrder.execute({ userId: user.id, product });
 
     const consultationDate = new Date();

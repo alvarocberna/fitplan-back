@@ -9,7 +9,9 @@ import { ChatAnamnesisUseCase } from './use-cases/chat-anamnesis.use-case';
 import { CreateConsultationUseCase } from './use-cases/create-consultation.use-case';
 import { EvaluateGoalFeasibilityUseCase } from './use-cases/evaluate-goal-feasibility.use-case';
 import { DeleteExpiredConsultationUseCase } from './use-cases/delete-expired-consultation.use-case';
+import { PurgeExpiredConsultationsUseCase } from './use-cases/purge-expired-consultations.use-case';
 import { OrderExpiredListener } from './listeners/order-expired.listener';
+import { PurgeExpiredConsultationsJob } from './jobs/purge-expired-consultations.job';
 
 @Module({
   imports: [
@@ -25,7 +27,9 @@ import { OrderExpiredListener } from './listeners/order-expired.listener';
     CreateConsultationUseCase,
     EvaluateGoalFeasibilityUseCase,
     DeleteExpiredConsultationUseCase,
+    PurgeExpiredConsultationsUseCase,
     OrderExpiredListener,
+    PurgeExpiredConsultationsJob,
   ],
 })
 export class ConsultationModule {}

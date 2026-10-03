@@ -369,8 +369,9 @@ llama al terminar la evaluación física, antes de generar la orden.
   `Product` activo `GENERATED`, crea la `Order` con `CreateOrderUseCase` (billing:
   `paymentStatus='PENDING'`, `generationStatus='NOT_STARTED'`, sin archivos) y persiste el árbol
   `NutritionalConsultation` (con `orderId` y `consultationNumber` correlativo) + `Anamnesis`/`Measurements`
-  y sus hijas en una escritura anidada. Orden y consulta hoy se escriben en dos operaciones separadas
-  (pendiente, ver CU-BIL-01 en use-cases.md). Mapeo completo: `consultation.mapper.ts` y
+  y sus hijas en una escritura anidada. Orden y consulta se escriben en dos operaciones separadas,
+  por diseño: si falla la segunda, la orden huérfana no se puede pagar (su id no llega al cliente) y expira
+  a las 24 h (ver CU-CON-02 en use-cases.md). Mapeo completo: `consultation.mapper.ts` y
   [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md).
 
 ### plans: `/plans/standard` y `/me/plans`
@@ -461,6 +462,12 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
   mediciones **se conservan** en la ficha clínica, desvinculadas (`consultationId = null`). Una orden de
   plan estándar no tiene consulta: no hace nada. Por estos borrados `consultationNumber` se asigna como
   `max + 1` (no `count + 1`).
+- **`PurgeExpiredConsultationsUseCase`** (módulo `consultation`, sin endpoint): red de seguridad del
+  borrado anterior. `order.expired` es un evento en memoria y su listener es fire-and-forget, así que si
+  el borrado falla o el proceso se reinicia justo después de expirar la orden, la consulta quedaría en la
+  base. `PurgeExpiredConsultationsJob` (`modules/consultation/jobs/`, `@Cron` cada hora) busca hasta 100
+  consultas sin plan cuya orden está `EXPIRED` y las borra con `DeleteExpiredConsultationUseCase`.
+  Mientras tanto siguen ocultas: las lecturas de `clinical` excluyen las consultas de órdenes expiradas.
 
 ### Generación del plan (background)
 
@@ -709,7 +716,10 @@ datasources/repositories que ya no existe en el código actual).
   conectadas al flujo de generación del plan.
 - No hay pasarela de pago real integrada (`ConfirmPaymentUseCase.verifyWebhookSignature` siempre devuelve
   `true`) ni proveedor de correo real conectado (`LogEmailSender.sendRealEmail` es un stub que solo
-  logea).
+  logea). El proveedor decidido es **Amazon SES**, a implementar a futuro como un adaptador nuevo de
+  `EmailSender`; al hacerlo hay que sacar el envío del correo del ciclo de intentos de la generación (hoy
+  un fallo del correo regeneraría un plan ya `COMPLETED`) y usarlo también para las alertas de
+  `notifyGenerationFailure`. Detalle en `../doc/flows/purchase-flow-personalized-plan.md`, sección 9.
 - `GeneratePersonalizedPlanUseCase` persiste `NutritionalPlan` y sus hijas desde la migración
   `20260927120000_nutritional_plan_children`, pero no se hizo backfill: las órdenes completadas antes
   solo tienen el detalle en `Order.planJson` (y las anteriores a la escritura de `NutritionalPlan`, ni
