@@ -262,7 +262,8 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
     planStatus: 'awaiting_payment' | 'generating' | 'ready' | 'error' | null, orderId,
     plan: { planName, goal, dietRegimen, calorieIntake, proteinIntake, carbohydrateIntake, lipidIntake } | null }
   ```
-  `planStatus` se deriva de la orden (`generationStatus` COMPLETED → `ready`, ERROR → `error`; si no,
+  `planStatus` se deriva de la orden (`generationStatus` COMPLETED → `ready`, ERROR → `error` solo si es
+  definitivo: con reintentos automáticos pendientes es `generating`; si no,
   `paymentStatus` PENDING → `awaiting_payment`, REJECTED → `payment_rejected`, PAID → `generating`; sin
   orden → `null`). Las consultas cuya orden expiró no aparecen (se borran, ver "Pago rechazado y
   expiración"). `plan` es el
@@ -416,7 +417,8 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
   Valida que la orden sea del usuario del token; si no existe o es de otro usuario responde 404 en
   ambos casos (anti-BOLA). Responde
   `{ paymentStatus, expirationDate, generationStatus, planJson, pdfUrl, thumbnailUrl }`, con las URLs
-  firmadas igual que `GET /me/plans` (`order-files.ts`). Si el plazo de pago de la orden ya venció y el
+  firmadas igual que `GET /me/plans` (`order-files.ts`). `generationStatus` es `'ERROR'` solo cuando el
+  fallo es definitivo; con reintentos automáticos pendientes responde `'GENERATING'`. Si el plazo de pago de la orden ya venció y el
   job todavía no la expiró, la expira en el momento y responde `paymentStatus: 'EXPIRED'`.
 - **`POST /webhooks/payments`** (body `{ orderId, status? }`, provisorio hasta integrar Transbank; `status`
   es `'AUTHORIZED'` por defecto y `'REJECTED'` deriva a `RejectPaymentUseCase`) y
@@ -486,7 +488,29 @@ Resumen:
    principal (`PlanRepository.upsertPlanWithMainNutritionalPlanByOrderId`), marca la orden `COMPLETED`
    con `planJson`/`pdfKey`/`thumbnailKey` (`OrderLifecycleService.completeGeneration`) y envía el correo
    con el mismo buffer (`EmailSender.sendPlanByEmail`). Si agota los reintentos, la orden queda `ERROR`
-   (`recordFailedAttempt`) y se registra el evento.
+   (`recordFailedAttempt`, que suma 1 a `attempts`) y se registra el evento.
+
+#### Reintento automático de la generación
+
+Los 4 intentos de arriba son una **ronda**. `order.attempts` cuenta las rondas fallidas y
+`RetryPendingGenerationsUseCase` (sin endpoint; lo ejecuta `RetryPendingGenerationsJob`,
+`modules/plans/jobs/`, `@Cron` cada 10 minutos, sin solapar corridas) relanza la generación:
+
+1. `OrderLifecycleService.releaseStalledGenerations()`: una orden que lleva más de 30 min en `GENERATING`
+   quedó interrumpida (el proceso se reinició a mitad de la generación); pasa a `ERROR` con `attempts + 1`
+   y sin espera pendiente.
+2. `OrderLifecycleService.findOrderIdsPendingGeneration(5)`: hasta 5 órdenes `PAID` de producto
+   `GENERATED`, las de pago más antiguo primero, que estén
+   - en `ERROR` con 1, 2 o 3 rondas fallidas y la espera cumplida desde el último fallo
+     (`generationUpdatedAt`): 15 min, 1 h y 4 h respectivamente; o
+   - en `NOT_STARTED` con el pago confirmado hace más de 5 min (perdieron el evento `order.paid`, que
+     vive en memoria).
+3. Ejecuta `GeneratePersonalizedPlanUseCase` para cada una, una tras otra.
+
+Son 4 rondas en total (la del pago + 3 reintentos). Con `attempts = 4` el `ERROR` es definitivo y
+requiere intervención manual. Los valores están en `domain/services/orders/generation-retry.policy.ts`.
+Mientras queden reintentos el usuario no ve el fallo: `GET /orders/:id/status` responde
+`generationStatus: 'GENERATING'` y `planStatus` es `generating` (`isGenerationRetryPending`).
 
 
 ## Capa de dominio
@@ -631,7 +655,8 @@ Campos relevantes de `Order` (tabla `order`):
 | `planJson` | `NutritionPlanDto` resultante serializado, `null` hasta que se genera |
 | `pdfKey` | Key del PDF del plan en el bucket S3. `GENERATED`: `productos-personalizados/<orderId>.pdf`, `null` hasta que se genera. `PREDEFINED`: copia de `Product.pdfKey`, solo desde que se confirma el pago — ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3) |
 | `thumbnailKey` | Key de la miniatura WebP de la página 1 del PDF (`productos-personalizados/miniaturas/<orderId>.webp`); `null` si aún no se genera, si falló (es best-effort) o si el plan es anterior a esta función (sin backfill) |
-| `attempts` | Contador de intentos fallidos de generación |
+| `attempts` | Rondas de generación fallidas (cada ronda son hasta 4 intentos). Con 4, el `ERROR` es definitivo |
+| `generationUpdatedAt` | Último cambio de `generationStatus` (entrada a `GENERATING` o fallo de una ronda); lo usa el job de reintentos. `null` si nunca entró a generación |
 | `nutritionalConsultation` | Relación inversa 1:1 hacia la `NutritionalConsultation` con los datos de la anamnesis/mediciones de esta orden |
 
 La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
@@ -697,8 +722,9 @@ datasources/repositories que ya no existe en el código actual).
   112 versiones son placeholders (`predefined-products.seed-data.ts`).
 - El pago sigue siendo simulado: la fila `payment` del webhook usa `provider = 'SIMULATED'` con campos de
   detalle placeholder hasta integrar una pasarela real.
-- `notifyGenerationFailure` (cuando la generación del plan agota sus reintentos) solo deja un log
-  estructurado; falta integrarlo con un canal de alertas/soporte real.
+- `notifyGenerationFailure` (cuando una ronda de generación agota sus intentos) solo deja un log
+  estructurado; falta integrarlo con un canal de alertas/soporte real. Una orden que agota además sus 4
+  rondas (`ERROR` definitivo) no tiene endpoint para relanzarla: requiere intervención manual en la base.
 - El `Product` que usa hoy el flujo comercial (`findOrCreateActiveGeneratedProduct`) tiene su precio y
   moneda **hardcodeados como placeholder** (`price: 19990`, `currency: 'CLP'`) — no hay pricing real
   ni negociación comercial; revisar con negocio antes de producción (ver

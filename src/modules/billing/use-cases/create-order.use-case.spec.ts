@@ -24,6 +24,7 @@ describe('CreateOrderUseCase', () => {
       pdfKey: null,
       thumbnailKey: null,
       attempts: 0,
+      generationUpdatedAt: null,
       creationDate: expect.any(Date),
       paymentDate: null,
       expirationDate: expect.any(Date),

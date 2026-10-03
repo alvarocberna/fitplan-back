@@ -3,6 +3,7 @@ import { OrderRepository } from '../../../../domain/repositories/commercial-doma
 import {
   OrderDatasource,
   OrderPaidExtras,
+  PendingGenerationCriteria,
 } from '../../../../domain/datasources/commercial-domain/order.datasource';
 import { OrderEntity } from '../../../../domain/entities/order.entity';
 import {
@@ -86,5 +87,15 @@ export class OrderRepositoryImpl implements OrderRepository {
 
   incrementOrderFailedAttempt(id: string): Promise<void> {
     return this.datasource.incrementOrderFailedAttempt(id);
+  }
+
+  releaseStalledGenerations(staleBefore: Date): Promise<number> {
+    return this.datasource.releaseStalledGenerations(staleBefore);
+  }
+
+  getOrderIdsPendingGeneration(
+    criteria: PendingGenerationCriteria,
+  ): Promise<string[]> {
+    return this.datasource.getOrderIdsPendingGeneration(criteria);
   }
 }

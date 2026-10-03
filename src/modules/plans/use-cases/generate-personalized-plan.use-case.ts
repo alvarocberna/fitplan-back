@@ -153,7 +153,8 @@ export class GeneratePersonalizedPlanUseCase {
   ) {}
 
   //CU-PLN-06. Lo dispara (sin await, "fire and forget") OrderPaidListener cuando billing emite
-  //order.paid para un producto GENERATED. Cualquier error queda contenido acá adentro: nunca debe
+  //order.paid para un producto GENERATED, y RetryPendingGenerationsUseCase (CU-PLN-08) cuando una
+  //ronda anterior falló o quedó interrumpida. Cualquier error queda contenido acá adentro: nunca debe
   //tirar una unhandled rejection.
   async execute(input: { orderId: string }): Promise<void> {
     const { orderId } = input;

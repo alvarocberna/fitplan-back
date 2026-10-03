@@ -118,6 +118,8 @@ describe('App (e2e)', () => {
         markOrderAsRejectedWithPayment: jest.fn(),
         expireOrderIfDue: jest.fn(),
         getDueUnpaidOrderIds: jest.fn(),
+        releaseStalledGenerations: jest.fn(),
+        getOrderIdsPendingGeneration: jest.fn(),
         tryTransitionOrderToGenerating: jest.fn(),
         updateOrderById: jest.fn(),
         incrementOrderFailedAttempt: jest.fn(),

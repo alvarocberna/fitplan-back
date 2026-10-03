@@ -7,6 +7,17 @@ export type OrderPaidExtras = Partial<
   Pick<UpdateOrderDto, 'pdfKey' | 'thumbnailKey' | 'generationStatus'>
 >;
 
+// Criterio de búsqueda de las órdenes pagadas de plan personalizado cuya generación hay que relanzar.
+export interface PendingGenerationCriteria {
+  // NOT_STARTED cuyo pago se confirmó antes de esta fecha (perdieron el disparo order.paid).
+  notStartedPaidBefore: Date;
+  // ERROR con reintentos disponibles: errorRetryDueBefore[i] es el límite para las órdenes con
+  // i + 1 rondas fallidas (su último fallo debe ser anterior a esa fecha). Las órdenes con más
+  // rondas fallidas que elementos tiene el arreglo ya no se reintentan.
+  errorRetryDueBefore: Date[];
+  limit: number;
+}
+
 export abstract class OrderDatasource {
   abstract createOrder(createOrderDto: CreateOrderDto): Promise<OrderEntity>;
   abstract getOrderById(id: string): Promise<OrderEntity | null>;
@@ -67,4 +78,15 @@ export abstract class OrderDatasource {
   abstract tryTransitionOrderToGenerating(id: string): Promise<boolean>;
 
   abstract incrementOrderFailedAttempt(id: string): Promise<void>;
+
+  // Da por fallida la ronda de las órdenes que llevan en GENERATING desde antes de `staleBefore`
+  // (generación interrumpida): las deja en ERROR con attempts + 1 y sin espera pendiente, para que el
+  // job las reintente de inmediato. Devuelve cuántas liberó.
+  abstract releaseStalledGenerations(staleBefore: Date): Promise<number>;
+
+  // ids de las órdenes pagadas de un producto GENERATED que hay que (re)generar, las de pago más
+  // antiguo primero.
+  abstract getOrderIdsPendingGeneration(
+    criteria: PendingGenerationCriteria,
+  ): Promise<string[]>;
 }

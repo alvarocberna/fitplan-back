@@ -31,6 +31,7 @@ export class CreateOrderUseCase {
       pdfKey: null,
       thumbnailKey: null,
       attempts: 0,
+      generationUpdatedAt: null,
       creationDate,
       paymentDate: null,
       expirationDate: new Date(creationDate.getTime() + ORDER_PAYMENT_WINDOW_MS),

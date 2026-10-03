@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { NutritionPlanDto, OrderStatusDto } from '../../../domain';
-import { PaymentStatus } from '../../../domain/entities/enums';
+import { GenerationStatus, PaymentStatus } from '../../../domain/entities/enums';
+import { isGenerationRetryPending } from '../../../domain/services/orders/generation-retry.policy';
 import { FileStorage } from '../../../domain/ports';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
@@ -39,7 +40,11 @@ export class GetOrderStatusUseCase {
     return {
       paymentStatus: expired ? PaymentStatus.EXPIRED : order.paymentStatus,
       expirationDate: order.expirationDate?.toISOString() ?? null,
-      generationStatus: order.generationStatus,
+      // Un fallo con reintentos automáticos pendientes se informa como GENERATING: el usuario solo ve
+      // el error cuando es definitivo.
+      generationStatus: isGenerationRetryPending(order)
+        ? GenerationStatus.GENERATING
+        : order.generationStatus,
       planJson: order.planJson
         ? (JSON.parse(order.planJson) as NutritionPlanDto)
         : null,

@@ -13,6 +13,8 @@ describe('OrderLifecycleService', () => {
     updateOrderById: jest.Mock;
     incrementOrderFailedAttempt: jest.Mock;
     expireOrderIfDue: jest.Mock;
+    releaseStalledGenerations: jest.Mock;
+    getOrderIdsPendingGeneration: jest.Mock;
   };
   let eventEmitter: { emit: jest.Mock };
 
@@ -23,6 +25,8 @@ describe('OrderLifecycleService', () => {
       updateOrderById: jest.fn(),
       incrementOrderFailedAttempt: jest.fn(),
       expireOrderIfDue: jest.fn().mockResolvedValue(false),
+      releaseStalledGenerations: jest.fn().mockResolvedValue(0),
+      getOrderIdsPendingGeneration: jest.fn().mockResolvedValue([]),
     };
     eventEmitter = { emit: jest.fn() };
     service = new OrderLifecycleService(
@@ -76,6 +80,41 @@ describe('OrderLifecycleService', () => {
   it('recordFailedAttempt delega en el repositorio', async () => {
     await service.recordFailedAttempt('order-1');
     expect(orderRepository.incrementOrderFailedAttempt).toHaveBeenCalledWith('order-1');
+  });
+
+  describe('reintentos de generación', () => {
+    const NOW = new Date('2026-06-01T12:00:00.000Z');
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(NOW);
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('releaseStalledGenerations libera las que llevan más de 30 min en GENERATING', async () => {
+      orderRepository.releaseStalledGenerations.mockResolvedValue(2);
+
+      await expect(service.releaseStalledGenerations()).resolves.toBe(2);
+      expect(orderRepository.releaseStalledGenerations).toHaveBeenCalledWith(
+        new Date('2026-06-01T11:30:00.000Z'),
+      );
+    });
+
+    it('findOrderIdsPendingGeneration busca con las esperas de 15 min, 1 h y 4 h y 5 min de gracia para las no iniciadas', async () => {
+      orderRepository.getOrderIdsPendingGeneration.mockResolvedValue(['order-1']);
+
+      await expect(service.findOrderIdsPendingGeneration(5)).resolves.toEqual(['order-1']);
+      expect(orderRepository.getOrderIdsPendingGeneration).toHaveBeenCalledWith({
+        notStartedPaidBefore: new Date('2026-06-01T11:55:00.000Z'),
+        errorRetryDueBefore: [
+          new Date('2026-06-01T11:45:00.000Z'),
+          new Date('2026-06-01T11:00:00.000Z'),
+          new Date('2026-06-01T08:00:00.000Z'),
+        ],
+        limit: 5,
+      });
+    });
   });
 
   describe('expireIfDue', () => {

@@ -63,6 +63,30 @@ describe('GetOrderStatusUseCase', () => {
     );
   });
 
+  it.each([
+    [1, 'GENERATING'],
+    [3, 'GENERATING'],
+    [4, 'ERROR'],
+  ])(
+    'generación en ERROR con %i ronda(s) fallida(s): informa %s (el error solo se muestra si es definitivo)',
+    async (attempts, expected) => {
+      orderRepository.getOrderById.mockResolvedValue({
+        userId: 'user-1',
+        paymentStatus: 'PAID',
+        generationStatus: 'ERROR',
+        attempts,
+        planJson: null,
+        pdfKey: null,
+        thumbnailKey: null,
+        expirationDate: null,
+      });
+
+      const status = await useCase.execute({ claims, orderId: 'order-1' });
+
+      expect(status.generationStatus).toBe(expected);
+    },
+  );
+
   it('orden pendiente: expone hasta cuándo se puede pagar (expirationDate en ISO)', async () => {
     orderRepository.getOrderById.mockResolvedValue({
       userId: 'user-1',

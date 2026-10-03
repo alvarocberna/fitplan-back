@@ -136,6 +136,15 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan` (its `endDate`) + its
    `Projection` (`calculateProjection`, rules in `doc/nutrition-plan/proyeccion.md`; none for
    "mantencion"), completes the order (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
+   Those 4 tries are one **round**; a failed round leaves the order `ERROR` with `attempts + 1`.
+   `RetryPendingGenerationsJob` (`modules/plans/jobs/`, every 10 min) → `RetryPendingGenerationsUseCase`
+   re-runs the generation for paid `GENERATED` orders that are in `ERROR` with rounds left (3 automatic
+   retries, waiting 15 min / 1 h / 4 h since `generationUpdatedAt`), stuck in `GENERATING` for 30+ min
+   (process restarted mid-run; counted as a failed round) or paid but still `NOT_STARTED` after 5 min
+   (the in-memory `order.paid` event was lost). Policy constants and `isGenerationRetryPending` live in
+   `domain/services/orders/generation-retry.policy.ts`; while retries are pending the user-facing
+   reads report `GENERATING`/`generating` instead of the error. After 4 failed rounds the `ERROR` is
+   final (manual intervention).
 6. `GET /orders/:id/status` (`GetOrderStatusUseCase`) — polling endpoint; validates ownership (404 for
    missing or foreign orders). `GET /me/plans` lists the user's ready plans (with name, type and summary);
    `GET /me/plans/:orderId` returns one plan's full detail (child tables, or `order.planJson` for older plans);

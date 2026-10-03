@@ -37,7 +37,10 @@ export interface OrderEntity {
   // Miniatura (página 1 del PDF) en S3; null si aún no se generó o si la rasterización falló
   // (es best-effort: no bloquea la entrega del plan).
   thumbnailKey: string | null;
+  // Rondas de generación fallidas (cada ronda son hasta 4 intentos seguidos).
   attempts: number;
+  // Último cambio de generationStatus; null en órdenes que nunca entraron a generación.
+  generationUpdatedAt: Date | null;
 
   creationDate: Date;
   paymentDate: Date | null;

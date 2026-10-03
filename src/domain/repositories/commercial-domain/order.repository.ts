@@ -1,6 +1,9 @@
 import { OrderEntity } from '../../entities/order.entity';
 import { CreateOrderDto, CreatePaymentDto, UpdateOrderDto } from '../..';
-import type { OrderPaidExtras } from '../../datasources/commercial-domain/order.datasource';
+import type {
+  OrderPaidExtras,
+  PendingGenerationCriteria,
+} from '../../datasources/commercial-domain/order.datasource';
 
 export abstract class OrderRepository {
   abstract createOrder(createOrderDto: CreateOrderDto): Promise<OrderEntity>;
@@ -30,4 +33,9 @@ export abstract class OrderRepository {
   abstract expireOrderIfDue(id: string, now: Date): Promise<boolean>;
   abstract getDueUnpaidOrderIds(now: Date, limit: number): Promise<string[]>;
   abstract tryTransitionOrderToGenerating(id: string): Promise<boolean>;
-  abstract incrementOrderFailedAttempt(id: string): Promise<void>;}
+  abstract incrementOrderFailedAttempt(id: string): Promise<void>;
+  abstract releaseStalledGenerations(staleBefore: Date): Promise<number>;
+  abstract getOrderIdsPendingGeneration(
+    criteria: PendingGenerationCriteria,
+  ): Promise<string[]>;
+}

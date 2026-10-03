@@ -66,7 +66,14 @@ type NutritionalConsultationWithPanelDetails =
 // lectura; la orden la escribe billing) y resumen del plan activo -> NutritionalPlan principal.
 const LIST_WITH_STATUS_INCLUDE = {
   anamneses: { include: { goals: true } },
-  order: { select: { id: true, paymentStatus: true, generationStatus: true } },
+  order: {
+    select: {
+      id: true,
+      paymentStatus: true,
+      generationStatus: true,
+      attempts: true,
+    },
+  },
   plans: {
     where: { active: true },
     include: { nutritionalPlans: { where: { mainPlan: true } } },
@@ -83,6 +90,7 @@ const DETAIL_WITH_STATUS_INCLUDE = {
       id: true,
       paymentStatus: true,
       generationStatus: true,
+      attempts: true,
       pdfKey: true,
       creationDate: true,
     },

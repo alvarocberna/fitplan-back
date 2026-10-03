@@ -4,6 +4,11 @@ import { GenerationStatus, NutritionPlanDto } from '../../domain';
 import { PaymentStatus } from '../../domain/entities/enums';
 import { OrderEntity } from '../../domain/entities/order.entity';
 import { OrderRepository } from '../../domain/repositories/commercial-domain/order.repository';
+import {
+  GENERATION_RETRY_DELAYS_MS,
+  STALLED_GENERATION_MS,
+  UNSTARTED_GENERATION_GRACE_MS,
+} from '../../domain/services/orders/generation-retry.policy';
 import { ORDER_EXPIRED, OrderExpiredEvent } from './events/order-expired.event';
 
 // Plazo para pagar una orden desde que se crea. Vencido, la orden pasa a EXPIRED.
@@ -76,7 +81,30 @@ export class OrderLifecycleService {
     });
   }
 
+  // Una ronda de generación agotó sus intentos: la orden queda en ERROR con attempts + 1. Mientras le
+  // queden rondas, el job de reintentos la retoma (ver generation-retry.policy.ts).
   async recordFailedAttempt(id: string): Promise<void> {
     await this.orderRepository.incrementOrderFailedAttempt(id);
+  }
+
+  // Da por fallida la ronda de las órdenes que quedaron pegadas en GENERATING (el proceso se reinició
+  // a mitad de la generación). Devuelve cuántas liberó.
+  releaseStalledGenerations(): Promise<number> {
+    return this.orderRepository.releaseStalledGenerations(
+      new Date(Date.now() - STALLED_GENERATION_MS),
+    );
+  }
+
+  // Órdenes pagadas de plan personalizado cuya generación hay que relanzar: en ERROR con reintentos
+  // disponibles y la espera cumplida, o pagadas que nunca arrancaron (perdieron el evento order.paid).
+  findOrderIdsPendingGeneration(limit: number): Promise<string[]> {
+    const now = Date.now();
+    return this.orderRepository.getOrderIdsPendingGeneration({
+      notStartedPaidBefore: new Date(now - UNSTARTED_GENERATION_GRACE_MS),
+      errorRetryDueBefore: GENERATION_RETRY_DELAYS_MS.map(
+        (delayMs) => new Date(now - delayMs),
+      ),
+      limit,
+    });
   }
 }

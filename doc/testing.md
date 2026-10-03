@@ -108,6 +108,9 @@ su caso de uso con los argumentos correctos.
 | `plans/use-cases/purchase-standard-plan` | `purchase-standard-plan.use-case.spec.ts` | `CreateOrderUseCase`: sin perfil completo ni consulta, 404 si no existe / inactivo / sin PDF / código inválido |
 | `plans/use-cases/list-my-plans` | `list-my-plans.use-case.spec.ts` | `OrderRepository`, `FileStorage`: PDF firmado como attachment, miniatura opcional |
 | `plans/use-cases/generate-personalized-plan` | `generate-personalized-plan.use-case.spec.ts` | `OrderLifecycleService`/`LlmProvider`/`EmailSender`/`PlanDocumentRenderer`/`FileStorage`/`PlanRepository`/`NutritionalConsultationRepository` (upsert del `Plan` antes de `completeGeneration`, reintentos) — **las fórmulas de dominio corren de verdad** (test híbrido); ver §5 |
+| `plans/use-cases/retry-pending-generations` | `retry-pending-generations.use-case.spec.ts` | `OrderLifecycleService`, `GeneratePersonalizedPlanUseCase`: libera las interrumpidas antes de buscar, relanza en orden, un error no frena al resto |
+| `plans/jobs/retry-pending-generations.job.ts` | `retry-pending-generations.job.spec.ts` | `RetryPendingGenerationsUseCase`: no solapa corridas; un error queda contenido |
+| `domain/services/orders/generation-retry.policy.ts` | `generation-retry.policy.spec.ts` | nada: esperas (15 min, 1 h, 4 h), 4 rondas, `isGenerationRetryPending` |
 | `plans/listeners/order-paid.listener.ts` | `order-paid.listener.spec.ts` | `GeneratePersonalizedPlanUseCase`: solo `GENERATED` genera; un error inesperado queda contenido |
 | `plans/generation/plan-generation.mapper.ts` | `plan-generation.mapper.spec.ts` | nada (`NutritionPlanDto` → `NutritionalPlan`) |
 | `plans/*.controller.ts` | `standard-plans.controller.spec.ts` | los casos de uso del catálogo y de `GET /me/plans` |

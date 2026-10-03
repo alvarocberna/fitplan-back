@@ -4,11 +4,13 @@ import { PrismaService } from '../../orm/prisma/prisma.service';
 import {
   OrderDatasource,
   OrderPaidExtras,
+  PendingGenerationCriteria,
 } from '../../../../domain/datasources/commercial-domain/order.datasource';
 import { OrderEntity } from '../../../../domain/entities/order.entity';
 import {
   GenerationStatus,
   PaymentStatus,
+  ProductType,
 } from '../../../../domain/entities/enums';
 import {
   CreateOrderDto,
@@ -239,7 +241,10 @@ export class OrderDatasourceImpl implements OrderDatasource {
           in: [GenerationStatus.NOT_STARTED, GenerationStatus.ERROR],
         },
       },
-      data: { generationStatus: GenerationStatus.GENERATING },
+      data: {
+        generationStatus: GenerationStatus.GENERATING,
+        generationUpdatedAt: new Date(),
+      },
     });
     return count > 0;
   }
@@ -247,7 +252,62 @@ export class OrderDatasourceImpl implements OrderDatasource {
   async incrementOrderFailedAttempt(id: string): Promise<void> {
     await this.prisma.order.update({
       where: { id },
-      data: { generationStatus: GenerationStatus.ERROR, attempts: { increment: 1 } },
+      data: {
+        generationStatus: GenerationStatus.ERROR,
+        attempts: { increment: 1 },
+        generationUpdatedAt: new Date(),
+      },
     });
+  }
+
+  async releaseStalledGenerations(staleBefore: Date): Promise<number> {
+    const { count } = await this.prisma.order.updateMany({
+      where: {
+        generationStatus: GenerationStatus.GENERATING,
+        OR: [
+          { generationUpdatedAt: null },
+          { generationUpdatedAt: { lte: staleBefore } },
+        ],
+      },
+      // generationUpdatedAt null = sin espera pendiente: se reintenta en esta misma corrida del job
+      // (si aún le quedan rondas).
+      data: {
+        generationStatus: GenerationStatus.ERROR,
+        attempts: { increment: 1 },
+        generationUpdatedAt: null,
+      },
+    });
+    return count;
+  }
+
+  async getOrderIdsPendingGeneration(
+    criteria: PendingGenerationCriteria,
+  ): Promise<string[]> {
+    const { notStartedPaidBefore, errorRetryDueBefore, limit } = criteria;
+    const orders = await this.prisma.order.findMany({
+      where: {
+        paymentStatus: PaymentStatus.PAID,
+        product: { type: ProductType.GENERATED },
+        OR: [
+          {
+            generationStatus: GenerationStatus.NOT_STARTED,
+            paymentDate: { lte: notStartedPaidBefore },
+          },
+          // una condición por cantidad de rondas fallidas, cada una con su espera
+          ...errorRetryDueBefore.map((dueBefore, index) => ({
+            generationStatus: GenerationStatus.ERROR,
+            attempts: index + 1,
+            OR: [
+              { generationUpdatedAt: null },
+              { generationUpdatedAt: { lte: dueBefore } },
+            ],
+          })),
+        ],
+      },
+      orderBy: { paymentDate: 'asc' },
+      take: limit,
+      select: { id: true },
+    });
+    return orders.map((order) => order.id);
   }
 }
