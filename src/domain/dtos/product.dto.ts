@@ -20,3 +20,12 @@ export interface PredefinedPlanPreviewDto {
   description: string;
   thumbnailUrl: string | null;
 }
+
+// Ficha pública del plan personalizado (GET /plans/personalized): el producto GENERATED activo. El
+// frontend la usa para mostrar el precio de la consulta antes de crear la orden.
+export interface PersonalizedProductDto {
+  name: string;
+  description: string;
+  price: number;
+  currency: string;
+}

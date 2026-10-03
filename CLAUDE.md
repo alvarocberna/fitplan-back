@@ -69,7 +69,7 @@ src/
 ├── modules/                    # NestJS business modules
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
 │   ├── consultation/           # /consultations/chat, /consultations/goal-feasibility, /consultations
-│   ├── plans/                  # /plans/standard/*, /me/plans, /me/plans/latest/projection, /me/plans/:orderId, plan generation (listener of order.paid)
+│   ├── plans/                  # /plans/standard/*, /plans/personalized (public price of the GENERATED product), /me/plans, /me/plans/latest/projection, /me/plans/:orderId, plan generation (listener of order.paid)
 │   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment[-rejection];
 │   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid and
 │   │                            # order.expired; jobs/ holds the cron that expires unpaid orders
@@ -121,7 +121,7 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    (`domain/services/projection/projection.service.ts`): losing weight is not feasible if not even 1 month
    (−2 kg) keeps BMI ≥ 20 and body fat % above the per-sex floor. Always 200 with `{ feasible, goal, message }`.
 3. `POST /consultations` (`CreateConsultationUseCase`, requires a **complete** profile — 400 otherwise;
-   also 400 if the goal is not feasible, re-running CU-CON-03 as a backstop) — resolves the user and their `ClinicalRecord`, the active `GENERATED` `Product`, creates the `Order`
+   also 400 if the goal is not feasible, re-running CU-CON-03 as a backstop) — resolves the user and their `ClinicalRecord`, the active `GENERATED` `Product` (loaded by a migration with its real price — the backend never creates it; missing → 500; its price is public at `GET /plans/personalized`), creates the `Order`
    through billing's `CreateOrderUseCase` (`paymentStatus='PENDING'`), and persists the full
    `NutritionalConsultation` (with `orderId`) + `Anamnesis`/`Measurements` in one nested Prisma write
    (`consultation.mapper.ts`). Order and consultation are two separate writes, by design (no shared transaction): if the second fails the orphan `PENDING` order can't be paid (its id never reaches the client) and expires after 24h.

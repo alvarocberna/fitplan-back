@@ -22,8 +22,8 @@ export abstract class ProductDatasource {
   // ordenadas para el carrusel del home. Usado por GET /plans/standard/previews.
   abstract getActivePlanPreviews(): Promise<ProductEntity[]>;
 
-  // Busca un Product activo de tipo GENERATED; si no existe, crea uno con valores por defecto
-  // (ver el *Impl — son placeholders, hay que revisarlos con negocio). Usado por
-  // CreateConsultationUseCase para resolver el productId de la nueva Order sin ningún seed previo.
-  abstract findOrCreateActiveGeneratedProduct(): Promise<ProductEntity>;
+  // Product activo de tipo GENERATED (el plan personalizado), o null si no está cargado. La fila la
+  // crea una migración con su precio real: el backend no la inventa. La usan CreateConsultationUseCase
+  // (productId y monto de la nueva Order) y GetPersonalizedPlanUseCase (precio que muestra el front).
+  abstract getActiveGeneratedProduct(): Promise<ProductEntity | null>;
 }

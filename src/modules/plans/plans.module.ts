@@ -9,9 +9,11 @@ import { IdentityModule } from '../identity/identity.module';
 import { BillingModule } from '../billing/billing.module';
 import { StandardPlansController } from './standard-plans.controller';
 import { MyPlansController } from './my-plans.controller';
+import { PersonalizedPlansController } from './personalized-plans.controller';
 import { OrderPaidListener } from './listeners/order-paid.listener';
 import { ListStandardPlanPreviewsUseCase } from './use-cases/list-standard-plan-previews.use-case';
 import { GetStandardPlanUseCase } from './use-cases/get-standard-plan.use-case';
+import { GetPersonalizedPlanUseCase } from './use-cases/get-personalized-plan.use-case';
 import { PurchaseStandardPlanUseCase } from './use-cases/purchase-standard-plan.use-case';
 import { ListMyPlansUseCase } from './use-cases/list-my-plans.use-case';
 import { GetMyPlanUseCase } from './use-cases/get-my-plan.use-case';
@@ -20,7 +22,7 @@ import { GeneratePersonalizedPlanUseCase } from './use-cases/generate-personaliz
 import { RetryPendingGenerationsUseCase } from './use-cases/retry-pending-generations.use-case';
 import { RetryPendingGenerationsJob } from './jobs/retry-pending-generations.job';
 
-// Planes desde la perspectiva del usuario: catálogo estándar, mis planes y generación del plan
+// Planes desde la perspectiva del usuario: catálogo estándar, ficha del plan personalizado, mis planes y generación del plan
 // personalizado (disparada por el evento order.paid de billing y, si falla o se interrumpe, relanzada
 // por RetryPendingGenerationsJob).
 @Module({
@@ -34,10 +36,15 @@ import { RetryPendingGenerationsJob } from './jobs/retry-pending-generations.job
     IdentityModule,
     BillingModule,
   ],
-  controllers: [StandardPlansController, MyPlansController],
+  controllers: [
+    StandardPlansController,
+    PersonalizedPlansController,
+    MyPlansController,
+  ],
   providers: [
     ListStandardPlanPreviewsUseCase,
     GetStandardPlanUseCase,
+    GetPersonalizedPlanUseCase,
     PurchaseStandardPlanUseCase,
     ListMyPlansUseCase,
     GetMyPlanUseCase,

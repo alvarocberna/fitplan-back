@@ -12,28 +12,6 @@ import {
   PredefinedPlanFamily,
 } from '../../../../domain/services/utils/predefined-plan-code';
 
-// Placeholder: no hay pricing real ni negociación comercial en el flujo actual (el pago se
-// simula/confirma vía webhook sin gateway real). Ajustar estos valores con negocio antes de
-// producción.
-const DEFAULT_GENERATED_PRODUCT: CreateProductDto = {
-  type: ProductType.GENERATED,
-  name: 'Plan Nutricional Personalizado',
-  description:
-    'Plan nutricional generado automáticamente a partir de la consulta del paciente.',
-  price: 19990,
-  currency: 'CLP',
-  code: null,
-  pdfKey: null,
-  thumbnailKey: null,
-  goal: null,
-  dietRegimen: null,
-  calorieIntake: null,
-  proteinIntake: null,
-  carbohydrateIntake: null,
-  lipidIntake: null,
-  active: true,
-};
-
 @Injectable()
 export class ProductDatasourceImpl implements ProductDatasource {
   constructor(private readonly prisma: PrismaService) {}
@@ -99,14 +77,10 @@ export class ProductDatasourceImpl implements ProductDatasource {
       );
   }
 
-  async findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {
-    const existing = await this.prisma.product.findFirst({
+  async getActiveGeneratedProduct(): Promise<ProductEntity | null> {
+    const product = await this.prisma.product.findFirst({
       where: { type: ProductType.GENERATED, active: true },
     });
-    if (existing) return this.toEntity(existing);
-    const created = await this.prisma.product.create({
-      data: DEFAULT_GENERATED_PRODUCT,
-    });
-    return this.toEntity(created);
+    return product ? this.toEntity(product) : null;
   }
 }

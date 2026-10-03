@@ -59,8 +59,14 @@ export class CreateConsultationUseCase {
       await this.clinicalRecordRepository.findOrCreateClinicalRecordByPatientId(
         user.id,
       );
-    const product =
-      await this.productRepository.findOrCreateActiveGeneratedProduct();
+    // El producto del plan personalizado (y su precio) lo carga una migración: si falta es un error
+    // de configuración del ambiente, no algo que el backend deba inventar.
+    const product = await this.productRepository.getActiveGeneratedProduct();
+    if (!product) {
+      throw new Error(
+        'No hay un producto GENERATED activo: no se puede crear la orden de la consulta',
+      );
+    }
 
     // Orden y consulta se escriben en dos operaciones separadas, no en una misma transacción. Si la
     // consulta falla, la orden queda huérfana pero inofensiva: su id nunca llega al cliente (no se

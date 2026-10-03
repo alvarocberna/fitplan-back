@@ -103,7 +103,7 @@ describe('App (e2e)', () => {
       })
       .overrideProvider(ProductRepository)
       .useValue({
-        findOrCreateActiveGeneratedProduct: jest.fn(),
+        getActiveGeneratedProduct: jest.fn(),
         getActivePredefinedProductByCode: jest.fn(),
         getActivePlanPreviews: jest.fn(),
       })
@@ -306,7 +306,7 @@ describe('App (e2e)', () => {
       clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue({
         id: 'clinical-1',
       } as any);
-      productRepository.findOrCreateActiveGeneratedProduct.mockResolvedValue({
+      productRepository.getActiveGeneratedProduct.mockResolvedValue({
         id: 'product-1',
         price: 10000,
         currency: 'CLP',
@@ -423,6 +423,37 @@ describe('App (e2e)', () => {
 
     it('sin token devuelve 401', async () => {
       await request(app.getHttpServer()).get(api('/me/measurements')).expect(401);
+    });
+  });
+
+  describe('GET /plans/personalized', () => {
+    it('es público y devuelve la ficha (precio y moneda) del producto GENERATED activo', async () => {
+      productRepository.getActiveGeneratedProduct.mockResolvedValue({
+        id: 'product-1',
+        type: 'GENERATED',
+        name: 'Plan Nutricional Personalizado',
+        description: 'Plan generado a partir de la consulta.',
+        price: 4990,
+        currency: 'CLP',
+        active: true,
+      } as any);
+
+      const response = await request(app.getHttpServer())
+        .get(api('/plans/personalized'))
+        .expect(200);
+
+      expect(response.body).toEqual({
+        name: 'Plan Nutricional Personalizado',
+        description: 'Plan generado a partir de la consulta.',
+        price: 4990,
+        currency: 'CLP',
+      });
+    });
+
+    it('responde 404 si no hay un producto GENERATED activo', async () => {
+      productRepository.getActiveGeneratedProduct.mockResolvedValue(null);
+
+      await request(app.getHttpServer()).get(api('/plans/personalized')).expect(404);
     });
   });
 

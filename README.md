@@ -206,6 +206,7 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 | POST | `/consultations` | Sí | `CreateConsultationUseCase` | consultation |
 | GET | `/plans/standard/previews` | No | `ListStandardPlanPreviewsUseCase` | plans |
 | GET | `/plans/standard/:code` | No | `GetStandardPlanUseCase` | plans |
+| GET | `/plans/personalized` | No | `GetPersonalizedPlanUseCase` | plans |
 | POST | `/plans/standard/:code/purchase` | Sí | `PurchaseStandardPlanUseCase` | plans |
 | GET | `/me/plans` | Sí | `ListMyPlansUseCase` | plans |
 | GET | `/me/plans/latest/projection` | Sí | `GetMyLatestPlanProjectionUseCase` | plans |
@@ -647,7 +648,7 @@ Modelos que participan directamente en el flujo comercial hoy:
 | `User` (`identity-auth`) | Resuelto por el `sub` del Access Token de Cognito vía `CurrentUserResolver.resolve` (ver [doc/auth.md](./doc/auth.md)); `GET`/`PATCH /me` leen/actualizan sus campos de perfil |
 | `ClinicalRecord` (`clinical-domain`) | Uno por paciente (`patientId` `@unique`), find-or-create |
 | `NutritionalConsultation` (`clinical-domain`) | Una por cada `POST /consultations`; vinculada 1:1 a la `Order` vía `orderId`; contiene el árbol `Anamnesis`+hijas y `Measurements`+hija que antes viajaba como `payload_json`. `NutritionalConsultationRepository` expone dos formas de traerla con detalle: `getNutritionalConsultationWithDetailsByOrderId` (`FULL_DETAILS_INCLUDE`, usado por la generación del plan) y la nueva `getLatestNutritionalConsultationWithDetailsByPatientId` (`PANEL_DETAILS_INCLUDE`: `patient`, `anamneses.goals`, `nutritionalPlans` — `findFirst` ordenado por `consultationNumber: 'desc'`, usada por `GET /me/summary`); son includes deliberadamente distintos para no alterar el comportamiento del lookup existente por orden |
-| `Product` (`commercial-domain`) | Dos usos: el producto `type='GENERATED' active=true` (uno solo, find-or-create con valores placeholder, ver deuda técnica) y las 112 versiones de plan `type='PREDEFINED'` (`code` único, `pdfKey`/`thumbnailKey` en `productos-estandarizados/`, cargadas con `npm run seed:predefined`) |
+| `Product` (`commercial-domain`) | Dos usos: el producto `type='GENERATED' active=true` (uno solo, cargado por migración con su precio real, 4.990 CLP; lo expone `GET /plans/personalized` y de él sale el monto de la orden de una consulta) y las 112 versiones de plan `type='PREDEFINED'` (`code` único, `pdfKey`/`thumbnailKey` en `productos-estandarizados/`, cargadas con `npm run seed:predefined`) |
 | `Order` (`commercial-domain`) | Reemplaza al modelo `Order` legacy de SQLite (ya no existe en el schema); ver campos abajo |
 
 Campos relevantes de `Order` (tabla `order`):
@@ -735,10 +736,10 @@ datasources/repositories que ya no existe en el código actual).
 - `notifyGenerationFailure` (cuando una ronda de generación agota sus intentos) solo deja un log
   estructurado; falta integrarlo con un canal de alertas/soporte real. Una orden que agota además sus 4
   rondas (`ERROR` definitivo) no tiene endpoint para relanzarla: requiere intervención manual en la base.
-- El `Product` que usa hoy el flujo comercial (`findOrCreateActiveGeneratedProduct`) tiene su precio y
-  moneda **hardcodeados como placeholder** (`price: 19990`, `currency: 'CLP'`) — no hay pricing real
-  ni negociación comercial; revisar con negocio antes de producción (ver
-  `doc/orders-postgres-migration.md`).
+- El precio del plan personalizado vive en la fila `product` `GENERATED` activa (4.990 CLP, migración
+  `20261003160000_generated_product_price`). El backend no crea ese producto: si falta,
+  `POST /consultations` responde 500 y `GET /plans/personalized` 404. Para cambiar el precio se actualiza
+  la fila (las órdenes ya creadas conservan su `amount`); no hay un panel de administración para hacerlo.
 - El mapeo de `CompleteConsultationDto` hacia el árbol `NutritionalConsultation`/`Anamnesis`/`Measurements`
   tiene varias simplificaciones conocidas (campos clínicos singulares envueltos en arrays de 1,
   `mealHour` siempre `''`, `somatotype` guardado como texto libre en `Measurements.description`,

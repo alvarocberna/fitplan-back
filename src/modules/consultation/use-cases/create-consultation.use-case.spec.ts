@@ -17,7 +17,7 @@ describe('CreateConsultationUseCase', () => {
     getMaxConsultationNumberByClinicalRecordId: jest.Mock;
     createNutritionalConsultationWithDetails: jest.Mock;
   };
-  let productRepository: { findOrCreateActiveGeneratedProduct: jest.Mock };
+  let productRepository: { getActiveGeneratedProduct: jest.Mock };
   let createOrder: { execute: jest.Mock };
   let evaluateGoalFeasibility: { execute: jest.Mock };
 
@@ -54,7 +54,7 @@ describe('CreateConsultationUseCase', () => {
       createNutritionalConsultationWithDetails: jest.fn().mockResolvedValue({}),
     };
     productRepository = {
-      findOrCreateActiveGeneratedProduct: jest.fn().mockResolvedValue(product),
+      getActiveGeneratedProduct: jest.fn().mockResolvedValue(product),
     };
     createOrder = { execute: jest.fn().mockResolvedValue({ id: 'order-1' }) };
     evaluateGoalFeasibility = {
@@ -138,6 +138,18 @@ describe('CreateConsultationUseCase', () => {
     const [details] =
       nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mock.calls[0];
     expect(details.consultation).not.toHaveProperty('athlete');
+  });
+
+  it('sin un producto GENERATED activo falla (error de configuración) sin crear la orden ni la consulta', async () => {
+    productRepository.getActiveGeneratedProduct.mockResolvedValue(null);
+
+    await expect(useCase.execute({ claims, consultation: baseDto })).rejects.toThrow(
+      /producto GENERATED activo/,
+    );
+    expect(createOrder.execute).not.toHaveBeenCalled();
+    expect(
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails,
+    ).not.toHaveBeenCalled();
   });
 
   it('numera la consulta a continuación del mayor número del historial', async () => {

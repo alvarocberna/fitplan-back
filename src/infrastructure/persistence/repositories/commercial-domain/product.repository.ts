@@ -35,7 +35,7 @@ export class ProductRepositoryImpl implements ProductRepository {
     return this.datasource.getActivePlanPreviews();
   }
 
-  findOrCreateActiveGeneratedProduct(): Promise<ProductEntity> {
-    return this.datasource.findOrCreateActiveGeneratedProduct();
+  getActiveGeneratedProduct(): Promise<ProductEntity | null> {
+    return this.datasource.getActiveGeneratedProduct();
   }
 }
