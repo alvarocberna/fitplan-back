@@ -17,6 +17,7 @@ export class ExpireUnpaidOrdersJob {
     } catch (error) {
       this.logger.error(
         `Error al expirar órdenes sin pagar: ${(error as Error).message}`,
+        (error as Error).stack,
       );
     }
   }

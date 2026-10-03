@@ -9,7 +9,7 @@ describe('SyncIdentityUseCase', () => {
   let useCase: SyncIdentityUseCase;
   let authIdentityRepository: {
     findAuthIdentityByProvider: jest.Mock;
-    createAuthIdentity: jest.Mock;
+    findOrCreateAuthIdentity: jest.Mock;
   };
   let userRepository: { getUserById: jest.Mock; findOrCreateUserByEmail: jest.Mock };
   let currentUser: { isProfileComplete: jest.Mock };
@@ -19,7 +19,7 @@ describe('SyncIdentityUseCase', () => {
   beforeEach(() => {
     authIdentityRepository = {
       findAuthIdentityByProvider: jest.fn(),
-      createAuthIdentity: jest.fn(),
+      findOrCreateAuthIdentity: jest.fn(),
     };
     userRepository = { getUserById: jest.fn(), findOrCreateUserByEmail: jest.fn() };
     currentUser = { isProfileComplete: jest.fn().mockReturnValue(false) };
@@ -41,7 +41,7 @@ describe('SyncIdentityUseCase', () => {
 
     expect(result).toMatchObject({ email: 'ana@example.com', profileComplete: false });
     expect(userRepository.findOrCreateUserByEmail).not.toHaveBeenCalled();
-    expect(authIdentityRepository.createAuthIdentity).not.toHaveBeenCalled();
+    expect(authIdentityRepository.findOrCreateAuthIdentity).not.toHaveBeenCalled();
   });
 
   it('la primera vez crea el User esqueleto (por email) y su AuthIdentity primaria', async () => {
@@ -56,7 +56,7 @@ describe('SyncIdentityUseCase', () => {
     expect(userRepository.findOrCreateUserByEmail).toHaveBeenCalledWith({
       email: 'ana@example.com',
     });
-    expect(authIdentityRepository.createAuthIdentity).toHaveBeenCalledWith({
+    expect(authIdentityRepository.findOrCreateAuthIdentity).toHaveBeenCalledWith({
       userId: 'user-1',
       provider: AuthProvider.COGNITO,
       providerUserId: 'sub-1',

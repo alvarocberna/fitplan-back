@@ -24,6 +24,6 @@ describe('PurgeExpiredConsultationsJob', () => {
       .mockImplementation(() => undefined);
 
     await expect(job.run()).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'), expect.any(String));
   });
 });

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { LlmModule } from '../../infrastructure/llm/openai/openai-llm.module';
 import { EmailModule } from '../../infrastructure/email/email.module';
+import { AlertsModule } from '../../infrastructure/alerts/alerts.module';
 import { PlanDocumentRendererModule } from '../../infrastructure/pdf/plan-document-renderer.module';
 import { FileStorageModule } from '../../infrastructure/storage/s3/s3-file-storage.module';
 import { ClinicalDomainRepositoriesModule } from '../../infrastructure/persistence/repositories/clinical-domain/clinical-domain-repositories.module';
@@ -29,6 +30,7 @@ import { RetryPendingGenerationsJob } from './jobs/retry-pending-generations.job
   imports: [
     LlmModule,
     EmailModule,
+    AlertsModule,
     PlanDocumentRendererModule,
     FileStorageModule,
     ClinicalDomainRepositoriesModule,

@@ -59,6 +59,6 @@ describe('RetryPendingGenerationsUseCase', () => {
 
     await expect(useCase.execute()).resolves.toEqual({ released: 0, retried: 2 });
     expect(generatePersonalizedPlan.execute).toHaveBeenCalledTimes(2);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'), expect.any(String));
   });
 });

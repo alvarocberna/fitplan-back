@@ -2,15 +2,16 @@ import {
   ExecutionContext,
   INestApplication,
   UnauthorizedException,
-  ValidationPipe,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { API_PREFIX } from '../src/common/api-prefix';
+import { configureApp } from '../src/app.setup';
 import { CognitoAuthGuard } from '../src/common/auth/cognito-auth.guard';
-import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter';
 import { PrismaService } from '../src/infrastructure/persistence/orm/prisma/prisma.service';
+import { Prisma } from '../generated/prisma';
+import { LlmUnavailableError } from '../src/domain/errors/llm.errors';
 import { AuthIdentityRepository } from '../src/domain/repositories/identity-auth/auth-identity.repository';
 import { UserRepository } from '../src/domain/repositories/identity-auth/user.repository';
 import { ClinicalRecordRepository } from '../src/domain/repositories/clinical-domain/clinical-record.repository';
@@ -26,7 +27,7 @@ import {
 } from '../src/domain/ports';
 
 // e2e "sin Postgres real": todo el pipeline HTTP (prefijo /api/v1, routing, ValidationPipe,
-// controllers, casos de uso, evento order.paid, HttpExceptionFilter) corre real; solo se mockea el
+// controllers, casos de uso, evento order.paid, AllExceptionsFilter) corre real; solo se mockea el
 // límite más bajo (repositorios y puertos hacia servicios externos), PrismaService (para que nadie
 // intente conectarse a una base de datos) y el guard de Cognito (el token se da por válido si viene
 // un header Authorization, con sub fijo).
@@ -40,6 +41,7 @@ describe('App (e2e)', () => {
   let orderRepository: jest.Mocked<OrderRepository>;
   let measurementsRepository: jest.Mocked<MeasurementsRepository>;
   let fileStorage: { getSignedDownloadUrl: jest.Mock };
+  let llm: { chatJson: jest.Mock };
 
   const api = (path: string) => `/${API_PREFIX}${path}`;
   const AUTH = { Authorization: 'Bearer token-e2e' };
@@ -76,7 +78,11 @@ describe('App (e2e)', () => {
       .overrideProvider(PrismaService)
       .useValue({ $connect: jest.fn(), $disconnect: jest.fn() })
       .overrideProvider(AuthIdentityRepository)
-      .useValue({ findAuthIdentityByProvider: jest.fn(), createAuthIdentity: jest.fn() })
+      .useValue({
+        findAuthIdentityByProvider: jest.fn(),
+        createAuthIdentity: jest.fn(),
+        findOrCreateAuthIdentity: jest.fn(),
+      })
       .overrideProvider(UserRepository)
       .useValue({ getUserById: jest.fn(), findOrCreateUserByEmail: jest.fn(), updateUserById: jest.fn() })
       .overrideProvider(ClinicalRecordRepository)
@@ -136,16 +142,8 @@ describe('App (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix(API_PREFIX);
-    app.useGlobalFilters(new HttpExceptionFilter());
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-        transformOptions: { enableImplicitConversion: true },
-      }),
-    );
+    // misma configuración HTTP que main.ts (prefijo, requestId, ValidationPipe, filtro global)
+    configureApp(app);
     await app.init();
 
     authIdentityRepository = moduleFixture.get(AuthIdentityRepository);
@@ -156,6 +154,7 @@ describe('App (e2e)', () => {
     orderRepository = moduleFixture.get(OrderRepository);
     measurementsRepository = moduleFixture.get(MeasurementsRepository);
     fileStorage = moduleFixture.get(FileStorage);
+    llm = moduleFixture.get(LlmProvider);
   });
 
   beforeEach(() => {
@@ -723,6 +722,136 @@ describe('App (e2e)', () => {
         .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
         .expect(201);
       expect(response.body).toEqual({ status: 'rejected' });
+    });
+  });
+
+  // Contrato único de error (AllExceptionsFilter): { statusCode, code, message, errors?, requestId,
+  // timestamp, path }, con `message` siempre string y el requestId también en el header.
+  describe('contrato de error', () => {
+    const consultationId = '8b1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+
+    it('401 sin token: code UNAUTHENTICATED y requestId en el body y en el header', async () => {
+      const response = await request(app.getHttpServer()).get(api('/me')).expect(401);
+
+      expect(response.body).toEqual({
+        statusCode: 401,
+        code: 'UNAUTHENTICATED',
+        message: 'Falta el token de autenticación',
+        requestId: expect.any(String),
+        timestamp: expect.any(String),
+        path: api('/me'),
+      });
+      expect(response.headers['x-request-id']).toBe(response.body.requestId);
+    });
+
+    it('respeta el x-request-id que manda el llamador', async () => {
+      const response = await request(app.getHttpServer())
+        .get(api('/me'))
+        .set('x-request-id', 'front-request-0001')
+        .expect(401);
+
+      expect(response.body.requestId).toBe('front-request-0001');
+      expect(response.headers['x-request-id']).toBe('front-request-0001');
+    });
+
+    it('400 de validación: code VALIDATION_ERROR, message string en español y el detalle en errors', async () => {
+      const response = await request(app.getHttpServer())
+        .post(api('/webhooks/payments'))
+        .send({ orderId: 'no-es-uuid', inventada: true })
+        .expect(400);
+
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(response.body.message).toBe('Los datos enviados no son válidos');
+      expect(response.body.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining('inventada'), expect.stringContaining('orderId')]),
+      );
+    });
+
+    it('400 por un id que no es UUID: el texto del pipe va a errors, no al message', async () => {
+      const response = await request(app.getHttpServer())
+        .get(api('/me/consultations/no-es-uuid'))
+        .set(AUTH)
+        .expect(400);
+
+      expect(response.body.code).toBe('BAD_REQUEST');
+      expect(response.body.message).toBe('La solicitud no es válida');
+      expect(response.body.errors).toEqual([expect.stringContaining('uuid')]);
+    });
+
+    it('404 de una ruta inexistente usa el mismo formato', async () => {
+      const response = await request(app.getHttpServer()).get(api('/no-existe')).expect(404);
+
+      expect(response.body).toMatchObject({
+        statusCode: 404,
+        code: 'NOT_FOUND',
+        message: 'No encontramos lo que buscas',
+      });
+    });
+
+    it('un error inesperado responde 500 INTERNAL_ERROR sin filtrar el detalle', async () => {
+      nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId.mockRejectedValue(
+        new Error('connection string postgres://user:secreto@host'),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get(api(`/me/consultations/${consultationId}`))
+        .set(AUTH)
+        .expect(500);
+
+      expect(response.body).toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_ERROR',
+        message: 'Ocurrió un error inesperado. Intenta nuevamente.',
+        requestId: expect.any(String),
+      });
+      expect(JSON.stringify(response.body)).not.toContain('secreto');
+    });
+
+    it('un error de unicidad de Prisma (P2002) responde 409 CONFLICT', async () => {
+      userRepository.updateUserById.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .patch(api('/me'))
+        .set(AUTH)
+        .send({ firstName: 'Ana' })
+        .expect(409);
+
+      expect(response.body.code).toBe('CONFLICT');
+    });
+
+    it('un fallo del proveedor de LLM responde 503 LLM_UNAVAILABLE', async () => {
+      llm.chatJson.mockRejectedValue(new LlmUnavailableError('OpenAI no respondió (HTTP 429)'));
+
+      const response = await request(app.getHttpServer())
+        .post(api('/consultations/chat'))
+        .set(AUTH)
+        .send({ messages: [{ role: 'user', content: 'hola' }] })
+        .expect(503);
+
+      expect(response.body.code).toBe('LLM_UNAVAILABLE');
+      expect(response.body.message).not.toContain('OpenAI');
+    });
+
+    it('pagar una orden expirada responde 409 ORDER_EXPIRED', async () => {
+      process.env.ENABLE_PAYMENT_SIMULATION = 'true';
+      orderRepository.getOrderWithProductById.mockResolvedValue({
+        id: consultationId,
+        amount: 4990,
+        paymentStatus: 'EXPIRED',
+        product: { id: 'product-1', type: 'GENERATED' },
+      } as any);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(false);
+
+      const response = await request(app.getHttpServer())
+        .post(api(`/dev/orders/${consultationId}/simulate-payment`))
+        .expect(409);
+
+      expect(response.body.code).toBe('ORDER_EXPIRED');
     });
   });
 });

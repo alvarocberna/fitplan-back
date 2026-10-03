@@ -1,4 +1,7 @@
-import { InternalServerErrorException } from '@nestjs/common';
+import {
+  LlmInvalidResponseError,
+  LlmUnavailableError,
+} from '../../../domain/errors/llm.errors';
 import { OpenaiLlmProvider } from './openai-llm.provider';
 
 const createMock = jest.fn();
@@ -32,20 +35,20 @@ describe('OpenaiLlmProvider', () => {
     expect(result).toEqual({ reply: 'hola' });
   });
 
-  it('lanza InternalServerErrorException si la respuesta viene vacía', async () => {
+  it('lanza LlmInvalidResponseError si la respuesta viene vacía', async () => {
     createMock.mockResolvedValue({ choices: [{ message: { content: '' } }] });
 
     await expect(
       service.chatJson('system', [{ role: 'user', content: 'hola' }]),
-    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    ).rejects.toBeInstanceOf(LlmInvalidResponseError);
   });
 
-  it('lanza InternalServerErrorException si no hay choices', async () => {
+  it('lanza LlmInvalidResponseError si no hay choices', async () => {
     createMock.mockResolvedValue({ choices: [] });
 
     await expect(
       service.chatJson('system', [{ role: 'user', content: 'hola' }]),
-    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    ).rejects.toBeInstanceOf(LlmInvalidResponseError);
   });
 
   it('pasa model/temperature al SDK, y agrega response_format json_object + el system prompt', async () => {
@@ -71,5 +74,25 @@ describe('OpenaiLlmProvider', () => {
 
     const callArgs = createMock.mock.calls[0][0];
     expect(callArgs).not.toHaveProperty('temperature');
+  });
+
+  it('traduce un error del SDK (red, rate limit, 5xx) a LlmUnavailableError, con el status en el mensaje', async () => {
+    createMock.mockRejectedValue(Object.assign(new Error('Rate limit reached'), { status: 429 }));
+
+    const error = (await service
+      .chatJson('system', [{ role: 'user', content: 'hola' }])
+      .catch((e: unknown) => e)) as Error;
+
+    expect(error).toBeInstanceOf(LlmUnavailableError);
+    expect(error.message).toContain('HTTP 429');
+    expect(error.message).toContain('Rate limit reached');
+  });
+
+  it('lanza LlmInvalidResponseError si la respuesta no es JSON válido', async () => {
+    createMock.mockResolvedValue({ choices: [{ message: { content: 'no soy json' } }] });
+
+    await expect(
+      service.chatJson('system', [{ role: 'user', content: 'hola' }]),
+    ).rejects.toBeInstanceOf(LlmInvalidResponseError);
   });
 });

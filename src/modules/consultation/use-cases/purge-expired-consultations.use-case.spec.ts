@@ -56,6 +56,6 @@ describe('PurgeExpiredConsultationsUseCase', () => {
       .mockImplementation(() => undefined);
 
     await expect(useCase.execute()).resolves.toEqual({ deleted: 1 });
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('db caída'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('db caída'), expect.any(String));
   });
 });

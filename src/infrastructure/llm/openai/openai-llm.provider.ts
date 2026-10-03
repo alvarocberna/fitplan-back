@@ -1,6 +1,16 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { LlmMessage, LlmProvider } from '../../../domain/ports';
+import {
+  LlmInvalidResponseError,
+  LlmUnavailableError,
+} from '../../../domain/errors/llm.errors';
+
+// Tope por llamada al modelo. Explícito para no depender del default del SDK (10 minutos), que
+// dejaría una request HTTP colgada mucho más de lo que espera el frontend.
+const DEFAULT_TIMEOUT_MS = 60_000;
+// Reintentos del propio SDK ante errores transitorios (red, 429, 5xx), con su backoff.
+const MAX_RETRIES = 2;
 
 @Injectable()
 export class OpenaiLlmProvider implements LlmProvider {
@@ -9,6 +19,8 @@ export class OpenaiLlmProvider implements LlmProvider {
   constructor() {
     this.client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      timeout: Number(process.env.OPENAI_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
+      maxRetries: MAX_RETRIES,
     });
   }
 
@@ -21,16 +33,31 @@ export class OpenaiLlmProvider implements LlmProvider {
     // GeneratePersonalizedPlanUseCase), no para el chat de anamnesis (ChatAnamnesisUseCase).
     temperature?: number,
   ): Promise<T> {
-    const response = await this.client.chat.completions.create({
-      model,
-      ...(temperature !== undefined ? { temperature } : {}),
-      response_format: { type: 'json_object' },
-      messages: [{ role: 'system', content: systemPrompt }, ...messages],
-    });
+    let content: string | null | undefined;
+    try {
+      const response = await this.client.chat.completions.create({
+        model,
+        ...(temperature !== undefined ? { temperature } : {}),
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      });
+      content = response.choices[0]?.message?.content;
+    } catch (error) {
+      // Cualquier error del SDK (red, timeout, rate limit, 4xx/5xx del proveedor) se traduce al error
+      // del puerto: quien llama no conoce a OpenAI.
+      const cause = error as { status?: number; message?: string };
+      throw new LlmUnavailableError(
+        `OpenAI no respondió${cause?.status ? ` (HTTP ${cause.status})` : ''}: ${cause?.message ?? 'error desconocido'}`,
+        error,
+      );
+    }
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new InternalServerErrorException('OpenAI returned an empty response');
+    if (!content) throw new LlmInvalidResponseError('OpenAI devolvió una respuesta vacía');
 
-    return JSON.parse(content) as T;
+    try {
+      return JSON.parse(content) as T;
+    } catch {
+      throw new LlmInvalidResponseError('OpenAI devolvió una respuesta que no es JSON válido');
+    }
   }
 }

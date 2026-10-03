@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GeneratePersonalizedPlanUseCase } from './generate-personalized-plan.use-case';
 import { OrderLifecycleService } from '../../billing/order-lifecycle.service';
 import {
+  AlertNotifier,
   EmailSender,
   FileStorage,
   LlmProvider,
@@ -74,6 +75,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   let orderLifecycle: jest.Mocked<OrderLifecycleService>;
   let llm: jest.Mocked<LlmProvider>;
   let emailSender: jest.Mocked<EmailSender>;
+  let alertNotifier: jest.Mocked<AlertNotifier>;
   let documentRenderer: jest.Mocked<PlanDocumentRenderer>;
   let fileStorage: jest.Mocked<FileStorage>;
   let nutritionalConsultationRepository: jest.Mocked<NutritionalConsultationRepository>;
@@ -175,6 +177,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         },
         { provide: LlmProvider, useValue: { chatJson: jest.fn() } },
         { provide: EmailSender, useValue: { sendPlanByEmail: jest.fn() } },
+        { provide: AlertNotifier, useValue: { notify: jest.fn() } },
         {
           provide: PlanDocumentRenderer,
           useValue: { renderPdf: jest.fn(), renderThumbnail: jest.fn() },
@@ -196,6 +199,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     orderLifecycle = module.get(OrderLifecycleService);
     llm = module.get(LlmProvider);
     emailSender = module.get(EmailSender);
+    alertNotifier = module.get(AlertNotifier);
     documentRenderer = module.get(PlanDocumentRenderer);
     fileStorage = module.get(FileStorage);
     nutritionalConsultationRepository = module.get(NutritionalConsultationRepository);
@@ -467,7 +471,87 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     expect(orderLifecycle.completeGeneration).not.toHaveBeenCalled();
     expect(emailSender.sendPlanByEmail).not.toHaveBeenCalled();
     expect(orderLifecycle.recordFailedAttempt).toHaveBeenCalledWith('order-1');
+    // primera ronda fallida: quedan reintentos automáticos, la alerta es solo un aviso
+    expect(alertNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'plan_generation_failed',
+        severity: 'warning',
+        context: expect.objectContaining({ orderId: 'order-1', failedRounds: 1, final: false }),
+      }),
+    );
 
     jest.useRealTimers();
+  });
+
+  it('si la ronda que falla era la última (attempts agotados), la alerta es crítica', async () => {
+    jest.useFakeTimers();
+    // la orden ya lleva 3 rondas fallidas: esta es la cuarta y última
+    orderLifecycle.findByIdWithUser.mockResolvedValue({ ...orderEntity, attempts: 3 });
+    llm.chatJson.mockRejectedValue(new Error('OpenAI no respondió'));
+
+    const resultPromise = service.execute({ orderId: 'order-1' });
+    for (let i = 0; i < 5; i++) {
+      await jest.advanceTimersByTimeAsync(60000);
+    }
+    await resultPromise;
+
+    expect(orderLifecycle.recordFailedAttempt).toHaveBeenCalledWith('order-1');
+    expect(alertNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'plan_generation_failed',
+        severity: 'critical',
+        context: expect.objectContaining({ failedRounds: 4, final: true }),
+      }),
+    );
+
+    jest.useRealTimers();
+  });
+
+  it('si falla el envío del correo, el plan queda completado: no se regenera ni se marca en ERROR', async () => {
+    mockMatchingAiResponses();
+    emailSender.sendPlanByEmail.mockRejectedValue(new Error('SES caído'));
+
+    await expect(service.execute({ orderId: 'order-1' })).resolves.toBeUndefined();
+
+    expect(llm.chatJson).toHaveBeenCalledTimes(2); // una sola generación
+    expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+    expect(orderLifecycle.recordFailedAttempt).not.toHaveBeenCalled();
+    expect(alertNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'plan_email_failed', severity: 'warning' }),
+    );
+  });
+
+  it('si el usuario no tiene email, el plan queda completado y simplemente no se envía el correo', async () => {
+    mockMatchingAiResponses();
+    orderLifecycle.findByIdWithUser.mockResolvedValue({
+      ...orderEntity,
+      user: { ...orderEntity.user, email: null },
+    });
+
+    await service.execute({ orderId: 'order-1' });
+
+    expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+    expect(emailSender.sendPlanByEmail).not.toHaveBeenCalled();
+    expect(orderLifecycle.recordFailedAttempt).not.toHaveBeenCalled();
+  });
+
+  it('si no se pueden cargar los datos de la orden, la ronda se da por fallida (no queda en GENERATING)', async () => {
+    nutritionalConsultationRepository.getNutritionalConsultationWithDetailsByOrderId.mockResolvedValue(null);
+
+    await expect(service.execute({ orderId: 'order-1' })).resolves.toBeUndefined();
+
+    expect(llm.chatJson).not.toHaveBeenCalled();
+    expect(orderLifecycle.recordFailedAttempt).toHaveBeenCalledWith('order-1');
+    expect(alertNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'plan_generation_failed' }),
+    );
+  });
+
+  it('si ni siquiera se puede registrar la ronda fallida, el error queda contenido', async () => {
+    orderLifecycle.findByIdWithUser.mockRejectedValue(new Error('db caída'));
+    orderLifecycle.recordFailedAttempt.mockRejectedValue(new Error('db caída'));
+
+    await expect(service.execute({ orderId: 'order-1' })).resolves.toBeUndefined();
+    expect(alertNotifier.notify).toHaveBeenCalled();
   });
 });

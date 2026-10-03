@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../orm/prisma/prisma.service';
+import { isUniqueConstraintError } from '../../orm/prisma/prisma-errors';
 import { UserDatasource } from '../../../../domain/datasources/identity-auth/user.datasource';
 import { UserEntity } from '../../../../domain/entities/user.entity';
 import {
@@ -34,10 +35,17 @@ export class UserDatasourceImpl implements UserDatasource {
   async findOrCreateUserByEmail(
     dto: FindOrCreateUserByEmailDto,
   ): Promise<UserEntity> {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (existing) return existing;
-    return this.prisma.user.create({ data: dto });
+    // upsert (y no "buscar y luego crear") para que dos llamadas simultáneas no choquen con el
+    // @unique de email. Si aun así pierde la carrera (P2002), la fila ya existe: se relee.
+    try {
+      return await this.prisma.user.upsert({
+        where: { email: dto.email },
+        update: {},
+        create: dto,
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      return this.prisma.user.findUniqueOrThrow({ where: { email: dto.email } });
+    }
   }
 }

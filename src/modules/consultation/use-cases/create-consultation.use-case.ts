@@ -3,6 +3,7 @@ import { ClinicalRecordRepository } from '../../../domain/repositories/clinical-
 import { NutritionalConsultationRepository } from '../../../domain/repositories/clinical-domain/nutritional-consultation.repository';
 import { ProductRepository } from '../../../domain/repositories/commercial-domain/product.repository';
 import { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
+import { ErrorCode } from '../../../common/errors/error-codes';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { CreateOrderUseCase } from '../../billing/use-cases/create-order.use-case';
 import { EvaluateGoalFeasibilityUseCase } from './evaluate-goal-feasibility.use-case';
@@ -39,9 +40,10 @@ export class CreateConsultationUseCase {
     // completa el User (athlete también vive en el perfil).
     const user = await this.currentUser.resolve(input.claims);
     if (!this.currentUser.isProfileComplete(user)) {
-      throw new BadRequestException(
-        'Completa tu información personal antes de generar una orden',
-      );
+      throw new BadRequestException({
+        code: ErrorCode.PROFILE_INCOMPLETE,
+        message: 'Completa tu información personal antes de generar una orden',
+      });
     }
 
     // Respaldo de CU-CON-03 (el frontend ya lo evalúa al terminar la evaluación física): no se
@@ -52,7 +54,10 @@ export class CreateConsultationUseCase {
       measurements: dto.measurements,
     });
     if (!feasibility.feasible) {
-      throw new BadRequestException(feasibility.message);
+      throw new BadRequestException({
+        code: ErrorCode.GOAL_NOT_FEASIBLE,
+        message: feasibility.message,
+      });
     }
 
     const clinicalRecord =

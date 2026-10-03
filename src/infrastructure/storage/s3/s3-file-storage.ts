@@ -9,6 +9,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { FileStorage } from '../../../domain/ports';
 
 const DEFAULT_SIGNED_URL_TTL_SECONDS = 600;
+const S3_MAX_ATTEMPTS = 3;
+const S3_CONNECTION_TIMEOUT_MS = 5_000;
+const S3_REQUEST_TIMEOUT_MS = 30_000;
 
 @Injectable()
 export class S3FileStorage implements FileStorage {
@@ -18,6 +21,13 @@ export class S3FileStorage implements FileStorage {
   constructor(private readonly configService: ConfigService) {
     this.bucket = this.configService.getOrThrow<string>('AWS_S3_BUCKET_NAME');
     this.s3 = new S3Client({
+      // Explícitos para no depender de los defaults del SDK: hasta 3 intentos por operación y topes
+      // de conexión/respuesta, así una subida colgada no bloquea la generación del plan.
+      maxAttempts: S3_MAX_ATTEMPTS,
+      requestHandler: {
+        connectionTimeout: S3_CONNECTION_TIMEOUT_MS,
+        requestTimeout: S3_REQUEST_TIMEOUT_MS,
+      },
       region: this.configService.getOrThrow<string>('AWS_REGION'),
       credentials: {
         accessKeyId:

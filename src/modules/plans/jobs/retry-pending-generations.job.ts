@@ -23,6 +23,7 @@ export class RetryPendingGenerationsJob {
     } catch (error) {
       this.logger.error(
         `Error al reintentar generaciones pendientes: ${(error as Error).message}`,
+        (error as Error).stack,
       );
     } finally {
       this.running = false;

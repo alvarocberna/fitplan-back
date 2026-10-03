@@ -174,4 +174,21 @@ describe('GetOrderStatusUseCase', () => {
       NotFoundException,
     );
   });
+
+  it('un planJson corrupto no rompe el polling: se informa sin detalle del plan', async () => {
+    orderRepository.getOrderById.mockResolvedValue({
+      userId: 'user-1',
+      paymentStatus: 'PAID',
+      generationStatus: 'COMPLETED',
+      planJson: '{ esto no es json',
+      pdfKey: 'productos-personalizados/order-1.pdf',
+      thumbnailKey: null,
+      creationDate: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const status = await useCase.execute({ claims, orderId: 'order-1' });
+
+    expect(status.planJson).toBeNull();
+    expect(status.pdfUrl).toBe('https://signed-url.example/productos-personalizados/order-1.pdf');
+  });
 });

@@ -27,6 +27,7 @@ export class OrderPaidListener {
       .catch((error: Error) => {
         this.logger.error(
           `Orden ${event.orderId}: error no controlado al generar el plan: ${error.message}`,
+          error.stack,
         );
       });
   }

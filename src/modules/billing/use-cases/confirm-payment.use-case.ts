@@ -14,6 +14,7 @@ import {
 import type { OrderPaidExtras } from '../../../domain/datasources/commercial-domain/order.datasource';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { ORDER_PAID, OrderPaidEvent } from '../events/order-paid.event';
+import { ErrorCode } from '../../../common/errors/error-codes';
 import { OrderLifecycleService } from '../order-lifecycle.service';
 
 export type ConfirmPaymentResult = { status: 'processed' | 'already_processed' };
@@ -87,7 +88,10 @@ export class ConfirmPaymentUseCase {
       // La orden no era pagable: o venció su plazo, o ya estaba pagada.
       if (await this.orderLifecycle.isExpired(order)) {
         this.logger.warn(`Orden ${orderId}: pago recibido pero la orden expiró`);
-        throw new ConflictException(`La orden ${orderId} expiró sin pagarse`);
+        throw new ConflictException({
+          code: ErrorCode.ORDER_EXPIRED,
+          message: 'La orden expiró sin pagarse',
+        });
       }
       this.logger.log(`Orden ${orderId}: pago recibido pero ya estaba pagada (ignorado)`);
       return { status: 'already_processed' };

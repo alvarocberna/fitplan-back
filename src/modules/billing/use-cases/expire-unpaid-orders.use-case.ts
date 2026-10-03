@@ -31,6 +31,7 @@ export class ExpireUnpaidOrdersUseCase {
       } catch (error) {
         this.logger.error(
           `Orden ${orderId}: no se pudo expirar: ${(error as Error).message}`,
+          (error as Error).stack,
         );
       }
     }

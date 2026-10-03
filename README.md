@@ -80,7 +80,7 @@ src/
 │   ├── pdf/                # ReactPdfPlanDocumentRenderer (PlanDocumentRenderer): PDF + miniatura
 │   └── auth/cognito/       # Verificador del Access Token de Cognito (aws-jwt-verify)
 │
-├── common/                 # Transversal: CognitoAuthGuard, @CognitoUser(), HttpExceptionFilter, API_PREFIX
+├── common/                 # Transversal: CognitoAuthGuard, @CognitoUser(), AllExceptionsFilter, ErrorCode, requestId, API_PREFIX
 │
 ├── modules/                # Módulos NestJS: controllers + casos de uso + DTOs validados
 │   ├── identity/           # /me, /me/sync, /me/summary + CurrentUserResolver (exportado)
@@ -168,7 +168,8 @@ Definidas en `.env.template`:
 | `DATABASE_URL` | Cadena de conexión PostgreSQL para Prisma (ej. `postgresql://user:pass@localhost:5432/db`) |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_ACCESS_EXPIRATION` / `JWT_REFRESH_EXPIRATION` | Heredadas de un módulo de auth que ya no está presente en `src/` |
 | `BCRYPT_SALT_OR_ROUNDS` | Idem, sin uso actual |
-| `NODE_ENV` | Controla si `HttpExceptionFilter` incluye detalle del error en la respuesta |
+| `NODE_ENV` | `production` deshabilita Swagger (`/api-docs`). El formato de error ya no depende de este valor |
+| `OPENAI_TIMEOUT_MS` | Opcional. Tope por llamada al modelo (por defecto 60000) |
 | `ENABLE_PAYMENT_SIMULATION` | `true` habilita `POST /api/v1/dev/orders/:id/simulate-payment` (con cualquier otro valor responde 404). Mientras no haya pasarela real es el único camino de pago, así que va en `true` también en producción |
 | `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | User Pool y App Client con los que se valida el Access Token (ver [doc/auth.md](./doc/auth.md)) |
 | `AWS_REGION` / `AWS_S3_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Bucket S3 de los PDFs (`S3FileStorage`) |
@@ -624,10 +625,22 @@ con sus propios prompts (`modules/consultation/prompts/` y `modules/plans/genera
 
 ## Manejo de errores
 
-`HttpExceptionFilter` (`src/common/filters/http-exception.filter.ts`) es un `ExceptionFilter` global
-(registrado en `main.ts`) que captura toda `HttpException`, normaliza el `message` (venga como string,
-array o `{ message | error }`), lo loguea con `Logger`, y responde `{ statusCode, message, timestamp,
-path }`. Fuera de `NODE_ENV=production`, además incluye `exception: { name, response }` para depuración.
+`AllExceptionsFilter` (`src/common/filters/all-exceptions.filter.ts`, registrado en `src/app.setup.ts`) atrapa
+**toda** excepción de una request —`HttpException`, errores de Prisma, del proveedor de LLM o inesperados— y
+responde siempre con el mismo formato:
+
+```json
+{ "statusCode": 409, "code": "ORDER_EXPIRED", "message": "La orden expiró sin pagarse",
+  "requestId": "…", "timestamp": "…", "path": "/api/v1/…" }
+```
+
+`message` es siempre un string en español para el usuario; `code` es estable (`src/common/errors/error-codes.ts`)
+y es por lo que decide el frontend; `errors` (opcional) lleva el detalle técnico de una validación; `requestId`
+es el id de correlación (`x-request-id`) que también queda en los logs. El detalle de un error no controlado
+nunca viaja en la respuesta.
+
+El resto (catálogo de códigos, guards, Prisma, adaptadores externos, jobs/listeners, generación del plan, alertas,
+logging y arranque) está en [`doc/error-handling.md`](doc/error-handling.md).
 
 ## Base de datos (Prisma)
 

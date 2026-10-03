@@ -47,6 +47,6 @@ describe('ExpireUnpaidOrdersUseCase', () => {
       .mockImplementation(() => undefined);
 
     await expect(useCase.execute()).resolves.toEqual({ expired: 1 });
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('db caída'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('db caída'), expect.any(String));
   });
 });

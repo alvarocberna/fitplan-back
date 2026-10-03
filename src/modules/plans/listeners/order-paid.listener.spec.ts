@@ -34,6 +34,6 @@ describe('OrderPaidListener', () => {
 
     // deja correr el microtask del .catch() fire-and-forget antes de verificar
     await new Promise((resolve) => setImmediate(resolve));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'), expect.any(String));
   });
 });

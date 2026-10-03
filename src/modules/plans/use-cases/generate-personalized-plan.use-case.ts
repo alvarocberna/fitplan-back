@@ -45,11 +45,13 @@ import {
 } from '../../../domain/services/alimentos/food-portions';
 //domain - puertos
 import {
+  AlertNotifier,
   EmailSender,
   FileStorage,
   LlmProvider,
   PlanDocumentRenderer,
 } from '../../../domain/ports';
+import { MAX_GENERATION_ROUNDS } from '../../../domain/services/orders/generation-retry.policy';
 import {
   buildPersonalizedPlanKey,
   buildPlanThumbnailKey,
@@ -145,6 +147,7 @@ export class GeneratePersonalizedPlanUseCase {
     private readonly orderLifecycle: OrderLifecycleService,
     private readonly llm: LlmProvider,
     private readonly emailSender: EmailSender,
+    private readonly alertNotifier: AlertNotifier,
     private readonly documentRenderer: PlanDocumentRenderer,
     private readonly fileStorage: FileStorage,
     private readonly planRepository: PlanRepository,
@@ -168,9 +171,24 @@ export class GeneratePersonalizedPlanUseCase {
       return;
     }
 
-    const order = await this.orderLifecycle.findByIdWithUser(orderId);
-    const consultation = await this.getConsultationForOrder(orderId);
-    const payload = this.buildCompleteConsultationDto(order, consultation);
+    // La orden ya quedó en GENERATING: si falla la carga de sus datos, la ronda se da por fallida acá
+    // mismo (en vez de dejarla pegada en GENERATING hasta que el job la libere 30 min después).
+    let order: OrderEntity;
+    let consultation: NutritionalConsultationEntity;
+    let payload: CompleteConsultationDto;
+    try {
+      order = await this.orderLifecycle.findByIdWithUser(orderId);
+      consultation = await this.getConsultationForOrder(orderId);
+      payload = this.buildCompleteConsultationDto(order, consultation);
+    } catch (error) {
+      this.logger.error(
+        `Orden ${orderId}: no se pudieron cargar los datos para generar el plan ` +
+          `(${(error as Error).message})`,
+        (error as Error).stack,
+      );
+      await this.failRound(orderId, error as Error, null);
+      return;
+    }
     const baseline = await this.getBaselineComposition(order.userId);
 
     const totalStart = Date.now();
@@ -195,9 +213,9 @@ export class GeneratePersonalizedPlanUseCase {
 
         // Se persiste el Plan (con su NutritionalPlan principal y todas sus tablas hijas) ANTES de
         // marcar la orden como COMPLETED, así una orden completada siempre tiene su plan normalizado.
-        // Es un upsert por orderId, por lo que un reintento del loop (ej. si falla el correo más
-        // abajo) no duplica ni rompe el @unique: reemplaza el NutritionalPlan principal, sus hijos y
-        // la proyección (que define también el end_date del plan).
+        // Es un upsert por orderId, por lo que un reintento del loop no duplica ni rompe el @unique:
+        // reemplaza el NutritionalPlan principal, sus hijos y la proyección (que define también el
+        // end_date del plan).
         await this.planRepository.upsertPlanWithMainNutritionalPlanByOrderId({
           consultationId: consultation.id,
           orderId,
@@ -223,12 +241,9 @@ export class GeneratePersonalizedPlanUseCase {
             `${validationRejections} rechazado(s) por validación, ${totalDurationMs}ms totales)`,
         );
 
-        const userEmail = order.user?.email;
-        if (!userEmail)
-          throw new Error(
-            `Orden ${orderId}: el usuario asociado no tiene email`,
-          );
-        await this.emailSender.sendPlanByEmail(userEmail, plan, pdfBuffer);
+        // El correo va FUERA del intento: la orden ya está COMPLETED y el plan disponible en el
+        // panel, así que un fallo acá no debe volver a generar el plan ni marcar la orden en ERROR.
+        await this.sendPlanEmail(order, plan, pdfBuffer);
         return;
       } catch (error) {
         const attemptDurationMs = Date.now() - attemptStart;
@@ -247,14 +262,64 @@ export class GeneratePersonalizedPlanUseCase {
           this.logger.error(
             `Orden ${orderId}: se agotaron los ${MAX_ATTEMPTS} intentos (${validationRejections} ` +
               `rechazado(s) por validación), ${totalDurationMs}ms totales`,
+            (error as Error).stack,
           );
-          await this.orderLifecycle.recordFailedAttempt(orderId);
-          this.notifyGenerationFailure(orderId, error as Error);
+          await this.failRound(orderId, error as Error, order.attempts ?? 0);
           return;
         }
 
         await this.sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
       }
+    }
+  }
+
+  //helper de execute() - cierra una ronda fallida: la orden queda en ERROR con attempts + 1 (el job de
+  //reintentos la retoma si le quedan rondas) y se avisa. Nunca lanza: si ni siquiera se puede
+  //registrar el fallo, la orden queda en GENERATING y la libera el job (releaseStalledGenerations).
+  private async failRound(
+    orderId: string,
+    error: Error,
+    previousAttempts: number | null,
+  ): Promise<void> {
+    try {
+      await this.orderLifecycle.recordFailedAttempt(orderId);
+    } catch (recordError) {
+      this.logger.error(
+        `Orden ${orderId}: no se pudo registrar la ronda fallida ` +
+          `(${(recordError as Error).message})`,
+        (recordError as Error).stack,
+      );
+    }
+    await this.notifyGenerationFailure(orderId, error, previousAttempts);
+  }
+
+  //helper de execute() - envío del plan por correo, best-effort: el plan ya está entregado en el
+  //panel, así que un fallo se registra (y se avisa) sin tocar el estado de la orden.
+  private async sendPlanEmail(
+    order: OrderEntity,
+    plan: NutritionPlanDto,
+    pdfBuffer: Buffer,
+  ): Promise<void> {
+    const userEmail = order.user?.email;
+    if (!userEmail) {
+      this.logger.warn(
+        `Orden ${order.id}: el usuario no tiene email, el plan no se envía por correo`,
+      );
+      return;
+    }
+    try {
+      await this.emailSender.sendPlanByEmail(userEmail, plan, pdfBuffer);
+    } catch (error) {
+      this.logger.warn(
+        `Orden ${order.id}: el plan se generó pero no se pudo enviar por correo ` +
+          `(${(error as Error).message})`,
+      );
+      await this.alertNotifier.notify({
+        event: 'plan_email_failed',
+        severity: 'warning',
+        message: `Orden ${order.id}: el plan está listo pero el correo no se pudo enviar`,
+        context: { orderId: order.id, error: (error as Error).message },
+      });
     }
   }
 
@@ -833,14 +898,23 @@ export class GeneratePersonalizedPlanUseCase {
     });
   }
 
-  //helper de processPlan() - punto de extensión: hoy es un log estructurado, mañana puede disparar una alerta real
-  //(Slack, PagerDuty, email a soporte, etc.) sin tocar el resto del worker.
-  private notifyGenerationFailure(orderId: string, error: Error): void {
-    this.logger.error({
+  //helper de failRound() - avisa por el canal de alertas (AlertNotifier) que una ronda de generación
+  //falló. Es "critical" cuando ya no quedan reintentos automáticos (ERROR definitivo: el usuario pagó
+  //y no tiene plan, requiere intervención manual) y "warning" mientras el job la vaya a retomar.
+  private async notifyGenerationFailure(
+    orderId: string,
+    error: Error,
+    previousAttempts: number | null,
+  ): Promise<void> {
+    const failedRounds = previousAttempts === null ? null : previousAttempts + 1;
+    const isFinal = failedRounds !== null && failedRounds >= MAX_GENERATION_ROUNDS;
+    await this.alertNotifier.notify({
       event: 'plan_generation_failed',
-      orderId,
-      message: error.message,
-      // TODO: integrar con el canal de alertas/soporte que se defina.
+      severity: isFinal ? 'critical' : 'warning',
+      message: isFinal
+        ? `Orden ${orderId}: la generación del plan falló definitivamente, requiere intervención manual`
+        : `Orden ${orderId}: falló una ronda de generación del plan, se reintentará automáticamente`,
+      context: { orderId, failedRounds, final: isFinal, error: error.message },
     });
   }
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../orm/prisma/prisma.service';
+import { isUniqueConstraintError } from '../../orm/prisma/prisma-errors';
 import { ClinicalRecordDatasource } from '../../../../domain/datasources/clinical-domain/clinical-record.datasource';
 import { ClinicalRecordEntity } from '../../../../domain/entities/clinical-record.entity';
 import {
@@ -40,10 +41,17 @@ export class ClinicalRecordDatasourceImpl implements ClinicalRecordDatasource {
   async findOrCreateClinicalRecordByPatientId(
     patientId: string,
   ): Promise<ClinicalRecordEntity> {
-    const existing = await this.prisma.clinicalRecord.findUnique({
-      where: { patientId },
-    });
-    if (existing) return existing;
-    return this.prisma.clinicalRecord.create({ data: { patientId } });
+    // upsert para que dos llamadas simultáneas no choquen con el @unique de patient_id; si aun así
+    // pierde la carrera (P2002), la ficha ya existe: se relee.
+    try {
+      return await this.prisma.clinicalRecord.upsert({
+        where: { patientId },
+        update: {},
+        create: { patientId },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      return this.prisma.clinicalRecord.findUniqueOrThrow({ where: { patientId } });
+    }
   }
 }

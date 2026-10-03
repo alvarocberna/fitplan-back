@@ -19,6 +19,7 @@ export class PurgeExpiredConsultationsJob {
     } catch (error) {
       this.logger.error(
         `Error al purgar consultas de órdenes expiradas: ${(error as Error).message}`,
+        (error as Error).stack,
       );
     }
   }

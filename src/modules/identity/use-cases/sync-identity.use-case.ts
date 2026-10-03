@@ -49,7 +49,8 @@ export class SyncIdentityUseCase {
     // (compat con órdenes creadas antes de este sistema de auth).
     const user = await this.userRepository.findOrCreateUserByEmail({ email });
 
-    await this.authIdentityRepository.createAuthIdentity({
+    // Idempotente: dos sincronizaciones simultáneas del mismo sub terminan con una sola identidad.
+    await this.authIdentityRepository.findOrCreateAuthIdentity({
       userId: user.id,
       provider: AuthProvider.COGNITO,
       providerUserId: claims.sub,

@@ -11,7 +11,9 @@ personalized nutrition plan (emailed as PDF, also downloadable from the frontend
 The **README.md is the primary source of truth** for this project — it documents every endpoint,
 the full plan-generation pipeline, the domain formulas, Prisma schema, and known technical debt in
 detail. Read it before making non-trivial changes. `doc/flow-happy-path.md` walks the exact
-end-to-end request sequence of a successful consultation; `doc/technical-debt.md` lists known gaps
+end-to-end request sequence of a successful consultation; `doc/error-handling.md` describes how errors
+are handled (single error contract `{ statusCode, code, message, errors?, requestId }`, guards, Prisma,
+LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `doc/technical-debt.md` lists known gaps
 in more detail than the README's summary. `to-do-list.md` is stale — it describes a prior
 datasources/repositories architecture that no longer exists in `src/`; ignore it.
 
@@ -50,7 +52,8 @@ module or an endpoint.
 src/
 ├── domain/                    # Pure business rules, no NestJS/SDK dependencies
 │   ├── ports/                  # Abstract classes used as Nest injection tokens: LlmProvider, FileStorage,
-│   │                            # EmailSender, PlanDocumentRenderer
+│   │                            # EmailSender, PlanDocumentRenderer, AlertNotifier
+│   ├── errors/                 # Plain error classes thrown by adapters (LlmUnavailableError, LlmInvalidResponseError)
 │   ├── dtos/                   # Shared data interfaces + identity-auth/clinical-domain/commercial-domain Create*/Update*Dto
 │   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (*Entity suffix)
 │   ├── datasources/ repositories/  # Abstract persistence contracts per entity (use cases depend on repositories/)
@@ -63,9 +66,10 @@ src/
 │   ├── llm/openai/             # OpenaiLlmProvider -> LlmProvider (LlmModule)
 │   ├── storage/s3/             # S3FileStorage -> FileStorage (FileStorageModule)
 │   ├── email/                  # LogEmailSender -> EmailSender (EmailModule; stub, logs only)
+│   ├── alerts/                 # LogAlertNotifier -> AlertNotifier (AlertsModule; stub, structured ALERT log)
 │   ├── pdf/                    # ReactPdfPlanDocumentRenderer -> PlanDocumentRenderer (PDF + WebP thumbnail)
 │   └── auth/cognito/           # getCognitoVerifier() (aws-jwt-verify)
-├── common/                     # CognitoAuthGuard, @CognitoUser(), HttpExceptionFilter, API_PREFIX
+├── common/                     # CognitoAuthGuard, @CognitoUser(), AllExceptionsFilter (single error format), errors/error-codes.ts, request-id middleware, API_PREFIX
 ├── modules/                    # NestJS business modules
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
 │   ├── consultation/           # /consultations/chat, /consultations/goal-feasibility, /consultations
@@ -268,9 +272,11 @@ integrations when reasoning about behavior or writing tests:
 - `ConfirmPaymentUseCase.verifyWebhookSignature()` always returns `true` — no real payment gateway
   signature validation.
 - `LogEmailSender.sendRealEmail()` only logs — no real email provider wired. Decided: Amazon SES, to be
-  implemented later as a new `EmailSender` adapter; when doing it, move the email out of the generation
-  retry loop (today a mail failure would re-generate an already `COMPLETED` plan) and use it for
-  `notifyGenerationFailure` alerts. See `../doc/flows/purchase-flow-personalized-plan.md` §9.
+  implemented later as a new `EmailSender` adapter. The email already runs outside the generation retry
+  loop (`sendPlanEmail`: a mail failure only logs and raises a `plan_email_failed` alert, it never
+  re-generates a `COMPLETED` plan). See `../doc/flows/purchase-flow-personalized-plan.md` §9.
+- `LogAlertNotifier` (`AlertNotifier` port) only writes a structured `ALERT` log — no real channel yet. It is
+  what `GeneratePersonalizedPlanUseCase` uses for `plan_generation_failed` (`critical` once the `ERROR` is final).
 - Payments are simulated: `POST /dev/orders/:id/simulate-payment` (behind `ENABLE_PAYMENT_SIMULATION`)
   is the only payment path until Transbank is integrated; `payment.provider = 'SIMULATED'`.
   `POST /dev/orders/:id/simulate-payment-rejection` simulates a rejected payment (`RejectPaymentUseCase`).

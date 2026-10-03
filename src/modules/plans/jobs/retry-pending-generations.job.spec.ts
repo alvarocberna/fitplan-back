@@ -44,7 +44,7 @@ describe('RetryPendingGenerationsJob', () => {
       .mockImplementation(() => undefined);
 
     await expect(job.run()).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'), expect.any(String));
 
     await job.run();
     expect(retryPendingGenerations.execute).toHaveBeenCalledTimes(2);

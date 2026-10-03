@@ -131,7 +131,9 @@ su caso de uso con los argumentos correctos.
 | `infrastructure/llm/openai/openai-llm.provider.ts` | `openai-llm.provider.spec.ts` | el SDK `openai` (`jest.mock('openai', ...)`) |
 | `infrastructure/storage/s3/s3-file-storage.ts` | `s3-file-storage.spec.ts` | `S3Client`/presigner: comandos `PutObject`/`GetObject`, `Content-Disposition` |
 | `infrastructure/email/log-email-sender.ts` | `log-email-sender.spec.ts` | nada (recibe el PDF ya generado) |
-| `common/filters/http-exception.filter.ts` | `http-exception.filter.spec.ts` | `ArgumentsHost` construido a mano |
+| `common/filters/all-exceptions.filter.ts` | `all-exceptions.filter.spec.ts` | `ArgumentsHost` construido a mano: formato único, `HttpException`, Prisma, LLM, error desconocido, niveles de log |
+| `common/auth/cognito-auth.guard.ts` | `cognito-auth.guard.spec.ts` | `getCognitoVerifier` mockeado: 401 por token, 503 por Cognito inalcanzable, configuración faltante |
+| `common/middleware/request-id.middleware.ts` | `request-id.middleware.spec.ts` | request/response a mano |
 
 `NutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId` (y el resto
 de `infrastructure/persistence/**`) no tiene spec propio: es pura delegación/Prisma sin lógica de
@@ -163,7 +165,7 @@ negocio. Los casos de uso mockean los repositorios en ese límite.
 
 ## 6. e2e (`test/app.e2e-spec.ts`)
 
-Bootstrapea `AppModule` completo (prefijo `/api/v1`, routing, `ValidationPipe`, `HttpExceptionFilter`,
+Bootstrapea `AppModule` completo (prefijo `/api/v1`, routing, `ValidationPipe`, `AllExceptionsFilter` — vía el mismo `configureApp` de `main.ts`,
 casos de uso y evento `order.paid` reales) contra `supertest`, mockeando solo el límite bajo: los
 repositorios, los puertos (`LlmProvider`, `EmailSender`, `PlanDocumentRenderer`, `FileStorage`),
 `PrismaService` (no se levanta Postgres) y `CognitoAuthGuard` (con header `Authorization` el token se da

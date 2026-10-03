@@ -11,6 +11,7 @@ import {
 import { NutritionalPlanEntity } from '../../domain/entities/nutritional-plan.entity';
 import { OrderEntity } from '../../domain/entities/order.entity';
 import { ProductEntity } from '../../domain/entities/product.entity';
+import { parsePlanJson } from '../../domain/services/utils/plan-json';
 import { mapPlanToNutritionalPlanDto } from './generation/plan-generation.mapper';
 import {
   MealTimePortionGroup,
@@ -134,9 +135,9 @@ function treeFromPlanJson(
   order: OrderEntity,
   planName: string | null,
 ): NutritionalPlanTreeDto | null {
-  if (!order.planJson) return null;
+  const plan = parsePlanJson(order.planJson);
+  if (!plan) return null;
   try {
-    const plan = JSON.parse(order.planJson) as NutritionPlanDto;
     return mapPlanToNutritionalPlanDto(plan, planName, []);
   } catch {
     // planJson de una versión anterior del contrato: se muestra lo que haya en la fila principal.

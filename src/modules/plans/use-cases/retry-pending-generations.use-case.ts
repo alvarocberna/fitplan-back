@@ -41,6 +41,7 @@ export class RetryPendingGenerationsUseCase {
       } catch (error) {
         this.logger.error(
           `Orden ${orderId}: error no controlado al reintentar la generación: ${(error as Error).message}`,
+          (error as Error).stack,
         );
       }
     }

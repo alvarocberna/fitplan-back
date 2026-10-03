@@ -11,6 +11,10 @@ export abstract class AuthIdentityDatasource {
     updateAuthIdentityDto: UpdateAuthIdentityDto,
   ): Promise<AuthIdentityEntity>;
   abstract deleteAuthIdentityById(id: string): Promise<void>;
+  // Idempotente: devuelve la identidad de (provider, providerUserId), creándola si no existe.
+  abstract findOrCreateAuthIdentity(
+    createAuthIdentityDto: CreateAuthIdentityDto,
+  ): Promise<AuthIdentityEntity>;
   abstract findAuthIdentityByProvider(
     provider: AuthProvider,
     providerUserId: string,

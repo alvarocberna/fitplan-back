@@ -5,6 +5,7 @@ import {
   AuthProvider,
   UserEntity,
 } from '../../domain/entities/user.entity';
+import { ErrorCode } from '../../common/errors/error-codes';
 import { CognitoUserClaims } from '../../common/auth/cognito-user.decorator';
 
 // R1 (use-cases.md): todo caso de uso autenticado resuelve el usuario desde el token, nunca desde
@@ -24,9 +25,10 @@ export class CurrentUserResolver {
       claims.sub,
     );
     if (!existing) {
-      throw new UnauthorizedException(
-        'No hay una identidad registrada — sincroniza tu cuenta primero',
-      );
+      throw new UnauthorizedException({
+        code: ErrorCode.IDENTITY_NOT_SYNCED,
+        message: 'No hay una identidad registrada — sincroniza tu cuenta primero',
+      });
     }
     const user = await this.userRepository.getUserById(existing.userId);
     if (!user) {

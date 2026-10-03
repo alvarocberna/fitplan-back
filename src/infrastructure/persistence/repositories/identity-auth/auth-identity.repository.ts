@@ -29,6 +29,12 @@ export class AuthIdentityRepositoryImpl implements AuthIdentityRepository {
     return this.datasource.deleteAuthIdentityById(id);
   }
 
+  findOrCreateAuthIdentity(
+    createAuthIdentityDto: CreateAuthIdentityDto,
+  ): Promise<AuthIdentityEntity> {
+    return this.datasource.findOrCreateAuthIdentity(createAuthIdentityDto);
+  }
+
   findAuthIdentityByProvider(
     provider: AuthProvider,
     providerUserId: string,

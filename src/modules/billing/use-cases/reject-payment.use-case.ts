@@ -9,6 +9,7 @@ import {
   PaymentTransactionStatus,
 } from '../../../domain/entities/enums';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
+import { ErrorCode } from '../../../common/errors/error-codes';
 import { OrderLifecycleService } from '../order-lifecycle.service';
 
 export type RejectPaymentResult = { status: 'rejected' | 'already_processed' };
@@ -54,7 +55,10 @@ export class RejectPaymentUseCase {
     if (!markedNow) {
       // La orden no admitía pagos: o venció su plazo, o ya estaba pagada.
       if (await this.orderLifecycle.isExpired(order)) {
-        throw new ConflictException(`La orden ${orderId} expiró sin pagarse`);
+        throw new ConflictException({
+          code: ErrorCode.ORDER_EXPIRED,
+          message: 'La orden expiró sin pagarse',
+        });
       }
       this.logger.log(`Orden ${orderId}: rechazo recibido pero ya estaba pagada (ignorado)`);
       return { status: 'already_processed' };

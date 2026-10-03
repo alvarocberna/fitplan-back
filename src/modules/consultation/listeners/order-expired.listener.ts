@@ -24,6 +24,7 @@ export class OrderExpiredListener {
       .catch((error: Error) => {
         this.logger.error(
           `Orden ${event.orderId}: no se pudo borrar la consulta expirada: ${error.message}`,
+          error.stack,
         );
       });
   }

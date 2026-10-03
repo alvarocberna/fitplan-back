@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { NutritionPlanDto, OrderStatusDto } from '../../../domain';
+import { OrderStatusDto } from '../../../domain';
 import { GenerationStatus, PaymentStatus } from '../../../domain/entities/enums';
+import { parsePlanJson } from '../../../domain/services/utils/plan-json';
 import { isGenerationRetryPending } from '../../../domain/services/orders/generation-retry.policy';
 import { FileStorage } from '../../../domain/ports';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
@@ -45,9 +46,8 @@ export class GetOrderStatusUseCase {
       generationStatus: isGenerationRetryPending(order)
         ? GenerationStatus.GENERATING
         : order.generationStatus,
-      planJson: order.planJson
-        ? (JSON.parse(order.planJson) as NutritionPlanDto)
-        : null,
+      // un plan_json corrupto no debe romper el polling: se informa sin detalle (el PDF sigue disponible)
+      planJson: parsePlanJson(order.planJson),
       pdfUrl,
       thumbnailUrl,
     };

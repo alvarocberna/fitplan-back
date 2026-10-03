@@ -33,6 +33,7 @@ export class PurgeExpiredConsultationsUseCase {
       } catch (error) {
         this.logger.error(
           `Orden ${orderId}: no se pudo borrar la consulta expirada: ${(error as Error).message}`,
+          (error as Error).stack,
         );
       }
     }

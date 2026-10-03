@@ -1,12 +1,27 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import {HttpExceptionFilter} from './common/filters/http-exception.filter';
 import helmet from 'helmet';
-import { API_PREFIX } from './common/api-prefix';
+import { configureApp } from './app.setup';
+import { getCognitoVerifier } from './infrastructure/auth/cognito/cognito-verifier';
 
+const logger = new Logger('Bootstrap');
+
+// Una promesa rechazada que nadie atendió no debe pasar en silencio: se registra con su stack. No se
+// corta el proceso (los puntos de entrada en segundo plano ya contienen sus errores; esto es la red).
+process.on('unhandledRejection', (reason) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  logger.error(`Promesa rechazada sin atender: ${error.message}`, error.stack);
+});
+
+// Tras una excepción no capturada el estado del proceso no es confiable: se registra y se termina,
+// para que el orquestador lo reinicie.
+process.on('uncaughtException', (error) => {
+  logger.error(`Excepción no capturada: ${error.message}`, error.stack);
+  process.exit(1);
+});
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -14,27 +29,18 @@ async function bootstrap() {
   // Cabeceras de seguridad (oculta X-Powered-By, fija X-Content-Type-Options: nosniff, etc.)
   // CSP desactivada aquí: Swagger UI necesita inline scripts/styles y esta API no sirve HTML propio.
   app.use(helmet({ contentSecurityPolicy: false }));
-  // Todas las rutas de la API cuelgan de /api/v1 (Swagger queda fuera, en /api-docs).
-  app.setGlobalPrefix(API_PREFIX);
   // Habilitar CORS
   app.enableCors({
-    origin: configService.get<string>('URL_FRONTEND'), 
+    origin: configService.get<string>('URL_FRONTEND'),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
-  //habilitamos Prisma Filter personalizado para manejar exceptions de Prisma
-  app.useGlobalFilters(new HttpExceptionFilter());
-  //habilitamos los pipes de nest para convertir tipos de datos en el DTO
-    app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,        // ignora propiedades que no están en el DTO
-      forbidNonWhitelisted: true, 
-      transform: true,        // 👈 transforma tipos automáticamente
-      transformOptions: {
-        enableImplicitConversion: true, // 👈 convierte strings a number/date si el tipo del DTO lo pide
-        },
-      }),
-    );
+  // prefijo /api/v1, id de correlación, ValidationPipe y filtro global de excepciones
+  configureApp(app);
+  // Falla al arrancar (y no en la primera request, disfrazado de 401) si falta la config de Cognito.
+  getCognitoVerifier();
+  // Para que onModuleDestroy (PrismaService.$disconnect) corra ante SIGTERM/SIGINT.
+  app.enableShutdownHooks();
 
   //habilitamos Swagger solo fuera de producción
   if (configService.get<string>('NODE_ENV') !== 'production') {
@@ -48,6 +54,10 @@ async function bootstrap() {
   }
 
   const port = configService.get<string>('PORT');
-  await app.listen(port ?? 3001)
+  await app.listen(port ?? 3001);
 }
-bootstrap();
+
+bootstrap().catch((error: Error) => {
+  logger.error(`No se pudo iniciar la aplicación: ${error.message}`, error.stack);
+  process.exit(1);
+});
