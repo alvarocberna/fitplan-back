@@ -84,9 +84,9 @@ src/
 │
 ├── modules/                # Módulos NestJS: controllers + casos de uso + DTOs validados
 │   ├── identity/           # /me, /me/sync, /me/summary + CurrentUserResolver (exportado)
-│   ├── consultation/       # chat de anamnesis + crear consulta (con su orden)
+│   ├── consultation/       # chat de anamnesis + crear consulta (con su orden); borra la consulta al expirar su orden (listener de order.expired)
 │   ├── plans/              # catálogo estándar, mis planes, generación del plan (listener de order.paid)
-│   ├── billing/            # ciclo de vida de la orden, pagos, webhooks; emite order.paid
+│   ├── billing/            # ciclo de vida de la orden, pagos (confirmado/rechazado), webhooks, job de expiración; emite order.paid y order.expired
 │   └── clinical/           # historial clínico: /me/consultations y /me/measurements
 │
 ├── app.module.ts
@@ -104,13 +104,15 @@ Reglas de dependencia:
 - Entre módulos: `consultation`/`plans` → `billing` → nada, y todos → `identity` (solo para
   `CurrentUserResolver`). `billing` avisa del pago confirmado emitiendo el evento `order.paid`
   (`@nestjs/event-emitter`); `plans` lo escucha para generar el plan, así `billing` no depende de `plans`.
+  Igual con la expiración de una orden sin pagar: `billing` emite `order.expired` y `consultation` lo
+  escucha para borrar la consulta de esa orden.
 - Solo `billing` escribe `order`/`payment`: la creación de órdenes pasa por `CreateOrderUseCase` y las
   transiciones de generación por `OrderLifecycleService` (ambos exportados).
 
 Todas las rutas cuelgan de **`/api/v1`** (Swagger queda fuera, en `/api-docs`). Las rutas son
 sustantivos en inglés y plural; lo que pertenece al usuario autenticado vive bajo `/me` (el usuario sale
 siempre del token, nunca de un id externo). Los estados de la orden son enums en inglés
-(`PENDING`/`PAID`, `NOT_STARTED`/`GENERATING`/`COMPLETED`/`ERROR`).
+(`PENDING`/`PAID`/`REJECTED`/`EXPIRED`, `NOT_STARTED`/`GENERATING`/`COMPLETED`/`ERROR`).
 
 ### Módulos en `AppModule`
 
@@ -215,8 +217,9 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 | POST | `/me/measurements` | Sí | `RecordMeasurementUseCase` | clinical |
 | PATCH | `/me/measurements/:measurementId` | Sí | `UpdateMyMeasurementUseCase` | clinical |
 | GET | `/orders/:id/status` | Sí | `GetOrderStatusUseCase` | billing |
-| POST | `/webhooks/payments` | No (firma de la pasarela) | `ConfirmPaymentUseCase` | billing |
+| POST | `/webhooks/payments` | No (firma de la pasarela) | `ConfirmPaymentUseCase` / `RejectPaymentUseCase` (`status: 'REJECTED'`) | billing |
 | POST | `/dev/orders/:id/simulate-payment` | No (`ENABLE_PAYMENT_SIMULATION`) | `ConfirmPaymentUseCase` | billing |
+| POST | `/dev/orders/:id/simulate-payment-rejection` | No (`ENABLE_PAYMENT_SIMULATION`) | `RejectPaymentUseCase` | billing |
 
 ### identity: `/me`
 
@@ -260,7 +263,9 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
     plan: { planName, goal, dietRegimen, calorieIntake, proteinIntake, carbohydrateIntake, lipidIntake } | null }
   ```
   `planStatus` se deriva de la orden (`generationStatus` COMPLETED → `ready`, ERROR → `error`; si no,
-  `paymentStatus` PENDING → `awaiting_payment`, PAID → `generating`; sin orden → `null`). `plan` es el
+  `paymentStatus` PENDING → `awaiting_payment`, REJECTED → `payment_rejected`, PAID → `generating`; sin
+  orden → `null`). Las consultas cuya orden expiró no aparecen (se borran, ver "Pago rechazado y
+  expiración"). `plan` es el
   `NutritionalPlan` principal del `plan` activo. Sin consultas → `[]`. El módulo no importa `billing`:
   lee los estados de la orden vía include
   (`NutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId`).
@@ -410,9 +415,11 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
 - **`GET /orders/:id/status`** (sesión, `id` UUID v4): endpoint de polling de la página de la orden.
   Valida que la orden sea del usuario del token; si no existe o es de otro usuario responde 404 en
   ambos casos (anti-BOLA). Responde
-  `{ paymentStatus, generationStatus, planJson, pdfUrl, thumbnailUrl }`, con las URLs firmadas igual que
-  `GET /me/plans` (`order-files.ts`).
-- **`POST /webhooks/payments`** (body `{ orderId }`, provisorio hasta integrar Transbank) y
+  `{ paymentStatus, expirationDate, generationStatus, planJson, pdfUrl, thumbnailUrl }`, con las URLs
+  firmadas igual que `GET /me/plans` (`order-files.ts`). Si el plazo de pago de la orden ya venció y el
+  job todavía no la expiró, la expira en el momento y responde `paymentStatus: 'EXPIRED'`.
+- **`POST /webhooks/payments`** (body `{ orderId, status? }`, provisorio hasta integrar Transbank; `status`
+  es `'AUTHORIZED'` por defecto y `'REJECTED'` deriva a `RejectPaymentUseCase`) y
   **`POST /dev/orders/:id/simulate-payment`** ejecutan el mismo `ConfirmPaymentUseCase`. El webhook
   valida antes la firma (`verifyWebhookSignature()`, **hoy siempre `true`**: es el punto de extensión de
   la pasarela real). El simulador no tiene firma y solo responde con `ENABLE_PAYMENT_SIMULATION=true`
@@ -420,12 +427,38 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
 - Lógica de `ConfirmPaymentUseCase`:
   1. Carga la orden con su producto (404 si no existe).
   2. `OrderRepository.markOrderAsPaidWithPayment` ejecuta **en una transacción**:
-     `paymentStatus: PENDING → PAID` (solo si estaba `PENDING`) + fila `payment` `AUTHORIZED`
+     `paymentStatus: PENDING | REJECTED → PAID` (solo si seguía pagable: sin pagar y con el plazo
+     vigente) + fila `payment` `AUTHORIZED`
      (`provider = 'SIMULATED'` y detalle placeholder mientras el pago sea simulado). Para un producto
      `PREDEFINED` copia además `pdfKey`/`thumbnailKey` del producto y deja la orden `COMPLETED`.
   3. Si esta llamada marcó el pago emite `order.paid { orderId, productType }` y responde
      `{ status: 'processed' }`; si ya estaba pagada responde `{ status: 'already_processed' }` sin crear
-     otro `payment` ni emitir el evento (idempotente). No espera a que termine la generación.
+     otro `payment` ni emitir el evento (idempotente). No espera a que termine la generación. Si la
+     orden expiró (o su plazo venció) responde **409**.
+
+#### Pago rechazado y expiración
+
+`order.paymentStatus`: `PENDING → PAID`; `PENDING | REJECTED → REJECTED` (pago rechazado, reintentable);
+`REJECTED → PAID` (reintento); `PENDING | REJECTED → EXPIRED` (terminal).
+
+- **Plazo de pago**: `CreateOrderUseCase` setea `expirationDate = creationDate + 24 h`
+  (`ORDER_PAYMENT_WINDOW_MS`, `order-lifecycle.service.ts`). Un rechazo no reinicia el plazo.
+- **`RejectPaymentUseCase`** (`POST /webhooks/payments` con `status: 'REJECTED'` y
+  `POST /dev/orders/:id/simulate-payment-rejection`): en una transacción deja la orden `REJECTED` y crea
+  una fila `payment` `REJECTED` (una por intento). Responde `{ status: 'rejected' }`; `already_processed` si
+  la orden ya estaba pagada; 404 si no existe; 409 si expiró.
+- **`ExpireUnpaidOrdersUseCase`** (sin endpoint): lo ejecuta `ExpireUnpaidOrdersJob`
+  (`modules/billing/jobs/`, `@Cron` cada 10 minutos con `@nestjs/schedule`). Busca las órdenes
+  `PENDING`/`REJECTED` con `expirationDate` vencida (hasta 200 por corrida) y las expira con
+  `OrderLifecycleService.expireIfDue`, que emite `order.expired { orderId }` solo si esa llamada la expiró.
+  Además del job, `ConfirmPaymentUseCase`, `RejectPaymentUseCase` y `GetOrderStatusUseCase` expiran en el
+  momento una orden vencida (`OrderLifecycleService.isExpired`), así nunca se cobra una orden vencida
+  aunque el job no haya pasado.
+- **`DeleteExpiredConsultationUseCase`** (módulo `consultation`, `OrderExpiredListener` sobre
+  `order.expired`): borra la consulta de la orden expirada. La anamnesis cae por `ON DELETE CASCADE`; las
+  mediciones **se conservan** en la ficha clínica, desvinculadas (`consultationId = null`). Una orden de
+  plan estándar no tiene consulta: no hace nada. Por estos borrados `consultationNumber` se asigna como
+  `max + 1` (no `count + 1`).
 
 ### Generación del plan (background)
 
@@ -593,7 +626,7 @@ Campos relevantes de `Order` (tabla `order`):
 | `id` | UUID, generado en `CreateConsultationUseCase` |
 | `userId` / `productId` | FKs a `User` y `Product` |
 | `amount` / `currency` | Copiados de `Product` al crear la orden |
-| `paymentStatus` | `'PENDING'` \| `'PAID'` |
+| `paymentStatus` | `'PENDING'` \| `'PAID'` \| `'REJECTED'` (último pago rechazado, reintentable) \| `'EXPIRED'` (venció `expirationDate` sin pagarse) |
 | `generationStatus` | `'NOT_STARTED'` \| `'GENERATING'` \| `'COMPLETED'` \| `'ERROR'` |
 | `planJson` | `NutritionPlanDto` resultante serializado, `null` hasta que se genera |
 | `pdfKey` | Key del PDF del plan en el bucket S3. `GENERATED`: `productos-personalizados/<orderId>.pdf`, `null` hasta que se genera. `PREDEFINED`: copia de `Product.pdfKey`, solo desde que se confirma el pago — ver [PDF y almacenamiento en S3](#pdf-y-almacenamiento-en-s3) |

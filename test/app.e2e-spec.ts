@@ -83,12 +83,13 @@ describe('App (e2e)', () => {
       .useValue({ findOrCreateClinicalRecordByPatientId: jest.fn() })
       .overrideProvider(NutritionalConsultationRepository)
       .useValue({
-        countNutritionalConsultationsByClinicalRecordId: jest.fn(),
+        getMaxConsultationNumberByClinicalRecordId: jest.fn(),
         createNutritionalConsultationWithDetails: jest.fn(),
         getNutritionalConsultationWithDetailsByOrderId: jest.fn(),
         getLatestNutritionalConsultationWithDetailsByPatientId: jest.fn(),
         getNutritionalConsultationsWithStatusByPatientId: jest.fn(),
         getNutritionalConsultationDetailByIdAndPatientId: jest.fn(),
+        deleteNutritionalConsultationByOrderId: jest.fn(),
       })
       .overrideProvider(MeasurementsRepository)
       .useValue({
@@ -114,6 +115,9 @@ describe('App (e2e)', () => {
         getPaidOrdersWithPdfByUserId: jest.fn(),
         getReadyOrderWithPlanDetailByIdAndUserId: jest.fn(),
         markOrderAsPaidWithPayment: jest.fn(),
+        markOrderAsRejectedWithPayment: jest.fn(),
+        expireOrderIfDue: jest.fn(),
+        getDueUnpaidOrderIds: jest.fn(),
         tryTransitionOrderToGenerating: jest.fn(),
         updateOrderById: jest.fn(),
         incrementOrderFailedAttempt: jest.fn(),
@@ -305,7 +309,7 @@ describe('App (e2e)', () => {
         currency: 'CLP',
       } as any);
       orderRepository.createOrder.mockResolvedValue({ id: 'order-1' } as any);
-      nutritionalConsultationRepository.countNutritionalConsultationsByClinicalRecordId.mockResolvedValue(0);
+      nutritionalConsultationRepository.getMaxConsultationNumberByClinicalRecordId.mockResolvedValue(0);
       nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mockResolvedValue({} as any);
 
       const response = await request(app.getHttpServer())
@@ -513,6 +517,7 @@ describe('App (e2e)', () => {
 
       expect(response.body).toEqual({
         paymentStatus: 'PAID',
+        expirationDate: null,
         generationStatus: 'COMPLETED',
         planJson: null,
         pdfUrl: null,
@@ -570,6 +575,58 @@ describe('App (e2e)', () => {
         .send({ orderId: 'no-es-un-uuid' })
         .expect(400);
     });
+
+    it('con status REJECTED registra el rechazo y no marca la orden como pagada', async () => {
+      orderRepository.getOrderById.mockResolvedValue({
+        id: orderId,
+        amount: 10000,
+        paymentStatus: 'PENDING',
+      } as any);
+      orderRepository.markOrderAsRejectedWithPayment.mockResolvedValue(true);
+
+      const response = await request(app.getHttpServer())
+        .post(api('/webhooks/payments'))
+        .send({ orderId, status: 'REJECTED' })
+        .expect(201);
+
+      expect(response.body).toEqual({ status: 'rejected' });
+      expect(orderRepository.markOrderAsRejectedWithPayment).toHaveBeenCalledWith(
+        orderId,
+        expect.objectContaining({ status: 'REJECTED', amount: 10000 }),
+      );
+      expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+    });
+
+    it('con un status desconocido devuelve 400', async () => {
+      await request(app.getHttpServer())
+        .post(api('/webhooks/payments'))
+        .send({ orderId, status: 'CANCELLED' })
+        .expect(400);
+    });
+
+    it('si el plazo de la orden venció responde 409, la expira y borra su consulta (order.expired)', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue({
+        id: orderId,
+        amount: 10000,
+        paymentStatus: 'PENDING',
+        expirationDate: new Date(Date.now() - 60_000),
+        product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
+      } as any);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(false);
+      orderRepository.expireOrderIfDue.mockResolvedValue(true);
+      nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(true);
+
+      await request(app.getHttpServer())
+        .post(api('/webhooks/payments'))
+        .send({ orderId })
+        .expect(409);
+
+      expect(orderRepository.expireOrderIfDue).toHaveBeenCalledWith(orderId, expect.any(Date));
+      expect(
+        nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId,
+      ).toHaveBeenCalledWith(orderId);
+      expect(orderRepository.tryTransitionOrderToGenerating).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /dev/orders/:id/simulate-payment', () => {
@@ -611,6 +668,27 @@ describe('App (e2e)', () => {
       expect(response.body).toEqual({ status: 'processed' });
       // un plan estándar no dispara la generación
       expect(orderRepository.tryTransitionOrderToGenerating).not.toHaveBeenCalled();
+    });
+
+    it('simulate-payment-rejection: 404 sin el flag y, con él, deja la orden rechazada', async () => {
+      delete process.env.ENABLE_PAYMENT_SIMULATION;
+      await request(app.getHttpServer())
+        .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
+        .expect(404);
+      expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
+
+      process.env.ENABLE_PAYMENT_SIMULATION = 'true';
+      orderRepository.getOrderById.mockResolvedValue({
+        id: orderId,
+        amount: 14990,
+        paymentStatus: 'PENDING',
+      } as any);
+      orderRepository.markOrderAsRejectedWithPayment.mockResolvedValue(true);
+
+      const response = await request(app.getHttpServer())
+        .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
+        .expect(201);
+      expect(response.body).toEqual({ status: 'rejected' });
     });
   });
 });

@@ -23,5 +23,11 @@ export abstract class OrderRepository {
     payment: Omit<CreatePaymentDto, 'orderId'>,
     extras?: OrderPaidExtras,
   ): Promise<boolean>;
+  abstract markOrderAsRejectedWithPayment(
+    id: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+  ): Promise<boolean>;
+  abstract expireOrderIfDue(id: string, now: Date): Promise<boolean>;
+  abstract getDueUnpaidOrderIds(now: Date, limit: number): Promise<string[]>;
   abstract tryTransitionOrderToGenerating(id: string): Promise<boolean>;
   abstract incrementOrderFailedAttempt(id: string): Promise<void>;}

@@ -1,7 +1,9 @@
 // Estado del plan asociado a la consulta, derivado de los estados de su orden (ver
-// ListMyConsultationsUseCase): pendiente de pago, generándose, listo o con error.
+// ListMyConsultationsUseCase): pendiente de pago, con el último pago rechazado (se puede
+// reintentar), generándose, listo o con error.
 export type ConsultationPlanStatus =
   | 'awaiting_payment'
+  | 'payment_rejected'
   | 'generating'
   | 'ready'
   | 'error';

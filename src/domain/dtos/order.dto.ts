@@ -22,6 +22,9 @@ export interface OrderDto {
 // del pipeline de generación, no algo que el frontend necesite leer).
 export interface OrderStatusDto {
   paymentStatus: PaymentStatus;
+  // Hasta cuándo se puede pagar la orden (ISO); vencido, pasa a EXPIRED. null en órdenes antiguas
+  // sin plazo.
+  expirationDate: string | null;
   generationStatus: GenerationStatus;
   planJson: NutritionPlanDto | null;
   // URL firmada (corta duración) para DESCARGAR el PDF ya subido a S3 (viene con

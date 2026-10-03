@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { NutritionPlanDto, OrderStatusDto } from '../../../domain';
+import { PaymentStatus } from '../../../domain/entities/enums';
 import { FileStorage } from '../../../domain/ports';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { signPlanFiles } from '../order-files';
+import { OrderLifecycleService } from '../order-lifecycle.service';
 
 // CU-BIL-03. El frontend hace polling a GET /orders/:id/status mientras se paga y genera el plan.
 @Injectable()
@@ -12,6 +14,7 @@ export class GetOrderStatusUseCase {
   constructor(
     private readonly currentUser: CurrentUserResolver,
     private readonly orderRepository: OrderRepository,
+    private readonly orderLifecycle: OrderLifecycleService,
     private readonly fileStorage: FileStorage,
   ) {}
 
@@ -27,10 +30,15 @@ export class GetOrderStatusUseCase {
       throw new NotFoundException(`Orden ${input.orderId} no encontrada`);
     }
 
+    // Si el plazo de pago venció y el job todavía no pasó, la orden se expira acá: el frontend
+    // nunca ve como pagable una orden vencida.
+    const expired = await this.orderLifecycle.isExpired(order);
+
     const { pdfUrl, thumbnailUrl } = await signPlanFiles(this.fileStorage, order);
 
     return {
-      paymentStatus: order.paymentStatus,
+      paymentStatus: expired ? PaymentStatus.EXPIRED : order.paymentStatus,
+      expirationDate: order.expirationDate?.toISOString() ?? null,
       generationStatus: order.generationStatus,
       planJson: order.planJson
         ? (JSON.parse(order.planJson) as NutritionPlanDto)

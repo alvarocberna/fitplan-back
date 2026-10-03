@@ -65,9 +65,14 @@ export const ProductType = {
 } as const;
 export type ProductType = (typeof ProductType)[keyof typeof ProductType];
 
+// PENDING: aún no se intenta pagar. REJECTED: el último intento de pago fue rechazado (se puede
+// reintentar). PAID: pagada. EXPIRED: venció el plazo de pago (order.expiration_date) sin pagarse;
+// es terminal.
 export const PaymentStatus = {
   PENDING: 'PENDING',
   PAID: 'PAID',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED',
 } as const;
 export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus];
 

@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GenerationStatus } from '../../../domain';
 import {
@@ -9,6 +14,7 @@ import {
 import type { OrderPaidExtras } from '../../../domain/datasources/commercial-domain/order.datasource';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { ORDER_PAID, OrderPaidEvent } from '../events/order-paid.event';
+import { OrderLifecycleService } from '../order-lifecycle.service';
 
 export type ConfirmPaymentResult = { status: 'processed' | 'already_processed' };
 
@@ -20,6 +26,7 @@ export class ConfirmPaymentUseCase {
 
   constructor(
     private readonly orderRepository: OrderRepository,
+    private readonly orderLifecycle: OrderLifecycleService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -31,6 +38,7 @@ export class ConfirmPaymentUseCase {
   }
 
   // Idempotente: si la orden ya estaba pagada no crea otro payment ni vuelve a emitir order.paid.
+  // Una orden rechazada se puede pagar (reintento); una expirada o con el plazo vencido no (409).
   // No espera a que termine lo que dispara el evento (la generación del plan corre en segundo
   // plano), para no bloquear al webhook.
   async execute(input: { orderId: string }): Promise<ConfirmPaymentResult> {
@@ -56,7 +64,7 @@ export class ConfirmPaymentUseCase {
       };
     }
 
-    // En UNA transacción: paymentStatus PENDING -> PAID (solo si estaba PENDING) + fila payment
+    // En UNA transacción: paymentStatus PENDING|REJECTED -> PAID (solo si seguía pagable) + fila payment
     // AUTHORIZED. El pago hoy es simulado: los campos de detalle son placeholders hasta integrar
     // una pasarela real (que los entregaría en su webhook).
     const markedNow = await this.orderRepository.markOrderAsPaidWithPayment(
@@ -76,6 +84,11 @@ export class ConfirmPaymentUseCase {
     );
 
     if (!markedNow) {
+      // La orden no era pagable: o venció su plazo, o ya estaba pagada.
+      if (await this.orderLifecycle.isExpired(order)) {
+        this.logger.warn(`Orden ${orderId}: pago recibido pero la orden expiró`);
+        throw new ConflictException(`La orden ${orderId} expiró sin pagarse`);
+      }
       this.logger.log(`Orden ${orderId}: pago recibido pero ya estaba pagada (ignorado)`);
       return { status: 'already_processed' };
     }

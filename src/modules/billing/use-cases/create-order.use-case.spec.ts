@@ -2,7 +2,7 @@ import { CreateOrderUseCase } from './create-order.use-case';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 
 describe('CreateOrderUseCase', () => {
-  it('crea la orden pendiente con monto y moneda del producto, sin archivos ni plan', async () => {
+  it('crea la orden pendiente con monto y moneda del producto, sin archivos ni plan, con 24 h para pagarse', async () => {
     const orderRepository = { createOrder: jest.fn().mockResolvedValue({ id: 'order-1' }) };
     const useCase = new CreateOrderUseCase(orderRepository as unknown as OrderRepository);
 
@@ -26,7 +26,11 @@ describe('CreateOrderUseCase', () => {
       attempts: 0,
       creationDate: expect.any(Date),
       paymentDate: null,
-      expirationDate: null,
+      expirationDate: expect.any(Date),
     });
+    const [created] = orderRepository.createOrder.mock.calls[0];
+    expect(created.expirationDate.getTime() - created.creationDate.getTime()).toBe(
+      24 * 60 * 60 * 1000,
+    );
   });
 });

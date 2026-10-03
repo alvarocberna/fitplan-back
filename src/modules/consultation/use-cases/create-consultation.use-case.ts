@@ -68,7 +68,7 @@ export class CreateConsultationUseCase {
 
     const consultationDate = new Date();
     const consultationNumber =
-      (await this.nutritionalConsultationRepository.countNutritionalConsultationsByClinicalRecordId(
+      (await this.nutritionalConsultationRepository.getMaxConsultationNumberByClinicalRecordId(
         clinicalRecord.id,
       )) + 1;
 

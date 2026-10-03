@@ -3,11 +3,22 @@ import { Prisma } from '../../../../../generated/prisma';
 import { PrismaService } from '../../orm/prisma/prisma.service';
 import { NutritionalConsultationDatasource } from '../../../../domain/datasources/clinical-domain/nutritional-consultation.datasource';
 import { NutritionalConsultationEntity } from '../../../../domain/entities/clinical-record.entity';
+import { PaymentStatus } from '../../../../domain/entities/enums';
 import {
   CreateNutritionalConsultationDto,
   UpdateNutritionalConsultationDto,
   CreateNutritionalConsultationDetailsDto,
 } from '../../../../domain';
+
+// Las consultas de una orden expirada se borran (DeleteExpiredConsultationUseCase); este filtro las
+// oculta en el intervalo entre que la orden expira y el borrado. `order: null` cubre las consultas
+// sin orden (un NOT sobre la relación las dejaría fuera).
+const NOT_EXPIRED_ORDER = {
+  OR: [
+    { order: null },
+    { order: { paymentStatus: { not: PaymentStatus.EXPIRED } } },
+  ],
+} satisfies Prisma.NutritionalConsultationWhereInput;
 
 // Árbol completo de la consulta (Anamnesis+hijas, Measurements+hija), reutilizado tanto por el
 // nested create como por la lectura enriquecida. No incluye anamnesisPsychosocial ni supplements
@@ -264,19 +275,45 @@ export class NutritionalConsultationDatasourceImpl
       : null;
   }
 
-  async countNutritionalConsultationsByClinicalRecordId(
+  async deleteNutritionalConsultationByOrderId(
+    orderId: string,
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const consultation = await tx.nutritionalConsultation.findUnique({
+        where: { orderId },
+        select: { id: true, _count: { select: { plans: true } } },
+      });
+      if (!consultation || consultation._count.plans > 0) return false;
+
+      // measurements -> consultation es RESTRICT: se desvinculan antes de borrar, así siguen en la
+      // ficha clínica (clinical_record_id) como mediciones sueltas.
+      await tx.measurements.updateMany({
+        where: { consultationId: consultation.id },
+        data: { consultationId: null },
+      });
+      // la anamnesis y sus tablas hijas caen por ON DELETE CASCADE.
+      await tx.nutritionalConsultation.delete({
+        where: { id: consultation.id },
+      });
+      return true;
+    });
+  }
+
+  async getMaxConsultationNumberByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number> {
-    return this.prisma.nutritionalConsultation.count({
+    const { _max } = await this.prisma.nutritionalConsultation.aggregate({
       where: { clinicalRecordId },
+      _max: { consultationNumber: true },
     });
+    return _max.consultationNumber ?? 0;
   }
 
   async getNutritionalConsultationsWithStatusByPatientId(
     patientId: string,
   ): Promise<NutritionalConsultationEntity[]> {
     const consultations = await this.prisma.nutritionalConsultation.findMany({
-      where: { patientId },
+      where: { patientId, ...NOT_EXPIRED_ORDER },
       orderBy: [{ consultationDate: 'desc' }, { consultationNumber: 'desc' }],
       include: LIST_WITH_STATUS_INCLUDE,
     });
@@ -290,7 +327,7 @@ export class NutritionalConsultationDatasourceImpl
   ): Promise<NutritionalConsultationEntity | null> {
     // findFirst (no findUnique) para filtrar también por patientId: ajena o inexistente -> null (R2).
     const consultation = await this.prisma.nutritionalConsultation.findFirst({
-      where: { id, patientId },
+      where: { id, patientId, ...NOT_EXPIRED_ORDER },
       include: DETAIL_WITH_STATUS_INCLUDE,
     });
     return consultation as unknown as NutritionalConsultationEntity | null;

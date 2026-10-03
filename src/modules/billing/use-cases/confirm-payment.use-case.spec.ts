@@ -1,8 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfirmPaymentUseCase } from './confirm-payment.use-case';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { ORDER_PAID } from '../events/order-paid.event';
+import { OrderLifecycleService } from '../order-lifecycle.service';
 
 describe('ConfirmPaymentUseCase', () => {
   let useCase: ConfirmPaymentUseCase;
@@ -10,6 +11,7 @@ describe('ConfirmPaymentUseCase', () => {
     getOrderWithProductById: jest.Mock;
     markOrderAsPaidWithPayment: jest.Mock;
   };
+  let orderLifecycle: { isExpired: jest.Mock };
   let eventEmitter: { emit: jest.Mock };
 
   const generatedOrder = {
@@ -33,9 +35,11 @@ describe('ConfirmPaymentUseCase', () => {
       getOrderWithProductById: jest.fn(),
       markOrderAsPaidWithPayment: jest.fn(),
     };
+    orderLifecycle = { isExpired: jest.fn().mockResolvedValue(false) };
     eventEmitter = { emit: jest.fn() };
     useCase = new ConfirmPaymentUseCase(
       orderRepository as unknown as OrderRepository,
+      orderLifecycle as unknown as OrderLifecycleService,
       eventEmitter as unknown as EventEmitter2,
     );
   });
@@ -120,6 +124,18 @@ describe('ConfirmPaymentUseCase', () => {
     await expect(useCase.execute({ orderId: 'order-1' })).resolves.toEqual({
       status: 'already_processed',
     });
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
+  });
+
+  it('orden expirada o con el plazo vencido: responde 409 y no emite el evento', async () => {
+    orderRepository.getOrderWithProductById.mockResolvedValue(generatedOrder);
+    orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(false);
+    orderLifecycle.isExpired.mockResolvedValue(true);
+
+    await expect(useCase.execute({ orderId: 'order-1' })).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(orderLifecycle.isExpired).toHaveBeenCalledWith(generatedOrder);
     expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
 });

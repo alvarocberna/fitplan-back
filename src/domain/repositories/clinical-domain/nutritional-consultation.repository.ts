@@ -26,7 +26,10 @@ export abstract class NutritionalConsultationRepository {
   abstract getLatestNutritionalConsultationWithDetailsByPatientId(
     patientId: string,
   ): Promise<NutritionalConsultationEntity | null>;
-  abstract countNutritionalConsultationsByClinicalRecordId(
+  abstract deleteNutritionalConsultationByOrderId(
+    orderId: string,
+  ): Promise<boolean>;
+  abstract getMaxConsultationNumberByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number>;
   abstract getNutritionalConsultationsWithStatusByPatientId(

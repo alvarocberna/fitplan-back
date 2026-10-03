@@ -14,7 +14,7 @@ describe('CreateConsultationUseCase', () => {
   let currentUser: { resolve: jest.Mock; isProfileComplete: jest.Mock };
   let clinicalRecordRepository: { findOrCreateClinicalRecordByPatientId: jest.Mock };
   let nutritionalConsultationRepository: {
-    countNutritionalConsultationsByClinicalRecordId: jest.Mock;
+    getMaxConsultationNumberByClinicalRecordId: jest.Mock;
     createNutritionalConsultationWithDetails: jest.Mock;
   };
   let productRepository: { findOrCreateActiveGeneratedProduct: jest.Mock };
@@ -50,7 +50,7 @@ describe('CreateConsultationUseCase', () => {
       findOrCreateClinicalRecordByPatientId: jest.fn().mockResolvedValue({ id: 'clinical-1' }),
     };
     nutritionalConsultationRepository = {
-      countNutritionalConsultationsByClinicalRecordId: jest.fn().mockResolvedValue(0),
+      getMaxConsultationNumberByClinicalRecordId: jest.fn().mockResolvedValue(0),
       createNutritionalConsultationWithDetails: jest.fn().mockResolvedValue({}),
     };
     productRepository = {
@@ -140,8 +140,8 @@ describe('CreateConsultationUseCase', () => {
     expect(details.consultation).not.toHaveProperty('athlete');
   });
 
-  it('numera la consulta según las que ya tiene el historial', async () => {
-    nutritionalConsultationRepository.countNutritionalConsultationsByClinicalRecordId.mockResolvedValue(2);
+  it('numera la consulta a continuación del mayor número del historial', async () => {
+    nutritionalConsultationRepository.getMaxConsultationNumberByClinicalRecordId.mockResolvedValue(2);
 
     await useCase.execute({ claims, consultation: baseDto });
 

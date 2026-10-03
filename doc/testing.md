@@ -111,10 +111,15 @@ su caso de uso con los argumentos correctos.
 | `plans/listeners/order-paid.listener.ts` | `order-paid.listener.spec.ts` | `GeneratePersonalizedPlanUseCase`: solo `GENERATED` genera; un error inesperado queda contenido |
 | `plans/generation/plan-generation.mapper.ts` | `plan-generation.mapper.spec.ts` | nada (`NutritionPlanDto` → `NutritionalPlan`) |
 | `plans/*.controller.ts` | `standard-plans.controller.spec.ts` | los casos de uso del catálogo y de `GET /me/plans` |
-| `billing/use-cases/create-order` | `create-order.use-case.spec.ts` | `OrderRepository`: orden pendiente con monto/moneda del producto |
-| `billing/use-cases/confirm-payment` | `confirm-payment.use-case.spec.ts` | `OrderRepository`, `EventEmitter2`: `payment` `AUTHORIZED`, copia del PDF para `PREDEFINED`, emite `order.paid` solo si marcó el pago, idempotencia |
+| `billing/use-cases/create-order` | `create-order.use-case.spec.ts` | `OrderRepository`: orden pendiente con monto/moneda del producto y 24 h de plazo (`expirationDate`) |
+| `billing/use-cases/reject-payment` | `reject-payment.use-case.spec.ts` | `OrderRepository`, `OrderLifecycleService`: `payment` `REJECTED`, `already_processed` si ya estaba pagada, 409 si expiró |
+| `billing/use-cases/expire-unpaid-orders` | `expire-unpaid-orders.use-case.spec.ts` | `OrderRepository`, `OrderLifecycleService`: expira cada orden vencida; una que falla no frena al resto |
+| `billing/jobs/expire-unpaid-orders.job.ts` | `expire-unpaid-orders.job.spec.ts` | `ExpireUnpaidOrdersUseCase`: un error queda contenido |
+| `consultation/use-cases/delete-expired-consultation` | `delete-expired-consultation.use-case.spec.ts` | `NutritionalConsultationRepository` |
+| `consultation/listeners/order-expired.listener.ts` | `order-expired.listener.spec.ts` | `DeleteExpiredConsultationUseCase`: un error inesperado queda contenido |
+| `billing/use-cases/confirm-payment` | `confirm-payment.use-case.spec.ts` | `OrderRepository`, `EventEmitter2`: `payment` `AUTHORIZED`, copia del PDF para `PREDEFINED`, emite `order.paid` solo si marcó el pago, idempotencia, 409 si la orden expiró |
 | `billing/use-cases/get-order-status` | `get-order-status.use-case.spec.ts` | `CurrentUserResolver`, `OrderRepository`, `FileStorage`: 404 por orden ajena o inexistente (BOLA) |
-| `billing/order-lifecycle.service.ts` | `order-lifecycle.service.spec.ts` | `OrderRepository` |
+| `billing/order-lifecycle.service.ts` | `order-lifecycle.service.spec.ts` | `OrderRepository`, `EventEmitter2`: `expireIfDue` emite `order.expired` solo si expiró la orden; `isExpired` por estado y plazo |
 | `billing/*.controller.ts` + `PaymentSimulationEnabledGuard` | `orders.controller.spec.ts`, `payments.controller.spec.ts` | casos de uso; firma inválida → 401; el simulador responde 404 sin `ENABLE_PAYMENT_SIMULATION=true` |
 | `domain/services/utils/predefined-plan-code.ts` / `storage-keys.ts` | `*.spec.ts` | nada (regex, las 112 combinaciones, keys de S3) |
 | `scripts/predefined-products.seed-data.ts` | `predefined-products.seed-data.spec.ts` | nada (las 112 filas del seed con keys únicas). El runner `seed-predefined-products.ts` no tiene test |
@@ -165,9 +170,12 @@ por válido con un `sub` fijo; sin él, 401). Cubre:
   `forbidNonWhitelisted`).
 - `GET /orders/:id/status` — estado (200), id no-UUID (400), orden de otro usuario (404).
 - `POST /webhooks/payments` — `processed` → `already_processed` (idempotencia), el evento `order.paid`
-  dispara el listener de generación, `orderId` no-UUID (400).
+  dispara el listener de generación, `orderId` no-UUID (400), `status: 'REJECTED'` registra el rechazo,
+  `status` desconocido (400), orden con el plazo vencido (409, la expira y borra su consulta vía
+  `order.expired`).
 - `POST /dev/orders/:id/simulate-payment` — 404 sin `ENABLE_PAYMENT_SIMULATION=true`; con el flag
-  procesa el pago (un plan estándar no dispara la generación).
+  procesa el pago (un plan estándar no dispara la generación). `simulate-payment-rejection`: 404 sin el
+  flag; con él deja la orden rechazada.
 
 ## 7. Deuda pendiente / Fase 2 (no incluida en esta pasada)
 

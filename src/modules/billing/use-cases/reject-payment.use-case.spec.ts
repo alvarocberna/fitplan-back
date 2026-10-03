@@ -1,0 +1,71 @@
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { RejectPaymentUseCase } from './reject-payment.use-case';
+import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
+import { OrderLifecycleService } from '../order-lifecycle.service';
+
+describe('RejectPaymentUseCase', () => {
+  let useCase: RejectPaymentUseCase;
+  let orderRepository: {
+    getOrderById: jest.Mock;
+    markOrderAsRejectedWithPayment: jest.Mock;
+  };
+  let orderLifecycle: { isExpired: jest.Mock };
+
+  const order = { id: 'order-1', amount: 19990, paymentStatus: 'PENDING' };
+
+  beforeEach(() => {
+    orderRepository = {
+      getOrderById: jest.fn().mockResolvedValue(order),
+      markOrderAsRejectedWithPayment: jest.fn().mockResolvedValue(true),
+    };
+    orderLifecycle = { isExpired: jest.fn().mockResolvedValue(false) };
+    useCase = new RejectPaymentUseCase(
+      orderRepository as unknown as OrderRepository,
+      orderLifecycle as unknown as OrderLifecycleService,
+    );
+  });
+
+  it('lanza NotFoundException si la orden no existe, sin registrar el rechazo', async () => {
+    orderRepository.getOrderById.mockResolvedValue(null);
+
+    await expect(useCase.execute({ orderId: 'missing' })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
+  });
+
+  it('registra el payment REJECTED con el monto de la orden y responde rejected', async () => {
+    await expect(useCase.execute({ orderId: 'order-1' })).resolves.toEqual({
+      status: 'rejected',
+    });
+
+    expect(orderRepository.markOrderAsRejectedWithPayment).toHaveBeenCalledWith(
+      'order-1',
+      expect.objectContaining({
+        provider: 'SIMULATED',
+        paymentIdentifier: 'SIM-order-1',
+        amount: 19990,
+        status: 'REJECTED',
+        transactionDate: expect.any(Date),
+      }),
+    );
+  });
+
+  it('orden ya pagada: responde already_processed (el rechazo se ignora)', async () => {
+    orderRepository.markOrderAsRejectedWithPayment.mockResolvedValue(false);
+
+    await expect(useCase.execute({ orderId: 'order-1' })).resolves.toEqual({
+      status: 'already_processed',
+    });
+  });
+
+  it('orden expirada o con el plazo vencido: responde 409', async () => {
+    orderRepository.markOrderAsRejectedWithPayment.mockResolvedValue(false);
+    orderLifecycle.isExpired.mockResolvedValue(true);
+
+    await expect(useCase.execute({ orderId: 'order-1' })).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(orderLifecycle.isExpired).toHaveBeenCalledWith(order);
+  });
+});

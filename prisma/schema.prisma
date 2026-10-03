@@ -87,6 +87,8 @@ enum ProductType {
 enum PaymentStatus {
   PENDING
   PAID
+  REJECTED
+  EXPIRED
 }
 
 enum GenerationStatus {
@@ -215,7 +217,7 @@ model Anamnesis {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   consultationId String                  @map("consultation_id") @db.Uuid
-  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
+  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
 
   goals                 Goals[]
   anamnesisClinical     AnamnesisClinical[]
@@ -230,7 +232,7 @@ model Goals {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisId String    @map("anamnesis_id") @db.Uuid
-  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
 
   mainGoal      String?  @map("main_goal")
   secondaryGoal String[] @map("secondary_goal")
@@ -242,7 +244,7 @@ model AnamnesisClinical {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisId String    @map("anamnesis_id") @db.Uuid
-  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
 
   pathology        String[]
   familyHistory    String?  @map("family_history")
@@ -264,7 +266,7 @@ model ClinicalCondition {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisClinicalId String            @map("anamnesis_clinical_id") @db.Uuid
-  anamnesisClinical   AnamnesisClinical @relation(fields: [anamnesisClinicalId], references: [id])
+  anamnesisClinical   AnamnesisClinical @relation(fields: [anamnesisClinicalId], references: [id], onDelete: Cascade)
 
   name         String?
   detail       String?
@@ -279,7 +281,7 @@ model AnamnesisDietary {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisId String    @map("anamnesis_id") @db.Uuid
-  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
 
   dietType String? @map("diet_type")
 
@@ -294,7 +296,7 @@ model DietaryRecall24h {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
-  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id])
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id], onDelete: Cascade)
 
   meals DietaryRecall24hMeal[]
 
@@ -306,7 +308,7 @@ model DietaryRecall24hMeal {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   dietaryRecall24hId String           @map("dietary_recall_24h_id") @db.Uuid
-  dietaryRecall24h   DietaryRecall24h @relation(fields: [dietaryRecall24hId], references: [id])
+  dietaryRecall24h   DietaryRecall24h @relation(fields: [dietaryRecall24hId], references: [id], onDelete: Cascade)
 
   mealTime                    String  @map("meal_time")
   mealHour                    String? @map("meal_hour")
@@ -333,7 +335,7 @@ model FoodPreference {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
-  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id])
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id], onDelete: Cascade)
 
   group String?
 
@@ -347,7 +349,7 @@ model FoodPreferenceGroup {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   foodPreferenceId String         @map("food_preference_id") @db.Uuid
-  foodPreference   FoodPreference @relation(fields: [foodPreferenceId], references: [id])
+  foodPreference   FoodPreference @relation(fields: [foodPreferenceId], references: [id], onDelete: Cascade)
 
   group                 String?
   frequentConsumption   String[] @map("frequent_consumption")
@@ -363,7 +365,7 @@ model Supplements {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
-  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id])
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id], onDelete: Cascade)
 
   supplement String
   quantity   String?
@@ -377,7 +379,7 @@ model AnamnesisPsychosocial {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisId String    @map("anamnesis_id") @db.Uuid
-  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
 
   occupation  String?
   education   String?
@@ -391,7 +393,7 @@ model Lifestyle {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   anamnesisId String    @map("anamnesis_id") @db.Uuid
-  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id])
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
 
   tobacco               String?
   alcohol               String?
@@ -409,7 +411,7 @@ model SportsSession {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   lifestyleId String    @map("lifestyle_id") @db.Uuid
-  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id])
+  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id], onDelete: Cascade)
 
   description String?
   discipline  String?
@@ -426,7 +428,7 @@ model SportsStrategy {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   lifestyleId String    @map("lifestyle_id") @db.Uuid
-  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id])
+  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id], onDelete: Cascade)
 
   supplement         String?
   hydration          String?

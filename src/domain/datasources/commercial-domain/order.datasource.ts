@@ -38,12 +38,29 @@ export abstract class OrderDatasource {
 
   // Igual que markOrderAsPaidIfPending, pero en UNA transacción también crea la fila `payment` de la
   // orden y aplica `extras` sobre ella, para que order.payment_status y payment.status no queden
-  // desalineados. Si la orden ya estaba pagada devuelve false y no crea nada (idempotente).
+  // desalineados. Se puede pagar desde PENDING o REJECTED (reintento) mientras no haya vencido el
+  // plazo; si la orden ya estaba pagada, expirada o vencida devuelve false y no crea nada.
   abstract markOrderAsPaidWithPayment(
     id: string,
     payment: Omit<CreatePaymentDto, 'orderId'>,
     extras?: OrderPaidExtras,
   ): Promise<boolean>;
+
+  // Registra un intento de pago rechazado: en UNA transacción deja la orden REJECTED (solo si estaba
+  // PENDING o REJECTED y no venció su plazo) y crea la fila `payment` del intento. Devuelve false, sin
+  // crear nada, si la orden ya no admite pagos (pagada, expirada o vencida).
+  abstract markOrderAsRejectedWithPayment(
+    id: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+  ): Promise<boolean>;
+
+  // Pasa a EXPIRED una orden sin pagar (PENDING o REJECTED) cuyo expiration_date ya pasó. Idempotente:
+  // devuelve true solo si esta llamada fue la que la expiró.
+  abstract expireOrderIfDue(id: string, now: Date): Promise<boolean>;
+
+  // ids de las órdenes sin pagar con el plazo vencido (las más antiguas primero), para el job de
+  // expiración.
+  abstract getDueUnpaidOrderIds(now: Date, limit: number): Promise<string[]>;
 
   // guard de estado: solo entra a GENERATING si no estaba ya en ese estado (evita que dos
   // disparos concurrentes generen el plan dos veces).

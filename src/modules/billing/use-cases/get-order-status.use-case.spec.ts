@@ -3,12 +3,14 @@ import { GetOrderStatusUseCase } from './get-order-status.use-case';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { FileStorage } from '../../../domain/ports';
+import { OrderLifecycleService } from '../order-lifecycle.service';
 import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 
 describe('GetOrderStatusUseCase', () => {
   let useCase: GetOrderStatusUseCase;
   let currentUser: { resolve: jest.Mock };
   let orderRepository: { getOrderById: jest.Mock };
+  let orderLifecycle: { isExpired: jest.Mock };
   let fileStorage: { getSignedDownloadUrl: jest.Mock };
 
   const claims: CognitoUserClaims = { sub: 'test-sub' };
@@ -16,6 +18,7 @@ describe('GetOrderStatusUseCase', () => {
   beforeEach(() => {
     currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
     orderRepository = { getOrderById: jest.fn() };
+    orderLifecycle = { isExpired: jest.fn().mockResolvedValue(false) };
     // firma distinto según la key para poder contrastar qué URL corresponde a qué objeto
     fileStorage = {
       getSignedDownloadUrl: jest.fn(async (key: string) => `https://signed-url.example/${key}`),
@@ -23,6 +26,7 @@ describe('GetOrderStatusUseCase', () => {
     useCase = new GetOrderStatusUseCase(
       currentUser as unknown as CurrentUserResolver,
       orderRepository as unknown as OrderRepository,
+      orderLifecycle as unknown as OrderLifecycleService,
       fileStorage as unknown as FileStorage,
     );
   });
@@ -57,6 +61,42 @@ describe('GetOrderStatusUseCase', () => {
     expect(fileStorage.getSignedDownloadUrl).toHaveBeenCalledWith(
       'productos-personalizados/miniaturas/order-1.webp',
     );
+  });
+
+  it('orden pendiente: expone hasta cuándo se puede pagar (expirationDate en ISO)', async () => {
+    orderRepository.getOrderById.mockResolvedValue({
+      userId: 'user-1',
+      paymentStatus: 'PENDING',
+      generationStatus: 'NOT_STARTED',
+      planJson: null,
+      pdfKey: null,
+      thumbnailKey: null,
+      expirationDate: new Date('2026-01-02T00:00:00.000Z'),
+    });
+
+    const status = await useCase.execute({ claims, orderId: 'order-1' });
+
+    expect(status.paymentStatus).toBe('PENDING');
+    expect(status.expirationDate).toBe('2026-01-02T00:00:00.000Z');
+  });
+
+  it('orden con el plazo vencido que el job aún no expiró: responde EXPIRED', async () => {
+    const order = {
+      userId: 'user-1',
+      paymentStatus: 'PENDING',
+      generationStatus: 'NOT_STARTED',
+      planJson: null,
+      pdfKey: null,
+      thumbnailKey: null,
+      expirationDate: new Date('2026-01-02T00:00:00.000Z'),
+    };
+    orderRepository.getOrderById.mockResolvedValue(order);
+    orderLifecycle.isExpired.mockResolvedValue(true);
+
+    const status = await useCase.execute({ claims, orderId: 'order-1' });
+
+    expect(orderLifecycle.isExpired).toHaveBeenCalledWith(order);
+    expect(status.paymentStatus).toBe('EXPIRED');
   });
 
   it('devuelve thumbnailUrl null (y firma solo el PDF) si el plan está listo pero no tiene miniatura', async () => {

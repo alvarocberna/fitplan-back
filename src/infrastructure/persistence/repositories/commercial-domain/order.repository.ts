@@ -65,6 +65,21 @@ export class OrderRepositoryImpl implements OrderRepository {
     return this.datasource.markOrderAsPaidWithPayment(id, payment, extras);
   }
 
+  markOrderAsRejectedWithPayment(
+    id: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+  ): Promise<boolean> {
+    return this.datasource.markOrderAsRejectedWithPayment(id, payment);
+  }
+
+  expireOrderIfDue(id: string, now: Date): Promise<boolean> {
+    return this.datasource.expireOrderIfDue(id, now);
+  }
+
+  getDueUnpaidOrderIds(now: Date, limit: number): Promise<string[]> {
+    return this.datasource.getDueUnpaidOrderIds(now, limit);
+  }
+
   tryTransitionOrderToGenerating(id: string): Promise<boolean> {
     return this.datasource.tryTransitionOrderToGenerating(id);
   }

@@ -70,8 +70,9 @@ src/
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
 │   ├── consultation/           # /consultations/chat, /consultations/goal-feasibility, /consultations
 │   ├── plans/                  # /plans/standard/*, /me/plans, /me/plans/latest/projection, /me/plans/:orderId, plan generation (listener of order.paid)
-│   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment;
-│   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid
+│   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment[-rejection];
+│   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid and
+│   │                            # order.expired; jobs/ holds the cron that expires unpaid orders
 │   └── clinical/               # patient history: /me/consultations, /me/measurements (list/detail/record/edit); reads order
 │                                # statuses via the consultation repository (no billing import)
 ├── app.module.ts
@@ -91,7 +92,8 @@ domain service or an internal use case (e.g. `CreateOrderUseCase`).
 - Between modules: `consultation`/`plans`/`clinical` → `billing` → nothing (`clinical` doesn't import it today); everyone may use `identity` only for
   `CurrentUserResolver`. `billing` never imports `plans`: it emits `order.paid`
   (`modules/billing/events/order-paid.event.ts`, `@nestjs/event-emitter` v3 — v12 is ESM-only and breaks
-  Jest) and `plans/listeners/order-paid.listener.ts` reacts.
+  Jest) and `plans/listeners/order-paid.listener.ts` reacts. Same for `order.expired`:
+  `consultation/listeners/order-expired.listener.ts` deletes the expired order's consultation.
 - Only `billing` writes `order`/`payment`. New orders go through `CreateOrderUseCase`; generation state
   transitions through `OrderLifecycleService`.
 
@@ -179,7 +181,7 @@ reference only, and its table was dropped. Closed-value columns (`Order.paymentS
 `NutritionalPlan.period`, `PlanMealTime.time`, ...) are **native Postgres enums** (`enum` blocks in
 `schema.prisma`), mirrored in the domain as `as const` objects + union types in
 `domain/entities/enums.ts` — use those constants (`PaymentStatus.PAID`, `GenerationStatus.COMPLETED`)
-instead of string literals. Order statuses are English (`PENDING|PAID`,
+instead of string literals. Order statuses are English (`PENDING|PAID|REJECTED|EXPIRED`,
 `NOT_STARTED|GENERATING|COMPLETED|ERROR`) and that's also what `GET /orders/:id/status` returns.
 
 Only part of this schema has a real consumer today — the consultation → billing → plan-generation
@@ -257,3 +259,13 @@ integrations when reasoning about behavior or writing tests:
 - `LogEmailSender.sendRealEmail()` only logs — no real email provider wired.
 - Payments are simulated: `POST /dev/orders/:id/simulate-payment` (behind `ENABLE_PAYMENT_SIMULATION`)
   is the only payment path until Transbank is integrated; `payment.provider = 'SIMULATED'`.
+  `POST /dev/orders/:id/simulate-payment-rejection` simulates a rejected payment (`RejectPaymentUseCase`).
+- Unpaid orders expire: `CreateOrderUseCase` sets `expirationDate = creationDate + 24h`; an order is
+  payable while `PENDING` or `REJECTED` (a rejection can be retried and doesn't reset the window).
+  `ExpireUnpaidOrdersJob` (`@nestjs/schedule`, every 10 min) → `ExpireUnpaidOrdersUseCase` →
+  `OrderLifecycleService.expireIfDue` marks them `EXPIRED` and emits `order.expired`; paying, rejecting or
+  reading the status of an overdue order expires it on the spot (`isExpired`; pay/reject answer 409).
+  On `order.expired`, `DeleteExpiredConsultationUseCase` deletes the order's consultation (anamnesis
+  subtree cascades; its measurements are kept, detached with `consultationId = null`), which is why
+  `consultationNumber` is `max + 1` rather than `count + 1`, and why the `clinical` consultation
+  reads exclude consultations whose order is `EXPIRED`.

@@ -13,6 +13,9 @@ export function toPlanStatus(
   if (!order) return null;
   if (order.generationStatus === GenerationStatus.COMPLETED) return 'ready';
   if (order.generationStatus === GenerationStatus.ERROR) return 'error';
-  if (order.paymentStatus === PaymentStatus.PENDING) return 'awaiting_payment';
-  return 'generating';
+  if (order.paymentStatus === PaymentStatus.PAID) return 'generating';
+  // REJECTED sigue siendo pagable (reintento). EXPIRED no debería llegar acá: las consultas de
+  // órdenes expiradas se borran y las lecturas las excluyen.
+  if (order.paymentStatus === PaymentStatus.REJECTED) return 'payment_rejected';
+  return 'awaiting_payment';
 }

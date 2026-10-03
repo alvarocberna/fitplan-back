@@ -64,10 +64,14 @@ export class NutritionalConsultationRepositoryImpl
     );
   }
 
-  countNutritionalConsultationsByClinicalRecordId(
+  deleteNutritionalConsultationByOrderId(orderId: string): Promise<boolean> {
+    return this.datasource.deleteNutritionalConsultationByOrderId(orderId);
+  }
+
+  getMaxConsultationNumberByClinicalRecordId(
     clinicalRecordId: string,
   ): Promise<number> {
-    return this.datasource.countNutritionalConsultationsByClinicalRecordId(
+    return this.datasource.getMaxConsultationNumberByClinicalRecordId(
       clinicalRecordId,
     );
   }

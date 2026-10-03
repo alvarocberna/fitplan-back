@@ -8,6 +8,8 @@ import { ConsultationsController } from './consultations.controller';
 import { ChatAnamnesisUseCase } from './use-cases/chat-anamnesis.use-case';
 import { CreateConsultationUseCase } from './use-cases/create-consultation.use-case';
 import { EvaluateGoalFeasibilityUseCase } from './use-cases/evaluate-goal-feasibility.use-case';
+import { DeleteExpiredConsultationUseCase } from './use-cases/delete-expired-consultation.use-case';
+import { OrderExpiredListener } from './listeners/order-expired.listener';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { EvaluateGoalFeasibilityUseCase } from './use-cases/evaluate-goal-feasib
     ChatAnamnesisUseCase,
     CreateConsultationUseCase,
     EvaluateGoalFeasibilityUseCase,
+    DeleteExpiredConsultationUseCase,
+    OrderExpiredListener,
   ],
 })
 export class ConsultationModule {}

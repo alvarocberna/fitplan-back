@@ -62,9 +62,9 @@ protegidas hoy:
 | `GET /orders/:id/status` | Sí | Sí — valida que la orden pertenezca al usuario del token (ver más abajo) |
 | `GET /me/plans` | Sí | Sí — filtra siempre por el usuario del token |
 | `POST /me/sync`, `PATCH /me` | Sí | Sí |
-| `POST /webhooks/payments`, `POST /dev/orders/:id/simulate-payment` | **No** | — |
+| `POST /webhooks/payments`, `POST /dev/orders/:id/simulate-payment`, `POST /dev/orders/:id/simulate-payment-rejection` | **No** | — |
 
-`POST /webhooks/payments` y `POST /dev/orders/:id/simulate-payment` quedan deliberadamente fuera:
+`POST /webhooks/payments` y `POST /dev/orders/:id/simulate-payment[-rejection]` quedan deliberadamente fuera:
 los llama la pasarela de pago (o, en el caso simulado, el frontend sin que medie una sesión de usuario;
 el simulador además solo responde con `ENABLE_PAYMENT_SIMULATION=true`), y necesitan su propia verificación de firma
 (`ConfirmPaymentUseCase.verifyWebhookSignature`, hoy un stub que siempre pasa — ver

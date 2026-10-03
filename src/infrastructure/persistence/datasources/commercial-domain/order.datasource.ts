@@ -52,6 +52,16 @@ const PLAN_DETAIL_INCLUDE = {
   },
 } satisfies Prisma.OrderInclude;
 
+// Estados desde los que una orden todavía se puede pagar (REJECTED admite reintento).
+const UNPAID_STATUSES = [PaymentStatus.PENDING, PaymentStatus.REJECTED];
+
+// Orden sin pagar cuyo plazo de pago sigue vigente (expiration_date null = sin plazo).
+const payableOrderWhere = (id: string, now: Date): Prisma.OrderWhereInput => ({
+  id,
+  paymentStatus: { in: UNPAID_STATUSES },
+  OR: [{ expirationDate: null }, { expirationDate: { gt: now } }],
+});
+
 @Injectable()
 export class OrderDatasourceImpl implements OrderDatasource {
   constructor(private readonly prisma: PrismaService) {}
@@ -163,13 +173,14 @@ export class OrderDatasourceImpl implements OrderDatasource {
     extras: OrderPaidExtras = {},
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
-      // mismo guard de idempotencia que markOrderAsPaidIfPending: solo la primera llamada avanza.
+      // guard de idempotencia: solo avanza la primera llamada sobre una orden aún pagable.
+      const now = new Date();
       const { count } = await tx.order.updateMany({
-        where: { id, paymentStatus: PaymentStatus.PENDING },
+        where: payableOrderWhere(id, now),
         data: {
           ...extras,
           paymentStatus: PaymentStatus.PAID,
-          paymentDate: new Date(),
+          paymentDate: now,
         },
       });
       if (count === 0) return false;
@@ -177,6 +188,47 @@ export class OrderDatasourceImpl implements OrderDatasource {
       await tx.payment.create({ data: { ...payment, orderId: id } });
       return true;
     });
+  }
+
+  async markOrderAsRejectedWithPayment(
+    id: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.order.updateMany({
+        where: payableOrderWhere(id, new Date()),
+        data: { paymentStatus: PaymentStatus.REJECTED },
+      });
+      if (count === 0) return false;
+
+      await tx.payment.create({ data: { ...payment, orderId: id } });
+      return true;
+    });
+  }
+
+  async expireOrderIfDue(id: string, now: Date): Promise<boolean> {
+    const { count } = await this.prisma.order.updateMany({
+      where: {
+        id,
+        paymentStatus: { in: UNPAID_STATUSES },
+        expirationDate: { lte: now },
+      },
+      data: { paymentStatus: PaymentStatus.EXPIRED },
+    });
+    return count > 0;
+  }
+
+  async getDueUnpaidOrderIds(now: Date, limit: number): Promise<string[]> {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        paymentStatus: { in: UNPAID_STATUSES },
+        expirationDate: { lte: now },
+      },
+      orderBy: { expirationDate: 'asc' },
+      take: limit,
+      select: { id: true },
+    });
+    return orders.map((order) => order.id);
   }
 
   async tryTransitionOrderToGenerating(id: string): Promise<boolean> {
