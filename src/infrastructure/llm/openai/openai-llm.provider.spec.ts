@@ -115,6 +115,113 @@ describe('OpenaiLlmProvider', () => {
     expect(createMock.mock.calls[0][1]).toEqual({ timeout: 300_000, maxRetries: 0 });
   });
 
+  describe('structured output (options.schema)', () => {
+    const schema = {
+      name: 'goal_classification',
+      schema: {
+        type: 'object' as const,
+        properties: { goal: { type: 'string' as const, enum: ['definicion', 'volumen'] } },
+        required: ['goal'],
+        additionalProperties: false as const,
+      },
+    };
+    const call = () =>
+      service.chatJson('system', [{ role: 'user', content: 'hola' }], 'gpt-5-mini', undefined, { schema });
+
+    it('con esquema pide json_schema en modo estricto, y no lo pasa como opción del SDK', async () => {
+      createMock.mockResolvedValue({ choices: [{ message: { content: '{"goal":"volumen"}' } }] });
+
+      await expect(call()).resolves.toEqual({ goal: 'volumen' });
+
+      expect(createMock.mock.calls[0][0].response_format).toEqual({
+        type: 'json_schema',
+        json_schema: { name: 'goal_classification', strict: true, schema: schema.schema },
+      });
+      expect(createMock.mock.calls[0]).toHaveLength(1);
+    });
+
+    it('si la respuesta no cumple el esquema lanza LlmInvalidResponseError con el detalle', async () => {
+      createMock.mockResolvedValue({ choices: [{ message: { content: '{"goal":"otra cosa"}' } }] });
+
+      const error = (await call().catch((e: unknown) => e)) as Error;
+
+      expect(error).toBeInstanceOf(LlmInvalidResponseError);
+      expect(error.message).toContain('no cumple el esquema "goal_classification" (1 error(es))');
+      expect(error.message).toContain('$.goal');
+    });
+
+    it('detalla como máximo 5 errores de esquema, pero informa el total', async () => {
+      const wide = {
+        name: 'wide',
+        schema: {
+          type: 'object' as const,
+          properties: Object.fromEntries(
+            ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((key) => [key, { type: 'string' as const }]),
+          ),
+          required: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+          additionalProperties: false as const,
+        },
+      };
+      createMock.mockResolvedValue({ choices: [{ message: { content: '{}' } }] });
+
+      const error = (await service
+        .chatJson('system', [{ role: 'user', content: 'hola' }], undefined, undefined, { schema: wide })
+        .catch((e: unknown) => e)) as Error;
+
+      expect(error.message).toContain('(7 error(es))');
+      expect(error.message).toContain('$.e');
+      expect(error.message).not.toContain('$.f');
+    });
+
+    it('sin esquema no valida la estructura (chat de anamnesis)', async () => {
+      createMock.mockResolvedValue({ choices: [{ message: { content: '{"cualquier":"cosa"}' } }] });
+
+      await expect(
+        service.chatJson('system', [{ role: 'user', content: 'hola' }]),
+      ).resolves.toEqual({ cualquier: 'cosa' });
+    });
+  });
+
+  it('si el modelo se niega a responder (refusal) lanza LlmInvalidResponseError', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ message: { content: null, refusal: 'No puedo ayudar con eso' } }],
+    });
+
+    const error = (await service
+      .chatJson('system', [{ role: 'user', content: 'hola' }])
+      .catch((e: unknown) => e)) as Error;
+
+    expect(error).toBeInstanceOf(LlmInvalidResponseError);
+    expect(error.message).toContain('se negó a responder: No puedo ayudar con eso');
+  });
+
+  it('si la respuesta se cortó por límite de tokens lanza LlmInvalidResponseError (no intenta usar el JSON incompleto)', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: '{"reply":"hol' } }],
+    });
+
+    const error = (await service
+      .chatJson('system', [{ role: 'user', content: 'hola' }])
+      .catch((e: unknown) => e)) as Error;
+
+    expect(error).toBeInstanceOf(LlmInvalidResponseError);
+    expect(error.message).toContain('límite de tokens');
+  });
+
+  it('una respuesta cortada igual informa sus métricas (los tokens se consumieron)', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: '{' } }],
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+    });
+    const onMetrics = jest.fn();
+
+    await service
+      .chatJson('system', [{ role: 'user', content: 'hola' }], undefined, undefined, { onMetrics })
+      .catch(() => undefined);
+
+    expect(onMetrics).toHaveBeenCalledWith(expect.objectContaining({ completionTokens: 20 }));
+  });
+
   describe('métricas de la llamada (onMetrics)', () => {
     it('informa modelo, duración y tokens de entrada, salida y razonamiento', async () => {
       createMock.mockResolvedValue({

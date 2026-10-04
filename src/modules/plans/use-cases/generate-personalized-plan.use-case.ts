@@ -39,10 +39,6 @@ import {
   CalculatedMealTime,
   NumericMealTimePortions,
 } from '../../../domain/services/alimentos/portion-adequacy.service';
-import {
-  FOOD_FIELD_TO_GROUP,
-  FOOD_GROUP_PORTIONS,
-} from '../../../domain/services/alimentos/food-portions';
 //domain - puertos
 import {
   AlertNotifier,
@@ -74,6 +70,30 @@ import {
   NUTRITIONIST_SYSTEM_PROMPT,
 } from '../generation/plan-generation.prompts';
 import { mapPlanToNutritionalPlanDto } from '../generation/plan-generation.mapper';
+import {
+  collectPlanIssues,
+  describeIssue,
+  mealTimeIndexesWithIssues,
+  PlanIssue,
+  PlanValidationError,
+} from '../generation/plan-validation';
+import {
+  buildRepairUserPrompt,
+  REPAIR_SYSTEM_PROMPT,
+} from '../generation/prompts/repair-meal-times.prompt';
+import {
+  EXTRACT_INFO_SCHEMA,
+  ExtractedInfo,
+} from '../generation/schemas/extract-info.schema';
+import {
+  GENERATED_PLAN_SCHEMA,
+  GeneratedMealTime,
+  GeneratedNutritionPlan,
+} from '../generation/schemas/generated-plan.schema';
+import {
+  REPAIRED_MEAL_TIMES_SCHEMA,
+  RepairedMealTimes,
+} from '../generation/schemas/repaired-meal-times.schema';
 
 const MAX_ATTEMPTS = 4;
 const BACKOFF_BASE_MS = 1000;
@@ -98,68 +118,22 @@ const timingLogsEnabled = () => process.env.PLAN_GENERATION_TIMING_LOGS === 'tru
 // un modelo con razonamiento: tarda minutos, no segundos, así que NO puede usar el tope por defecto
 // del adaptador (60 s, pensado para las llamadas dentro de una request). Sin reintentos del SDK: ya
 // reintenta el bucle de MAX_ATTEMPTS, y sumar ambos multiplicaría la espera.
-// Peor caso de una ronda: MAX_ATTEMPTS x (1 min de clasificación + 5 min del plan) = 24 min, bajo
-// STALLED_GENERATION_MS (30 min), para que el job de reintentos no dé por interrumpida una generación
-// que sigue corriendo. Si se sube OPENAI_PLAN_TIMEOUT_MS hay que respetar ese margen.
+// Peor caso de UN intento: 1 min de clasificación + 5 min del plan + MAX_REPAIRS x 2 min de
+// corrección = 10 min. Cada intento renueva la marca de progreso de la orden (touchGeneration), así
+// que el job de reintentos solo da por interrumpida una generación que lleva STALLED_GENERATION_MS
+// (30 min) SIN avanzar: un intento nunca debe acercarse a ese tiempo.
 const planLlmOptions = (): LlmCallOptions => ({
   timeoutMs: Number(process.env.OPENAI_PLAN_TIMEOUT_MS) || 5 * 60_000,
   maxRetries: 0,
 });
 // La clasificación previa (nivel de actividad y objetivo) es una respuesta corta.
 const CLASSIFY_LLM_OPTIONS: LlmCallOptions = { timeoutMs: 60_000, maxRetries: 0 };
+// Una corrección redacta solo los tiempos de comida con error: bastante más corta que el plan.
+const REPAIR_LLM_OPTIONS: LlmCallOptions = { timeoutMs: 2 * 60_000, maxRetries: 0 };
 
-// Tolerancia (en porciones) al comparar lo que la IA reporta en "components" contra las porciones
-// exactas ya calculadas por código: cubre solo errores de redondeo de punto flotante, no errores reales
-// de escalamiento (ver validateGeneratedExamples).
-const PORTION_TOLERANCE = 0.05;
-
-// Desglose verificable de un ejemplo: por cada alimento que la IA usó en "text", declara a qué grupo
-// pertenece, cuál es, y cuántos gramos le asignó. Permite validar en código que "text" respeta
-// EXACTAMENTE las porciones calculadas, sin tener que parsear el texto libre (ver meal-times.prompt.ts).
-type GeneratedExampleComponent = {
-  field: string;
-  food: string;
-  weight: number;
-};
-
-type GeneratedExample = {
-  text: string;
-  components: GeneratedExampleComponent[];
-};
-
-// Una opción de "equivalences": un único alimento de un grupo, ya escalado a la cantidad de porciones
-// que le corresponde a ese grupo (misma lógica que GeneratedExampleComponent, pero para un solo
-// alimento en vez de una combinación).
-type GeneratedEquivalenceOption = {
-  text: string;
-  food: string;
-  weight: number;
-};
-
-type GeneratedEquivalenceGroup = {
-  field: string;
-  options: GeneratedEquivalenceOption[];
-};
-
-type GeneratedNutritionPlan = {
-  prescription: {
-    regimen: string;
-    goal: string;
-  };
-  mealTimes: {
-    hour: string | null;
-    examples: GeneratedExample[];
-    equivalences: GeneratedEquivalenceGroup[];
-    comments: string[];
-  }[];
-  supplements: SupplementPrescription[];
-  sportsRecommendations: NutritionPlanDto['sportsRecommendations'];
-};
-
-type ExtractedInfo = {
-  physicalActivityLevel: number;
-  goal: string;
-};
+// Reintento dirigido: cuántas veces se le pide al modelo corregir SOLO los tiempos de comida que la
+// validación rechazó, antes de darse por vencido y regenerar el plan completo (siguiente intento).
+const MAX_REPAIRS = 2;
 
 type BaselineComposition = ReturnType<typeof findLatestBodyComposition>;
 
@@ -169,12 +143,6 @@ export type GenerationTrigger = 'payment' | 'retry';
 // Fases que se miden (ver README, "Tiempos de la generación"). Las que empiezan con `llm_` son
 // llamadas al modelo de lenguaje.
 const isLlmPhase = (phase: string) => phase.startsWith('llm_');
-
-// Lanzado por implicitPortions()/validateGeneratedExamples()/validateGeneratedEquivalences() cuando
-// la respuesta del LLM no calza con las porciones ya calculadas por código. Es una subclase de Error
-// solo para poder distinguir en los logs de execute() un reintento por "la IA se equivocó en el
-// escalamiento" de un reintento por otro motivo (timeout, rate limit, respuesta no-JSON, etc).
-class PlanValidationError extends Error {}
 
 @Injectable()
 export class GeneratePersonalizedPlanUseCase {
@@ -286,7 +254,10 @@ export class GeneratePersonalizedPlanUseCase {
         this.logPhase(orderId, attempt, entry);
       };
       try {
+        // marca de progreso: la generación sigue viva (ver STALLED_GENERATION_MS y touchGeneration)
+        if (attempt > 1) await this.orderLifecycle.touchGeneration(orderId);
         const { plan, numericPortions, goal } = await this.processPlan(
+          orderId,
           payload,
           timer,
           onPhase,
@@ -425,6 +396,8 @@ export class GeneratePersonalizedPlanUseCase {
       orderId,
       attempt,
       ok,
+      // correcciones dirigidas que hizo falta pedir en este intento (0 = el plan salió bien a la primera)
+      repairs: timer.entries().filter((entry) => entry.phase === 'llm_repair').length,
       totalMs: summary.totalMs,
       slowest: summary.slowest,
       phases: summary.phases,
@@ -461,6 +434,7 @@ export class GeneratePersonalizedPlanUseCase {
       trigger: trigger ?? 'unknown',
       outcome,
       attempts,
+      repairs: work.filter((entry) => entry.phase === 'llm_repair').length,
       totalMs: Date.now() - roundStart,
       measuredMs: summary.totalMs,
       queueWaitMs,
@@ -642,6 +616,7 @@ export class GeneratePersonalizedPlanUseCase {
   //columnas numéricas de plan_meal_time.
   //`timer`/`onPhase`: instrumentación, cada paso se mide como una fase del intento.
   private async processPlan(
+    orderId: string,
     body: CompleteConsultationDto,
     timer: PhaseTimer,
     onPhase: (entry: PhaseEntry) => void,
@@ -743,6 +718,8 @@ export class GeneratePersonalizedPlanUseCase {
           undefined,
           {
             ...planLlmOptions(),
+            // structured output: la respuesta llega con la estructura exacta del esquema
+            schema: GENERATED_PLAN_SCHEMA,
             onMetrics: (metrics: LlmCallMetrics) =>
               timer.annotate('llm_plan', { ...metrics }),
           },
@@ -750,15 +727,15 @@ export class GeneratePersonalizedPlanUseCase {
       onPhase,
     );
 
-    // si los "examples"/"equivalences" que devolvió la IA no calzan con las porciones ya calculadas
-    // por código, se lanza un error acá: lo captura el loop de reintentos de execute() (con
-    // backoff), que vuelve a llamar a processPlan() y a pedirle el plan completo a la IA desde cero.
-    await timer.measure(
-      'validate',
-      () => {
-        this.validateGeneratedExamples(calculatedMealTimes, generated.mealTimes);
-        this.validateGeneratedEquivalences(calculatedMealTimes, generated.mealTimes);
-      },
+    // Si los "examples"/"equivalences" que devolvió la IA no calzan con las porciones ya calculadas
+    // por código, primero se le pide corregir SOLO los tiempos de comida con error (reintento
+    // dirigido). Recién si eso no alcanza se lanza PlanValidationError: lo captura el loop de
+    // reintentos de execute() (con backoff), que vuelve a pedir el plan completo desde cero.
+    generated.mealTimes = await this.validateAndRepair(
+      orderId,
+      calculatedMealTimes,
+      generated.mealTimes,
+      timer,
       onPhase,
     );
     const mergeStart = performance.now();
@@ -989,171 +966,121 @@ export class GeneratePersonalizedPlanUseCase {
       [{ role: 'user', content: buildExtractInfoPromptUserMessage(body) }],
       planModel(),
       undefined,
-      { ...CLASSIFY_LLM_OPTIONS, onMetrics },
+      // structured output: solo los valores que las fórmulas saben interpretar
+      { ...CLASSIFY_LLM_OPTIONS, schema: EXTRACT_INFO_SCHEMA, onMetrics },
     );
   }
 
-  // helper de validateGeneratedExamples()/validateGeneratedEquivalences() - dado un alimento concreto
-  // que la IA reportó ({field, food, weight}), busca su gramaje base de 1 porción en el catálogo
-  // (FOOD_GROUP_PORTIONS) y devuelve cuántas porciones implica el gramaje reportado (gramaje ÷
-  // gramaje base). Devuelve null si el alimento no tiene gramaje base definido en el catálogo (ej
-  // algunos alimentos "libre consumo" como ajo o zapallo italiano crudo): en ese caso no se puede
-  // validar la proporción exacta en gramos, así que el caller debe confiar en la sola presencia del
-  // alimento. Lanza si "field" no existe o si "food" no pertenece al grupo de ese campo.
-  private implicitPortions(
-    field: string,
-    food: string,
-    weight: number,
-    context: string,
-  ): number | null {
-    const groupInfo = FOOD_FIELD_TO_GROUP[field];
-    if (!groupInfo) {
-      throw new PlanValidationError(`${context}: campo "${field}" no existe`);
-    }
-    const groupData = FOOD_GROUP_PORTIONS.find(
-      (g) =>
-        g.group === groupInfo.group && g.subcategory === groupInfo.subcategory,
-    );
-    const foodData = groupData?.foods.find(
-      (f) => f.food.toLowerCase() === food.toLowerCase(),
-    );
-    if (!foodData) {
+  //helper de processPlan() - valida el contenido que redactó la IA contra las porciones calculadas y,
+  //si hay errores, le pide corregir SOLO los tiempos de comida afectados (hasta MAX_REPAIRS veces),
+  //conservando el resto del plan. Devuelve los tiempos de comida ya válidos, o lanza
+  //PlanValidationError si no se pudieron corregir.
+  private async validateAndRepair(
+    orderId: string,
+    calculatedMealTimes: CalculatedMealTime[],
+    generatedMealTimes: GeneratedMealTime[],
+    timer: PhaseTimer,
+    onPhase: (entry: PhaseEntry) => void,
+  ): Promise<GeneratedMealTime[]> {
+    const validate = (mealTimes: GeneratedMealTime[]) =>
+      timer.measure('validate', () => collectPlanIssues(calculatedMealTimes, mealTimes), onPhase);
+
+    // Con otra cantidad de tiempos de comida no hay cómo alinear la respuesta con lo calculado: no es
+    // algo que se arregle corrigiendo una comida.
+    if (generatedMealTimes.length !== calculatedMealTimes.length) {
       throw new PlanValidationError(
-        `${context}: alimento "${food}" no pertenece al grupo "${field}"`,
+        `Se esperaban ${calculatedMealTimes.length} tiempos de comida, se recibieron ${generatedMealTimes.length}`,
       );
     }
-    if (!foodData.weight) return null;
-    return weight / foodData.weight;
-  }
 
-  // helper de processPlan() - valida que, para cada tiempo de comida y cada uno de sus 3 ejemplos, el
-  // desglose "components" que reportó la IA (ver meal-times.prompt.ts) sume EXACTAMENTE las
-  // porciones ya calculadas por código (mealTime.numericPortions), sin parsear el texto libre del
-  // ejemplo. Lanza un Error descriptivo ante cualquier desajuste; ese error lo captura el loop de
-  // reintentos de execute().
-  private validateGeneratedExamples(
-    calculatedMealTimes: CalculatedMealTime[],
-    generatedMealTimes: GeneratedNutritionPlan['mealTimes'],
-  ): void {
-    calculatedMealTimes.forEach((calculated, mealTimeIndex) => {
-      const examples = generatedMealTimes[mealTimeIndex]?.examples ?? [];
-      if (examples.length !== 3) {
-        throw new PlanValidationError(
-          `Tiempo de comida "${calculated.mealTimeType}" (índice ${mealTimeIndex}): se esperaban 3 ejemplos, se recibieron ${examples.length}`,
+    let mealTimes = generatedMealTimes;
+    let issues = await validate(mealTimes);
+
+    for (let repair = 1; issues.length > 0 && repair <= MAX_REPAIRS; repair++) {
+      const indexes = mealTimeIndexesWithIssues(issues);
+      this.logger.warn(
+        `Orden ${orderId}: ${issues.length} error(es) de validación en ${indexes.length} de ` +
+          `${calculatedMealTimes.length} tiempos de comida; corrección dirigida ${repair}/${MAX_REPAIRS} ` +
+          `(${describeIssue(issues[0])})`,
+      );
+      mealTimes = await this.repairMealTimes(
+        calculatedMealTimes,
+        mealTimes,
+        issues,
+        indexes,
+        timer,
+        onPhase,
+      );
+      issues = await validate(mealTimes);
+      if (issues.length === 0) {
+        this.logger.log(
+          `Orden ${orderId}: la corrección dirigida ${repair}/${MAX_REPAIRS} resolvió los errores ` +
+            `sin regenerar el plan`,
         );
       }
+    }
 
-      const requiredByField = calculated.numericPortions as unknown as Record<
-        string,
-        number
-      >;
-
-      examples.forEach((example, exampleIndex) => {
-        const context = `Tiempo "${calculated.mealTimeType}", ejemplo ${exampleIndex + 1}`;
-        const usedPortionsByField: Record<string, number> = {};
-        const fieldsWithoutBaseWeight = new Set<string>();
-
-        for (const component of example.components) {
-          const portions = this.implicitPortions(
-            component.field,
-            component.food,
-            component.weight,
-            context,
-          );
-          if (portions === null) {
-            fieldsWithoutBaseWeight.add(component.field);
-            continue;
-          }
-          usedPortionsByField[component.field] =
-            (usedPortionsByField[component.field] ?? 0) + portions;
-        }
-
-        for (const [field, required] of Object.entries(requiredByField)) {
-          if (!required || fieldsWithoutBaseWeight.has(field)) continue;
-          const used = usedPortionsByField[field] ?? 0;
-          if (Math.abs(used - required) > PORTION_TOLERANCE) {
-            throw new PlanValidationError(
-              `${context}: el grupo "${field}" requiere ${required} porciones y el ejemplo usa ${used.toFixed(2)}`,
-            );
-          }
-        }
-
-        for (const field of Object.keys(usedPortionsByField)) {
-          if (!requiredByField[field]) {
-            throw new PlanValidationError(
-              `${context}: usa el grupo "${field}", que no corresponde a este tiempo de comida`,
-            );
-          }
-        }
-      });
-    });
+    if (issues.length > 0) {
+      throw new PlanValidationError(
+        `${issues.length} error(es) tras ${MAX_REPAIRS} corrección(es): ${describeIssue(issues[0])}`,
+        issues,
+      );
+    }
+    return mealTimes;
   }
 
-  // helper de processPlan() - valida que, para cada tiempo de comida y cada grupo de "foods" de
-  // ese tiempo, la IA haya entregado exactamente 3 "options" de equivalencia (ver
-  // meal-times.prompt.ts), sin alimentos repetidos entre sí, y que cada una represente EXACTAMENTE
-  // las porciones de ese grupo (misma tolerancia y misma lógica que validateGeneratedExamples, pero
-  // aplicada a un único alimento por opción en vez de a una combinación). Lanza un Error descriptivo
-  // ante cualquier desajuste; ese error lo captura el loop de reintentos de execute().
-  private validateGeneratedEquivalences(
+  //helper de validateAndRepair() - una corrección dirigida: le muestra a la IA lo que respondió para
+  //los tiempos de comida con error y la lista de errores, y reemplaza esos tiempos por los corregidos.
+  private async repairMealTimes(
     calculatedMealTimes: CalculatedMealTime[],
-    generatedMealTimes: GeneratedNutritionPlan['mealTimes'],
-  ): void {
-    calculatedMealTimes.forEach((calculated, mealTimeIndex) => {
-      const requiredByField = calculated.numericPortions as unknown as Record<
-        string,
-        number
-      >;
-      const requiredFields = Object.entries(requiredByField)
-        .filter(([, required]) => !!required)
-        .map(([field]) => field);
+    mealTimes: GeneratedMealTime[],
+    issues: PlanIssue[],
+    indexes: number[],
+    timer: PhaseTimer,
+    onPhase: (entry: PhaseEntry) => void,
+  ): Promise<GeneratedMealTime[]> {
+    const repaired = await timer.measure(
+      'llm_repair',
+      () =>
+        this.llm.chatJson<RepairedMealTimes>(
+          REPAIR_SYSTEM_PROMPT,
+          [
+            {
+              role: 'user',
+              content: buildRepairUserPrompt(calculatedMealTimes, mealTimes, issues, indexes),
+            },
+          ],
+          planModel(),
+          undefined,
+          {
+            ...REPAIR_LLM_OPTIONS,
+            schema: REPAIRED_MEAL_TIMES_SCHEMA,
+            onMetrics: (metrics: LlmCallMetrics) =>
+              timer.annotate('llm_repair', { ...metrics, mealTimes: indexes.length }),
+          },
+        ),
+      onPhase,
+    );
 
-      const equivalences =
-        generatedMealTimes[mealTimeIndex]?.equivalences ?? [];
-      const equivalenceByField = new Map(
-        equivalences.map((group) => [group.field, group]),
+    // La corrección debe traer exactamente los tiempos pedidos: ni otros, ni repetidos, ni de menos.
+    const requested = new Set(indexes);
+    const returned = repaired.mealTimes.map((mealTime) => mealTime.index);
+    const isExactlyRequested =
+      returned.length === indexes.length &&
+      new Set(returned).size === returned.length &&
+      returned.every((index) => requested.has(index));
+    if (!isExactlyRequested) {
+      throw new PlanValidationError(
+        `La corrección devolvió los tiempos de comida [${returned.join(', ')}] y se pidieron [${indexes.join(', ')}]`,
+        issues,
       );
+    }
 
-      for (const field of requiredFields) {
-        const context = `Tiempo "${calculated.mealTimeType}", equivalencias de "${field}"`;
-        const generatedGroup = equivalenceByField.get(field);
-        if (!generatedGroup) {
-          throw new PlanValidationError(
-            `${context}: falta el desglose de equivalencias para este grupo`,
-          );
-        }
-        if (generatedGroup.options.length !== 3) {
-          throw new PlanValidationError(
-            `${context}: se esperaban 3 opciones, se recibieron ${generatedGroup.options.length}`,
-          );
-        }
-
-        const usedFoods = new Set<string>();
-        for (const option of generatedGroup.options) {
-          const normalizedFood = option.food.toLowerCase();
-          if (usedFoods.has(normalizedFood)) {
-            throw new PlanValidationError(
-              `${context}: el alimento "${option.food}" está repetido entre las 3 opciones`,
-            );
-          }
-          usedFoods.add(normalizedFood);
-
-          const portions = this.implicitPortions(
-            field,
-            option.food,
-            option.weight,
-            context,
-          );
-          if (portions === null) continue;
-          const required = requiredByField[field];
-          if (Math.abs(portions - required) > PORTION_TOLERANCE) {
-            throw new PlanValidationError(
-              `${context}: "${option.food}" debería representar ${required} porciones y representa ${portions.toFixed(2)}`,
-            );
-          }
-        }
-      }
-    });
+    const next = [...mealTimes];
+    for (const { index, ...mealTime } of repaired.mealTimes) {
+      next[index] = mealTime;
+    }
+    return next;
   }
 
   //helper de failRound() - avisa por el canal de alertas (AlertNotifier) que una ronda de generación

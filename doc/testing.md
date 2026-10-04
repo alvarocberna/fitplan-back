@@ -149,8 +149,14 @@ negocio. Los casos de uso mockean los repositorios en ese límite.
   resultado real** de `calculateFoodsAndIntake` (usa `FOOD_GROUP_PORTIONS`/`FOOD_FIELD_TO_GROUP`
   para escalar alimentos reales exactamente a las porciones ya calculadas) — así el test no depende
   de tracear el algoritmo a mano, se mantiene válido aunque cambien los números exactos que produce
-  `portion-adequacy.service.ts`, y ejercita de verdad `validateGeneratedExamples`/
-  `validateGeneratedEquivalences`.
+  `portion-adequacy.service.ts`, y ejercita de verdad `collectPlanIssues`
+  (`generation/plan-validation.ts`, con su propio spec).
+- **Reintento dirigido**: `mockLlmByPrompt` responde según el prompt de sistema (clasificación, plan o
+  corrección) en vez de depender del orden de las llamadas; cubre la corrección que resuelve, la segunda
+  corrección, el tope de 2, índices inesperados y la cantidad de tiempos de comida distinta.
+- **Esquemas de structured output**: `json-schema.spec.ts` (validador y reglas del modo estricto),
+  `plan-schemas.spec.ts` y `classify-goal.schema.spec.ts` (cada esquema es estricto y una respuesta tipada lo
+  cumple).
 - **Reintentos con backoff**: el test de agotamiento de los 4 intentos usa
   `jest.useFakeTimers()` + `jest.advanceTimersByTimeAsync(...)` para no esperar los ~7s reales de
   backoff exponencial (`1000+2000+4000ms`).

@@ -1,10 +1,11 @@
 import { FOOD_GROUP_PORTIONS, FOOD_FIELD_TO_GROUP } from '../../../../domain/services/alimentos/food-portions';
 import { CalculatedMealTime } from '../../../../domain/services/alimentos/portion-adequacy.service';
 
-//PASO 3 Y 4 DOC (tiempos de comida + porciones y ejemplos y comentarios)
-//El campo "foods" (con las porciones por grupo) y "intake" ya vienen calculados por código.
-export function buildMealTimesPrompt(calculatedMealTimes: CalculatedMealTime[]): string {
-  const info = calculatedMealTimes.map((mealTime, index) => {
+// Datos ya calculados de cada tiempo de comida que se le entregan al modelo: su índice, las porciones
+// de cada grupo y los alimentos permitidos ("exampleFoods") con su gramaje de 1 porción. Lo usan el
+// prompt de generación (todos los tiempos) y el de corrección (solo los que tuvieron errores).
+export function buildMealTimesInfo(calculatedMealTimes: CalculatedMealTime[]) {
+  return calculatedMealTimes.map((mealTime, index) => {
     const foods = Object.entries(mealTime.foods)
       .filter(([, portions]) => portions !== null)
       .map(([field, portions]) => {
@@ -20,8 +21,11 @@ export function buildMealTimesPrompt(calculatedMealTimes: CalculatedMealTime[]):
       });
     return { index, mealTime: mealTime.mealTimeType, intake: mealTime.intake, foods };
   });
+}
 
-  return `
+// Reglas de redacción de un tiempo de comida (hora, ejemplos, equivalencias, comentarios). Son las
+// mismas para generar el plan y para corregir una comida: por eso viven en una constante compartida.
+export const MEAL_TIMES_INSTRUCTIONS = `
 ### Tiempos de comida
 
 Los tiempos de comida del plan, y las porciones de cada grupo de alimentos que le corresponden a cada
@@ -166,7 +170,12 @@ orden en que se entregan, completar:
 - "comments": observaciones breves relevantes para ese tiempo de comida (ej sugerencias de
   preparación, o advertencias en base a alergias/intolerancias/patologías del paciente). Puede ser una
   lista vacía si no hay observaciones relevantes.
+`;
 
-${JSON.stringify(info, null, 2)}
+//PASO 3 Y 4 DOC (tiempos de comida + porciones y ejemplos y comentarios)
+//El campo "foods" (con las porciones por grupo) y "intake" ya vienen calculados por código.
+export function buildMealTimesPrompt(calculatedMealTimes: CalculatedMealTime[]): string {
+  return `${MEAL_TIMES_INSTRUCTIONS}
+${JSON.stringify(buildMealTimesInfo(calculatedMealTimes), null, 2)}
 `;
 }

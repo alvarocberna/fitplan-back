@@ -45,7 +45,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 
 - **Framework**: NestJS 11 (Express)
 - **Lenguaje**: TypeScript
-- **IA**: SDK oficial de [`openai`](https://www.npmjs.com/package/openai) (chat completions, `response_format: json_object`)
+- **IA**: SDK oficial de [`openai`](https://www.npmjs.com/package/openai) (chat completions; *structured output* con `response_format: json_schema` en la generación del plan y las clasificaciones, `json_object` en el chat)
 - **Validación**: `class-validator` + `class-transformer` (`ValidationPipe` global en `main.ts`)
 - **Documentación de API**: `@nestjs/swagger` (Swagger UI en `/api-docs`, ver [Puesta en marcha](#puesta-en-marcha))
 - **Configuración**: `@nestjs/config` (`.env`)
@@ -495,8 +495,11 @@ Resumen:
    **sin IA**, y le pide al LLM (`NUTRITIONIST_SYSTEM_PROMPT`, `generation/plan-generation.prompts.ts`) que
    genere el plan usando **exactamente** esos valores y expresando cada tiempo de comida en
    **porciones por grupo de intercambio** (ver [Porciones de alimentos](#porciones-de-alimentos)). La
-   respuesta se valida en código contra las porciones calculadas.
-5. Reintenta hasta 4 veces con backoff exponencial. Si tiene éxito: renderiza el PDF una sola vez
+   **estructura** de la respuesta la fija un esquema (ver [Integración con OpenAI](#integración-con-openai));
+   el **contenido** se valida en código contra las porciones calculadas (`generation/plan-validation.ts`).
+5. Si la validación rechaza algún tiempo de comida, **no** se regenera el plan: se le pide al modelo que
+   corrija solo esos tiempos (ver [Reintento dirigido](#reintento-dirigido)).
+6. Reintenta el intento completo hasta 4 veces con backoff exponencial. Si tiene éxito: renderiza el PDF una sola vez
    (`PlanDocumentRenderer.renderPdf`), lo sube a `productos-personalizados/<orderId>.pdf`
    (`FileStorage.uploadPdf`), genera y sube la miniatura WebP (`renderThumbnail`, **best-effort**: si
    falla queda `thumbnailKey = null` sin consumir un reintento), guarda `plan` + `nutritional_plan`
@@ -504,6 +507,28 @@ Resumen:
    con `planJson`/`pdfKey`/`thumbnailKey` (`OrderLifecycleService.completeGeneration`) y envía el correo
    con el mismo buffer (`EmailSender.sendPlanByEmail`). Si agota los reintentos, la orden queda `ERROR`
    (`recordFailedAttempt`, que suma 1 a `attempts`) y se registra el evento.
+
+#### Reintento dirigido
+
+La validación (`collectPlanIssues`) no corta en el primer error: junta **todos** los problemas, cada uno con el
+tiempo de comida al que pertenece (3 ejemplos por comida, 3 opciones por grupo de equivalencias, alimentos del
+catálogo, gramaje que equivalga a las porciones calculadas con una tolerancia de 0,05 porciones). Si hay
+problemas, dentro del mismo intento:
+
+1. `llm_repair`: se le envían al modelo, **solo para los tiempos de comida con error**, sus datos ya calculados
+   (porciones y alimentos permitidos), lo que respondió y la lista exacta de errores
+   (`generation/prompts/repair-meal-times.prompt.ts`). Responde únicamente esos tiempos, cada uno con su
+   `index` (esquema `repaired_meal_times`). Timeout de 2 min, sin reintentos del SDK.
+2. Los tiempos corregidos reemplazan a los originales y se vuelve a validar **todo** el plan.
+3. Se repite hasta `MAX_REPAIRS = 2` veces. Si todavía quedan problemas, el intento falla con
+   `PlanValidationError` y sigue el camino de siempre: backoff y regeneración completa (hasta 4 intentos).
+
+Va directo a la regeneración completa, sin corregir, si el modelo devuelve otra cantidad de tiempos de comida
+que la calculada, o si la corrección no trae exactamente los índices pedidos.
+
+Como un intento puede durar más (clasificación + plan + 2 correcciones), cada intento posterior al primero
+renueva `order.generationUpdatedAt` (`OrderLifecycleService.touchGeneration`): el job de reintentos solo da por
+interrumpida una generación que lleva 30 min **sin avanzar**.
 
 #### Reintento automático de la generación
 
@@ -546,7 +571,8 @@ registran duraciones, tamaños y conteos de tokens: nunca el contenido de la con
 | `calculate` | Requerimientos, tiempos de comida, porciones, aportes y suplementos (código, sin IA) |
 | `build_prompt` | Armado del prompt del plan (`chars`: tamaño de sistema + usuario) |
 | `llm_plan` | Llamada al modelo que genera el plan |
-| `validate` | Validación de ejemplos y equivalencias contra las porciones calculadas |
+| `validate` | Validación de ejemplos y equivalencias contra las porciones calculadas. Se repite después de cada corrección |
+| `llm_repair` | Llamada al modelo que corrige solo los tiempos de comida rechazados (`mealTimes`: cuántos). Solo aparece si la validación encontró problemas |
 | `merge` | Fusión de la respuesta del modelo con lo calculado |
 | `render_pdf` | Render del PDF (`bytes`) |
 | `upload_pdf` | Subida del PDF a S3 |
@@ -565,9 +591,9 @@ Qué se loguea (contexto `GeneratePersonalizedPlanUseCase`):
 1. **Una línea por fase**, apenas termina:
    `Orden <id> [intento 1/4] llm_plan: 142318 ms (gpt-5-mini, in 9120 / out 6540 / razonamiento 4800 tok)`.
    Las fases de fuera de un intento salen como `[ronda]`. Una fase que lanza se marca `FALLÓ`.
-2. **Un resumen por intento**: `{ event: 'plan_generation_attempt', orderId, attempt, ok, totalMs, slowest,
-   phases: [{ phase, durationMs, pct, ok, data }] }`.
-3. **Un resumen por ronda**: `{ event: 'plan_generation_round', orderId, trigger, outcome, attempts, totalMs,
+2. **Un resumen por intento**: `{ event: 'plan_generation_attempt', orderId, attempt, ok, repairs, totalMs,
+   slowest, phases: [{ phase, durationMs, pct, ok, data }] }` (`repairs` = correcciones dirigidas hechas).
+3. **Un resumen por ronda**: `{ event: 'plan_generation_round', orderId, trigger, outcome, attempts, repairs, totalMs,
    measuredMs, queueWaitMs, llmMs, llmPct, tokens: { prompt, completion, reasoning }, slowest, phases }`, donde
    `phases` acumula todos los intentos, de la fase más lenta a la más rápida (`count` = veces que corrió).
    `trigger` es `payment` (evento del pago) o `retry` (job de reintentos).
@@ -624,12 +650,39 @@ modelo calcula cuántas porciones de cada grupo corresponden y arma los `ejemplo
 
 Los casos de uso hablan con el modelo a través del puerto `LlmProvider` (`domain/ports`), implementado
 por `OpenaiLlmProvider` (`src/infrastructure/llm/openai/openai-llm.provider.ts`): un wrapper delgado
-sobre el SDK de `openai` que expone `chatJson<T>(systemPrompt, messages, model?, temperature?)`, llama a
-`chat.completions.create` con `response_format: { type: 'json_object' }`, hace `JSON.parse` del contenido
-y lanza `InternalServerErrorException` si la respuesta viene vacía. Es el único punto de acceso a
-OpenAI del backend; lo usan `ChatAnamnesisUseCase` (chat de anamnesis) y
-`GeneratePersonalizedPlanUseCase` (clasificación de actividad/objetivo y generación del plan), cada uno
-con sus propios prompts (`modules/consultation/prompts/` y `modules/plans/generation/`).
+sobre el SDK de `openai` que expone `chatJson<T>(systemPrompt, messages, model?, temperature?, options?)`,
+llama a `chat.completions.create` y devuelve el contenido parseado. Es el único punto de acceso a OpenAI del
+backend; lo usan `ChatAnamnesisUseCase` (chat de anamnesis), `EvaluateGoalFeasibilityUseCase` (clasificación
+del objetivo) y `GeneratePersonalizedPlanUseCase` (clasificación de actividad/objetivo, generación del plan y
+corrección de tiempos de comida), cada uno con sus propios prompts (`modules/consultation/prompts/` y
+`modules/plans/generation/`). Errores: un fallo del SDK → `LlmUnavailableError`; respuesta vacía, que no es
+JSON, que no cumple el esquema, cortada por límite de tokens (`finish_reason: 'length'`) o rechazada por el
+modelo (`refusal`) → `LlmInvalidResponseError` (ver [doc/error-handling.md](./doc/error-handling.md)).
+
+### Structured output
+
+Una llamada puede declarar el esquema que debe cumplir la respuesta (`LlmCallOptions.schema`, un
+`NamedJsonSchema` de `domain/services/llm/json-schema.ts`: tipo propio, sin dependencias del SDK):
+
+- **Con esquema**: el adaptador envía `response_format: { type: 'json_schema', json_schema: { name, strict: true,
+  schema } }` — el proveedor restringe la generación a esa estructura — y **además** valida la respuesta con
+  `validateJsonSchema` antes de devolverla. El resto del backend usa el resultado sin volver a revisarlo.
+- **Sin esquema**: `response_format: { type: 'json_object' }` (solo garantiza JSON válido). Es el caso del chat
+  de anamnesis, cuya ficha pasa por su normalizador (`dto/anamnesis-normalizer.ts`).
+
+| Llamada | Esquema | Archivo |
+|---|---|---|
+| Clasificación previa (nivel de actividad `1.4 \| 1.5 \| 1.6`, objetivo) | `consultation_classification` | `modules/plans/generation/schemas/extract-info.schema.ts` |
+| Generación del plan | `nutrition_plan` | `modules/plans/generation/schemas/generated-plan.schema.ts` |
+| Corrección de tiempos de comida | `repaired_meal_times` | `modules/plans/generation/schemas/repaired-meal-times.schema.ts` |
+| Clasificación del objetivo (factibilidad) | `goal_classification` | `modules/consultation/prompts/classify-goal.schema.ts` |
+
+Reglas al tocar un esquema: el modo estricto exige que todo objeto declare **todas** sus propiedades en
+`required` y `additionalProperties: false` (usar `strictObject`); un campo opcional se expresa como unión con
+`null`. El tipo TypeScript de la respuesta vive junto a su esquema y deben cambiar juntos: los specs de esquemas
+(`plan-schemas.spec.ts`, `classify-goal.schema.spec.ts`) comprueban con `strictSchemaViolations` que el esquema
+siga siendo válido para el proveedor (si no lo es, OpenAI responde 400 en cada llamada) y que una respuesta
+tipada lo cumpla. El esquema fija la **estructura**; que el contenido sea correcto lo valida el caso de uso.
 
 
 ## PDF y almacenamiento en S3

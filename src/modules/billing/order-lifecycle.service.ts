@@ -67,6 +67,14 @@ export class OrderLifecycleService {
     return this.orderRepository.tryTransitionOrderToGenerating(id);
   }
 
+  // Marca de progreso de una generación en curso: renueva generationUpdatedAt. El job de reintentos
+  // da por interrumpida una orden que lleva STALLED_GENERATION_MS en GENERATING sin esta marca, así
+  // que una generación que sigue avanzando (varios intentos, correcciones) no se confunde con una
+  // que quedó pegada.
+  async touchGeneration(id: string): Promise<void> {
+    await this.orderRepository.updateOrderById(id, { generationUpdatedAt: new Date() });
+  }
+
   async completeGeneration(
     id: string,
     plan: NutritionPlanDto,

@@ -182,7 +182,7 @@ El código sigue **evitando** que los errores ocurran, y ahora el filtro traduce
 
 | Adaptador | Manejo |
 |---|---|
-| `OpenaiLlmProvider` | Cliente con `timeout` (`OPENAI_TIMEOUT_MS`, por defecto 60 s) y `maxRetries: 2` explícitos: es el tope de las llamadas dentro de una request (chat, factibilidad). Una llamada puede declarar sus propios límites (`LlmCallOptions`): la generación del plan, que tarda minutos, usa 5 min (`OPENAI_PLAN_TIMEOUT_MS`) y `maxRetries: 0`, porque ya reintenta su propio bucle. Todo error del SDK (red, timeout, 429, 4xx/5xx) → `LlmUnavailableError` (con el status en el mensaje, para el log). Respuesta vacía o que no es JSON → `LlmInvalidResponseError` |
+| `OpenaiLlmProvider` | Cliente con `timeout` (`OPENAI_TIMEOUT_MS`, por defecto 60 s) y `maxRetries: 2` explícitos: es el tope de las llamadas dentro de una request (chat, factibilidad). Una llamada puede declarar sus propios límites (`LlmCallOptions`): la generación del plan, que tarda minutos, usa 5 min (`OPENAI_PLAN_TIMEOUT_MS`) y `maxRetries: 0`, porque ya reintenta su propio bucle. Todo error del SDK (red, timeout, 429, 4xx/5xx) → `LlmUnavailableError` (con el status en el mensaje, para el log). Respuesta vacía, que no es JSON, que no cumple el esquema pedido (`LlmCallOptions.schema`: structured output en modo estricto, validado además en el adaptador), cortada por límite de tokens (`finish_reason: 'length'`) o rechazada por el modelo (`refusal`) → `LlmInvalidResponseError`, con hasta 5 errores de esquema en el mensaje |
 | `S3FileStorage` | `maxAttempts: 3`, timeout de conexión 5 s y de respuesta 30 s. `getOrThrow` de la configuración en el constructor (falla al arrancar si falta). Los errores se propagan |
 | `ThumbnailService` | `try/finally` para liberar el documento de pdfjs. Se propaga; el llamador decide si es fatal |
 | `LogEmailSender` | Stub: solo loguea |
@@ -220,8 +220,16 @@ Corre en segundo plano y su contrato es no producir nunca una promesa rechazada.
 2. **Carga de datos** (orden, consulta, armado del DTO) dentro de un `try`: si falla, la ronda se da por
    fallida ahí mismo (`failRound`). La orden no queda pegada en `GENERATING`.
 3. **Intentos**: hasta `MAX_ATTEMPTS = 4` con backoff exponencial (1 s, 2 s, 4 s). Cada intento cubre el LLM,
-   la validación de porciones (`PlanValidationError`), el PDF, S3, la persistencia del plan y el cierre de la
-   orden.
+   la validación de porciones, el PDF, S3, la persistencia del plan y el cierre de la orden. Los intentos
+   posteriores al primero renuevan `generationUpdatedAt` (`touchGeneration`) para que el job no confunda una
+   generación que avanza con una interrumpida.
+   - **Reintento dirigido**: si la validación (`collectPlanIssues`, que junta todos los problemas por tiempo de
+     comida) rechaza algo, se le pide al modelo corregir **solo** esos tiempos (`llm_repair`), hasta
+     `MAX_REPAIRS = 2` veces por intento. Recién si quedan problemas se lanza `PlanValidationError` y el intento
+     falla. También falla sin corregir si la cantidad de tiempos de comida no coincide o si la corrección no trae
+     exactamente los índices pedidos.
+   - Un `LlmInvalidResponseError` (p. ej. respuesta que no cumple el esquema) o un `LlmUnavailableError` en
+     cualquiera de las llamadas consume el intento, igual que antes.
 4. **Correo fuera del intento**: `sendPlanEmail` corre después de `completeGeneration` con su propio
    `try/catch`. Un fallo (o un usuario sin email) deja un `warn` y una alerta `plan_email_failed`; **no**
    regenera el plan ni toca el estado de la orden, que ya está `COMPLETED`.

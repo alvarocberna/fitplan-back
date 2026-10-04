@@ -175,4 +175,14 @@ describe('OrderLifecycleService', () => {
       },
     );
   });
+
+  it('touchGeneration renueva generationUpdatedAt: marca que la generación sigue avanzando', async () => {
+    orderRepository.updateOrderById.mockResolvedValue({} as never);
+
+    await service.touchGeneration('order-1');
+
+    expect(orderRepository.updateOrderById).toHaveBeenCalledWith('order-1', {
+      generationUpdatedAt: expect.any(Date),
+    });
+  });
 });

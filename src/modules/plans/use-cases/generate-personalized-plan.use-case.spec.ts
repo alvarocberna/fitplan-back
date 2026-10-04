@@ -23,6 +23,11 @@ import {
 } from '../../../domain/services/alimentos/portion-adequacy.service';
 import { FOOD_FIELD_TO_GROUP, FOOD_GROUP_PORTIONS } from '../../../domain/services/alimentos/food-portions';
 import { Meal } from '../../../domain/dtos/consultation.dto';
+import {
+  EXTRACT_INFO_SYSTEM_PROMPT,
+  NUTRITIONIST_SYSTEM_PROMPT,
+} from '../generation/plan-generation.prompts';
+import { REPAIR_SYSTEM_PROMPT } from '../generation/prompts/repair-meal-times.prompt';
 
 // Construye, a partir de las porciones YA calculadas por el código real (numericPortions), una
 // respuesta de IA "perfecta": para cada campo con porciones requeridas, arma un componente/
@@ -173,6 +178,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
             findByIdWithUser: jest.fn(),
             completeGeneration: jest.fn(),
             recordFailedAttempt: jest.fn(),
+            touchGeneration: jest.fn(),
           },
         },
         { provide: LlmProvider, useValue: { chatJson: jest.fn() } },
@@ -451,31 +457,203 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     expect(llm.chatJson.mock.calls.map((call) => call[2])).toEqual(['modelo-de-prueba', 'modelo-de-prueba']);
   });
 
-  it('reintenta con backoff si la IA no calza con las porciones calculadas, y agota los 4 intentos', async () => {
+  // Respuestas del modelo según qué prompt de sistema recibe (clasificación, plan o corrección), para
+  // no depender del orden de las llamadas.
+  function mockLlmByPrompt(responses: {
+    plan: () => unknown;
+    repair?: (userPrompt: string) => unknown;
+  }) {
+    llm.chatJson.mockImplementation(async (systemPrompt: string, messages: any[]) => {
+      if (systemPrompt === EXTRACT_INFO_SYSTEM_PROMPT) return { physicalActivityLevel, goal } as any;
+      if (systemPrompt === NUTRITIONIST_SYSTEM_PROMPT) return responses.plan() as any;
+      if (systemPrompt === REPAIR_SYSTEM_PROMPT) return responses.repair?.(messages[0].content) as any;
+      throw new Error('prompt de sistema inesperado');
+    });
+  }
+
+  const callsWith = (systemPrompt: string) =>
+    llm.chatJson.mock.calls.filter(([prompt]) => prompt === systemPrompt);
+
+  // tiempos de comida "perfectos" (calzan con las porciones calculadas) para este escenario
+  function matchingMealTimes() {
+    const { portionAdequacyResult } = mockMatchingAiResponses();
+    llm.chatJson.mockReset();
+    return buildMatchingGeneratedMealTimes(portionAdequacyResult.calculatedMealTimes);
+  }
+
+  const planWith = (mealTimes: unknown[]) => ({
+    prescription: { regimen: 'Plan personalizado', goal },
+    mealTimes,
+    supplements: [],
+    sportsRecommendations: [],
+  });
+
+  describe('structured output', () => {
+    it('la clasificación y el plan se piden con su esquema (la estructura la garantiza el proveedor)', async () => {
+      mockMatchingAiResponses();
+
+      await service.execute({ orderId: 'order-1' });
+
+      expect(llm.chatJson.mock.calls[0][4]?.schema?.name).toBe('consultation_classification');
+      expect(llm.chatJson.mock.calls[1][4]?.schema?.name).toBe('nutrition_plan');
+    });
+  });
+
+  describe('reintento dirigido (corrección de los tiempos de comida rechazados)', () => {
+    it('corrige SOLO el tiempo de comida con error y completa el plan sin regenerarlo', async () => {
+      const good = matchingMealTimes();
+      // el modelo se equivoca en un único tiempo de comida: lo deja sin ejemplos
+      const withOneBad = good.map((mealTime, index) =>
+        index === 0 ? { ...mealTime, examples: [] } : mealTime,
+      );
+      mockLlmByPrompt({
+        plan: () => planWith(withOneBad),
+        repair: () => ({ mealTimes: [{ index: 0, ...good[0] }] }),
+      });
+
+      await service.execute({ orderId: 'order-1' });
+
+      // una sola generación del plan y una sola corrección
+      expect(callsWith(NUTRITIONIST_SYSTEM_PROMPT)).toHaveLength(1);
+      const repairCalls = callsWith(REPAIR_SYSTEM_PROMPT);
+      expect(repairCalls).toHaveLength(1);
+      // la corrección pide solo el índice 0, con su esquema, y le muestra el error concreto
+      const repairPrompt = repairCalls[0][1][0].content;
+      expect(repairPrompt).toContain('índices 0)');
+      expect(repairPrompt).toContain('se esperaban 3 ejemplos, se recibieron 0');
+      expect(repairCalls[0][4]?.schema?.name).toBe('repaired_meal_times');
+
+      // el plan se completa con el tiempo corregido y el resto intacto
+      expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+      const [, plan] = orderLifecycle.completeGeneration.mock.calls[0];
+      expect(plan.mealTimes[0].examples).toHaveLength(3);
+      expect(orderLifecycle.recordFailedAttempt).not.toHaveBeenCalled();
+    });
+
+    it('si varios tiempos fallan, los corrige juntos en una misma llamada', async () => {
+      const good = matchingMealTimes();
+      const allBad = good.map((mealTime) => ({ ...mealTime, examples: [] }));
+      mockLlmByPrompt({
+        plan: () => planWith(allBad),
+        repair: () => ({ mealTimes: good.map((mealTime, index) => ({ index, ...mealTime })) }),
+      });
+
+      await service.execute({ orderId: 'order-1' });
+
+      expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(1);
+      expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+    });
+
+    it('permite una segunda corrección si la primera no alcanza', async () => {
+      const good = matchingMealTimes();
+      const withOneBad = good.map((mealTime, index) =>
+        index === 0 ? { ...mealTime, examples: [] } : mealTime,
+      );
+      let repairs = 0;
+      mockLlmByPrompt({
+        plan: () => planWith(withOneBad),
+        // la primera corrección sigue mal; la segunda acierta
+        repair: () => ({
+          mealTimes: [{ index: 0, ...(++repairs === 1 ? withOneBad[0] : good[0]) }],
+        }),
+      });
+
+      await service.execute({ orderId: 'order-1' });
+
+      expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(2);
+      expect(callsWith(NUTRITIONIST_SYSTEM_PROMPT)).toHaveLength(1);
+      expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+    });
+
+    it('si tras 2 correcciones siguen los errores, regenera el plan completo en el siguiente intento', async () => {
+      jest.useFakeTimers();
+      const good = matchingMealTimes();
+      const withOneBad = good.map((mealTime, index) =>
+        index === 0 ? { ...mealTime, examples: [] } : mealTime,
+      );
+      let planCalls = 0;
+      mockLlmByPrompt({
+        // el primer plan sale mal y no se logra corregir; el segundo sale bien
+        plan: () => planWith(++planCalls === 1 ? withOneBad : good),
+        repair: () => ({ mealTimes: [{ index: 0, ...withOneBad[0] }] }),
+      });
+
+      const resultPromise = service.execute({ orderId: 'order-1' });
+      await jest.advanceTimersByTimeAsync(60000);
+      await resultPromise;
+
+      expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(2); // el máximo por intento
+      expect(callsWith(NUTRITIONIST_SYSTEM_PROMPT)).toHaveLength(2);
+      expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+      // el segundo intento renueva la marca de progreso de la orden
+      expect(orderLifecycle.touchGeneration).toHaveBeenCalledWith('order-1');
+
+      jest.useRealTimers();
+    });
+
+    it.each([
+      ['un índice que no se pidió', (good: any[]) => [{ index: 1, ...good[1] }]],
+      ['el mismo índice repetido', (good: any[]) => [{ index: 0, ...good[0] }, { index: 0, ...good[0] }]],
+      ['ningún tiempo de comida', () => []],
+    ])('si la corrección devuelve %s, el intento falla y se regenera el plan', async (_name, build) => {
+      jest.useFakeTimers();
+      const good = matchingMealTimes();
+      const withOneBad = good.map((mealTime, index) =>
+        index === 0 ? { ...mealTime, examples: [] } : mealTime,
+      );
+      let planCalls = 0;
+      mockLlmByPrompt({
+        plan: () => planWith(++planCalls === 1 ? withOneBad : good),
+        repair: () => ({ mealTimes: build(good) }),
+      });
+
+      const resultPromise = service.execute({ orderId: 'order-1' });
+      await jest.advanceTimersByTimeAsync(60000);
+      await resultPromise;
+
+      expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(1);
+      expect(callsWith(NUTRITIONIST_SYSTEM_PROMPT)).toHaveLength(2);
+      expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
+    });
+
+    it('con otra cantidad de tiempos de comida no intenta corregir: regenera el plan', async () => {
+      jest.useFakeTimers();
+      const good = matchingMealTimes();
+      let planCalls = 0;
+      mockLlmByPrompt({
+        plan: () => planWith(++planCalls === 1 ? good.slice(1) : good),
+        repair: () => {
+          throw new Error('no debería pedirse una corrección');
+        },
+      });
+
+      const resultPromise = service.execute({ orderId: 'order-1' });
+      await jest.advanceTimersByTimeAsync(60000);
+      await resultPromise;
+
+      expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(0);
+      expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
+    });
+  });
+
+  it('agota los 4 intentos (cada uno con sus 2 correcciones) si la IA nunca calza con las porciones', async () => {
     jest.useFakeTimers();
 
-    // "examples" vacío en cada intento dispara PlanValidationError determinísticamente
-    // (validateGeneratedExamples exige exactamente 3 ejemplos por tiempo de comida), sin
-    // importar los requerimientos/porciones calculados para este escenario. Cada intento de
-    // processPlan() llama a chatJson 2 veces en orden fijo: 1ro extractInfoPrompt, 2do el prompt
-    // principal (ver plan-generation.service.ts) — se alterna la respuesta con un contador.
-    let callCount = 0;
-    llm.chatJson.mockImplementation(() => {
-      callCount++;
-      if (callCount % 2 === 1) {
-        return Promise.resolve({ physicalActivityLevel, goal });
-      }
-      return Promise.resolve({
-        prescription: { regimen: 'Plan personalizado', goal },
-        mealTimes: determineMealTimes(r24h, goal).map(() => ({
-          hour: null,
-          examples: [],
-          equivalences: [],
-          comments: [],
-        })),
-        supplements: [],
-        sportsRecommendations: [],
-      });
+    // "examples" vacío en todos los tiempos, y las correcciones tampoco lo arreglan
+    const badMealTimes = () =>
+      determineMealTimes(r24h, goal).map(() => ({
+        hour: null,
+        examples: [],
+        equivalences: [],
+        comments: [],
+      }));
+    mockLlmByPrompt({
+      plan: () => planWith(badMealTimes()),
+      repair: () => ({ mealTimes: badMealTimes().map((mealTime, index) => ({ index, ...mealTime })) }),
     });
 
     const resultPromise = service.execute({ orderId: 'order-1' });
@@ -484,7 +662,12 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     }
     await resultPromise;
 
-    expect(llm.chatJson).toHaveBeenCalledTimes(8); // 2 llamadas (extract + plan) x 4 intentos
+    // por intento: clasificación + plan + 2 correcciones
+    expect(callsWith(EXTRACT_INFO_SYSTEM_PROMPT)).toHaveLength(4);
+    expect(callsWith(NUTRITIONIST_SYSTEM_PROMPT)).toHaveLength(4);
+    expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(8);
+    // la marca de progreso se renueva al empezar cada intento posterior al primero
+    expect(orderLifecycle.touchGeneration).toHaveBeenCalledTimes(3);
     expect(orderLifecycle.completeGeneration).not.toHaveBeenCalled();
     expect(emailSender.sendPlanByEmail).not.toHaveBeenCalled();
     expect(orderLifecycle.recordFailedAttempt).toHaveBeenCalledWith('order-1');
@@ -647,7 +830,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       await service.execute({ orderId: 'order-1', trigger: 'payment' });
 
       const [attempt] = structuredLogs(logSpy, 'plan_generation_attempt');
-      expect(attempt).toMatchObject({ orderId: 'order-1', attempt: 1, ok: true });
+      expect(attempt).toMatchObject({ orderId: 'order-1', attempt: 1, ok: true, repairs: 0 });
       expect(attempt.phases.map((phase: any) => phase.phase)).toEqual([
         'llm_classify',
         'calculate',

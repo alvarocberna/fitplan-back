@@ -5,6 +5,7 @@ import {
   LlmInvalidResponseError,
   LlmUnavailableError,
 } from '../../../domain/errors/llm.errors';
+import { validateJsonSchema } from '../../../domain/services/llm/json-schema';
 
 // Tope POR DEFECTO de una llamada al modelo: el de las llamadas que ocurren dentro de una request
 // HTTP (chat de anamnesis, clasificación del objetivo), que responden en segundos. Explícito para no
@@ -14,6 +15,8 @@ import {
 const DEFAULT_TIMEOUT_MS = 60_000;
 // Reintentos del propio SDK ante errores transitorios (red, 429, 5xx), con su backoff.
 const MAX_RETRIES = 2;
+// Cuántos errores de esquema se detallan en el mensaje (el resto solo se cuenta).
+const MAX_SCHEMA_ERRORS_IN_MESSAGE = 5;
 
 @Injectable()
 export class OpenaiLlmProvider implements LlmProvider {
@@ -43,19 +46,28 @@ export class OpenaiLlmProvider implements LlmProvider {
       ...(options?.maxRetries !== undefined && { maxRetries: options.maxRetries }),
     };
     let content: string | null | undefined;
+    let failure: string | null = null;
     const startedAt = performance.now();
     try {
       const response = await this.client.chat.completions.create(
         {
           model,
           ...(temperature !== undefined ? { temperature } : {}),
-          response_format: { type: 'json_object' },
+          response_format: this.responseFormat(options),
           messages: [{ role: 'system', content: systemPrompt }, ...messages],
         },
         ...(Object.keys(requestOptions).length > 0 ? [requestOptions] : []),
       );
-      content = response.choices[0]?.message?.content;
+      const choice = response.choices[0];
+      content = choice?.message?.content;
       this.reportMetrics(options, model, performance.now() - startedAt, response.usage);
+      // El modelo se negó a responder (política de contenido): no hay JSON que usar.
+      if (choice?.message?.refusal) {
+        failure = `OpenAI se negó a responder: ${choice.message.refusal}`;
+      } else if (choice?.finish_reason === 'length') {
+        // Se alcanzó el máximo de tokens de salida: el JSON quedó cortado.
+        failure = 'OpenAI cortó la respuesta por límite de tokens (JSON incompleto)';
+      }
     } catch (error) {
       // Cualquier error del SDK (red, timeout, rate limit, 4xx/5xx del proveedor) se traduce al error
       // del puerto: quien llama no conoce a OpenAI.
@@ -66,13 +78,44 @@ export class OpenaiLlmProvider implements LlmProvider {
       );
     }
 
+    if (failure) throw new LlmInvalidResponseError(failure);
     if (!content) throw new LlmInvalidResponseError('OpenAI devolvió una respuesta vacía');
 
+    let parsed: unknown;
     try {
-      return JSON.parse(content) as T;
+      parsed = JSON.parse(content);
     } catch {
       throw new LlmInvalidResponseError('OpenAI devolvió una respuesta que no es JSON válido');
     }
+
+    // Con esquema, la estructura se comprueba acá aunque el proveedor ya la garantice: el resto del
+    // backend usa el resultado sin volver a revisarlo, y no debe depender de que el proveedor cumpla.
+    if (options?.schema) {
+      const errors = validateJsonSchema(parsed, options.schema.schema);
+      if (errors.length > 0) {
+        throw new LlmInvalidResponseError(
+          `La respuesta de OpenAI no cumple el esquema "${options.schema.name}" ` +
+            `(${errors.length} error(es)): ${errors.slice(0, MAX_SCHEMA_ERRORS_IN_MESSAGE).join('; ')}`,
+        );
+      }
+    }
+    return parsed as T;
+  }
+
+  // Con esquema: structured output en modo estricto (el proveedor restringe la generación a esa
+  // estructura). Sin esquema: modo JSON, que solo garantiza JSON válido (chat de anamnesis).
+  private responseFormat(
+    options: LlmCallOptions | undefined,
+  ): OpenAI.ResponseFormatJSONSchema | OpenAI.ResponseFormatJSONObject {
+    if (!options?.schema) return { type: 'json_object' };
+    return {
+      type: 'json_schema',
+      json_schema: {
+        name: options.schema.name,
+        strict: true,
+        schema: options.schema.schema as unknown as Record<string, unknown>,
+      },
+    };
   }
 
   // Entrega a quien llamó la duración y el consumo de tokens. Una métrica nunca debe romper la

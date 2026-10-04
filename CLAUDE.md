@@ -140,7 +140,8 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
 5. `OrderPaidListener` runs `GeneratePersonalizedPlanUseCase` fire-and-forget for `GENERATED` products:
    rebuilds the consultation by `order_id` → classifies activity level/objective via the LLM → computes
    energy/macro requirements and supplements **without AI** → asks the LLM for the plan using those numbers
-   verbatim, as exchange-group portions (validated in code) → retries up to 4x with exponential backoff →
+   verbatim, as exchange-group portions (validated in code by `generation/plan-validation.ts`; rejected meal
+   times are fixed with up to 2 targeted repair calls, `llm_repair`, before the attempt fails) → retries up to 4x with exponential backoff →
    renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan` (its `endDate`) + its
    `Projection` (`calculateProjection`, rules in `doc/nutrition-plan/proyeccion.md`; none for
    "mantencion"), completes the order (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
@@ -159,7 +160,13 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    `GET /me/plans/latest/projection` returns the latest dated plan's period and its `Projection` (404 if none).
 
 `LlmProvider.chatJson<T>` is the single point of access to the model: `OpenaiLlmProvider` calls
-`chat.completions.create` with `response_format: json_object` and returns the parsed result. Each use
+`chat.completions.create` and returns the parsed result. A call that passes `LlmCallOptions.schema`
+(a hand-written `NamedJsonSchema`, `domain/services/llm/json-schema.ts`) gets structured output in strict mode
+(`response_format: json_schema`) and the adapter also validates the answer against it
+(`LlmInvalidResponseError` otherwise); without a schema it is plain `json_object` (the anamnesis chat). Schemas
+live next to their TS type (`modules/plans/generation/schemas/`, `modules/consultation/prompts/classify-goal.schema.ts`)
+and must stay strict (`strictObject`: every property required, no additional properties, optional = union with
+null) — their specs check it. Each use
 case passes its own model (env-driven, with fallbacks) — `OPENAI_MODEL_CONSULTA` for the chat (cheap
 model, no payment gate) vs `OPENAI_MODEL_PLAN` for generation (paid gate; this model only accepts the
 default `temperature=1` — passing any other value causes a 400).

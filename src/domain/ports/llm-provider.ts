@@ -1,3 +1,5 @@
+import type { NamedJsonSchema } from '../services/llm/json-schema';
+
 export interface LlmMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -14,6 +16,10 @@ export interface LlmCallOptions {
   timeoutMs?: number;
   // reintentos automáticos del adaptador ante un error transitorio (0 = ninguno: reintenta quien llama)
   maxRetries?: number;
+  // Esquema que debe cumplir la respuesta ("structured output"). Con él, el adaptador le exige al
+  // proveedor esa estructura exacta y además la comprueba antes de devolverla: si no cumple lanza
+  // LlmInvalidResponseError. Sin él solo se garantiza que la respuesta sea JSON válido.
+  schema?: NamedJsonSchema;
   // Recibe las métricas de la llamada cuando el proveedor responde (no se invoca si la llamada falla).
   // Sirve para instrumentar: cuánto tardó y cuántos tokens consumió.
   onMetrics?: (metrics: LlmCallMetrics) => void;

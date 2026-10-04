@@ -84,6 +84,14 @@ describe('EvaluateGoalFeasibilityUseCase', () => {
     expect(llm.chatJson).not.toHaveBeenCalled();
   });
 
+  it('pide la clasificación con su esquema: el modelo solo puede responder uno de los tres objetivos', async () => {
+    await useCase.execute({ claims, goals: loseWeight, measurements: { weight: 50, height: 175 } });
+
+    const options = llm.chatJson.mock.calls[0][4];
+    expect(options.schema.name).toBe('goal_classification');
+    expect(options.schema.schema.properties.goal.enum).toEqual(['definicion', 'mantencion', 'volumen']);
+  });
+
   it('una clasificación fuera de los valores esperados se trata como "mantencion"', async () => {
     llm.chatJson.mockResolvedValue({ goal: 'otra cosa' });
 

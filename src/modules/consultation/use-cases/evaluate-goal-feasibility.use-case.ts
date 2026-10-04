@@ -16,6 +16,7 @@ import {
   buildClassifyGoalUserMessage,
   CLASSIFY_GOAL_SYSTEM_PROMPT,
 } from '../prompts/classify-goal.prompt';
+import { ClassifiedGoal, CLASSIFY_GOAL_SCHEMA } from '../prompts/classify-goal.schema';
 
 // Mismo modelo económico que el chat de anamnesis (ver chat-anamnesis.use-case.ts).
 // Se lee en cada uso (función): al importar este archivo el .env todavía no está cargado.
@@ -73,10 +74,13 @@ export class EvaluateGoalFeasibilityUseCase {
   // valores esperados también se trata como "mantencion" (mismo default que el prompt).
   private async classifyGoal(goals: GoalsDto | null): Promise<ProjectionGoalDto> {
     if (!goals?.primaryGoal && !goals?.secondaryGoal?.length) return 'mantencion';
-    const { goal } = await this.llm.chatJson<{ goal: string }>(
+    const { goal } = await this.llm.chatJson<ClassifiedGoal>(
       CLASSIFY_GOAL_SYSTEM_PROMPT,
       [{ role: 'user', content: buildClassifyGoalUserMessage(goals) }],
       consultationModel(),
+      undefined,
+      // structured output: el modelo solo puede responder uno de los tres objetivos
+      { schema: CLASSIFY_GOAL_SCHEMA },
     );
     return GOALS.includes(goal as ProjectionGoalDto)
       ? (goal as ProjectionGoalDto)
