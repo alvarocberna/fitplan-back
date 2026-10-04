@@ -134,11 +134,9 @@ npx prisma migrate dev  # aplica las migraciones sobre la base Postgres apuntada
 npm run start:dev
 ```
 
-Con el servidor corriendo (y fuera de `NODE_ENV=production`), la documentación interactiva de la API
-queda disponible en `GET /api-docs` (Swagger UI) y su schema OpenAPI crudo en `GET /api-docs-json`
-— montados condicionalmente en `main.ts` vía `SwaggerModule.setup('api-docs', app, document)`. Si
-`NODE_ENV` no está seteado, igual se monta (pensado para estar siempre activo salvo que se
-desactive explícitamente en producción). Los tipos de los DTOs que aparecen en el schema de Swagger
+Con `ENABLE_SWAGGER=true` en el `.env` (y fuera de `NODE_ENV=production`), la documentación interactiva de la
+API queda disponible en `GET /api-docs` (Swagger UI) y su schema OpenAPI crudo en `GET /api-docs-json`. Es
+opt-in: sin esa variable no se monta, para que no quede expuesta por un `NODE_ENV` sin setear. Los tipos de los DTOs que aparecen en el schema de Swagger
 se infieren automáticamente a partir de las clases `class-validator` ya existentes en
 `modules/**/dto` — no hace falta (ni se usa en este proyecto) anotarlas manualmente con
 `@ApiProperty`, porque el CLI plugin de `@nestjs/swagger` está habilitado en `nest-cli.json`
@@ -163,12 +161,14 @@ Definidas en `.env.template`:
 | Variable | Uso |
 |---|---|
 | `PORT` | Puerto HTTP (`main.ts`, default `3001`) |
-| `URL_FRONTEND` | Origen permitido por CORS (`app.enableCors` en `main.ts`) |
+| `URL_FRONTEND` | Único origen permitido por CORS. **Obligatoria en producción** (sin ella el proceso no arranca) |
+| `PAYMENT_WEBHOOK_SECRET` | Secreto que debe venir en el header `x-webhook-secret` de `POST /webhooks/payments`. Sin valor, el webhook responde 401 siempre |
+| `ENABLE_SWAGGER` | `true` monta Swagger en `/api-docs` (nunca en producción) |
 | `EMAIL` | Correo de contacto/soporte referenciado en la config (no consumido aún por `EmailSender`, que hoy es un stub) |
 | `DATABASE_URL` | Cadena de conexión PostgreSQL para Prisma (ej. `postgresql://user:pass@localhost:5432/db`) |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_ACCESS_EXPIRATION` / `JWT_REFRESH_EXPIRATION` | Heredadas de un módulo de auth que ya no está presente en `src/` |
 | `BCRYPT_SALT_OR_ROUNDS` | Idem, sin uso actual |
-| `NODE_ENV` | `production` deshabilita Swagger (`/api-docs`). El formato de error ya no depende de este valor |
+| `NODE_ENV` | `production` impide montar Swagger y exige `URL_FRONTEND` |
 | `OPENAI_TIMEOUT_MS` | Opcional. Tope por llamada al modelo (por defecto 60000) |
 | `ENABLE_PAYMENT_SIMULATION` | `true` habilita `POST /api/v1/dev/orders/:id/simulate-payment` (con cualquier otro valor responde 404). Mientras no haya pasarela real es el único camino de pago, así que va en `true` también en producción |
 | `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | User Pool y App Client con los que se valida el Access Token (ver [doc/auth.md](./doc/auth.md)) |
@@ -219,15 +219,17 @@ los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
 | POST | `/me/measurements` | Sí | `RecordMeasurementUseCase` | clinical |
 | PATCH | `/me/measurements/:measurementId` | Sí | `UpdateMyMeasurementUseCase` | clinical |
 | GET | `/orders/:id/status` | Sí | `GetOrderStatusUseCase` | billing |
-| POST | `/webhooks/payments` | No (firma de la pasarela) | `ConfirmPaymentUseCase` / `RejectPaymentUseCase` (`status: 'REJECTED'`) | billing |
-| POST | `/dev/orders/:id/simulate-payment` | No (`ENABLE_PAYMENT_SIMULATION`) | `ConfirmPaymentUseCase` | billing |
-| POST | `/dev/orders/:id/simulate-payment-rejection` | No (`ENABLE_PAYMENT_SIMULATION`) | `RejectPaymentUseCase` | billing |
+| POST | `/webhooks/payments` | No (header `x-webhook-secret`) | `ConfirmPaymentUseCase` / `RejectPaymentUseCase` (`status: 'REJECTED'`) | billing |
+| POST | `/dev/orders/:id/simulate-payment` | Sí + dueño de la orden (`ENABLE_PAYMENT_SIMULATION`) | `ConfirmPaymentUseCase` | billing |
+| POST | `/dev/orders/:id/simulate-payment-rejection` | Sí + dueño de la orden (`ENABLE_PAYMENT_SIMULATION`) | `RejectPaymentUseCase` | billing |
 
 ### identity: `/me`
 
-- **`POST /me/sync`** (body `{ email }`): idempotente. La primera vez que ve el `sub` de Cognito crea
-  `AuthIdentity` + un `User` "esqueleto" (solo email); después devuelve el existente. El frontend lo
-  llama en el callback de login. Ver [doc/auth.md](./doc/auth.md).
+- **`POST /me/sync`** (sin body): idempotente. La primera vez que ve el `sub` de Cognito le pregunta a
+  Cognito (`userInfo`) el email de la cuenta, exige que esté verificado (403 `EMAIL_NOT_VERIFIED` si no) y crea
+  `AuthIdentity` + un `User` "esqueleto" (solo email); después devuelve el existente. **Nunca usa un email
+  enviado por el cliente** (permitiría ligar la identidad a la cuenta de otra persona). El frontend lo llama en
+  el callback de login. Ver [doc/auth.md](./doc/auth.md).
 - **`GET /me`** / **`PATCH /me`**: perfil del usuario. `PATCH` recibe un único
   `UpdateProfileDtoImpl` con **todos los campos opcionales** (`rut`, `rutCheckDigit`, `firstName`,
   `middleName`, `paternalLastName`, `maternalLastName`, `gender`, `dateOfBirth`, `athlete`) y solo
@@ -426,9 +428,11 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
 - **`POST /webhooks/payments`** (body `{ orderId, status? }`, provisorio hasta integrar Transbank; `status`
   es `'AUTHORIZED'` por defecto y `'REJECTED'` deriva a `RejectPaymentUseCase`) y
   **`POST /dev/orders/:id/simulate-payment`** ejecutan el mismo `ConfirmPaymentUseCase`. El webhook
-  valida antes la firma (`verifyWebhookSignature()`, **hoy siempre `true`**: es el punto de extensión de
-  la pasarela real). El simulador no tiene firma y solo responde con `ENABLE_PAYMENT_SIMULATION=true`
-  (`PaymentSimulationEnabledGuard`, 404 si no).
+  se autentica con el header `x-webhook-secret` (`PaymentWebhookVerifier`: comparación en tiempo constante
+  contra `PAYMENT_WEBHOOK_SECRET`, y 401 siempre si la variable no está configurada); es el punto que
+  reemplazará la firma de la pasarela real. El simulador solo responde con `ENABLE_PAYMENT_SIMULATION=true`
+  (`PaymentSimulationEnabledGuard`, 404 si no), exige sesión (`CognitoAuthGuard`) y que la orden sea del usuario
+  del token (404 si no, regla R2).
 - Lógica de `ConfirmPaymentUseCase`:
   1. Carga la orden con su producto (404 si no existe).
   2. `OrderRepository.markOrderAsPaidWithPayment` ejecuta **en una transacción**:
@@ -641,6 +645,16 @@ nunca viaja en la respuesta.
 
 El resto (catálogo de códigos, guards, Prisma, adaptadores externos, jobs/listeners, generación del plan, alertas,
 logging y arranque) está en [`doc/error-handling.md`](doc/error-handling.md).
+
+## Seguridad
+
+Los controles de seguridad del backend (autenticación, dueño del recurso, pagos, validación y topes de entrada,
+rate limiting, CORS, modelo de lenguaje, S3, secretos, dependencias) están documentados en
+[`../doc/security/backend-security.md`](../doc/security/backend-security.md); la matriz de vulnerabilidades de
+toda la aplicación, en [`../doc/security/security.md`](../doc/security/security.md).
+
+Rate limiting: `@nestjs/throttler` global, por (endpoint, usuario); los límites están en
+`src/common/throttling/throttle-limits.ts`. Superado un límite la API responde 429 `RATE_LIMITED`.
 
 ## Base de datos (Prisma)
 

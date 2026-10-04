@@ -6,9 +6,12 @@ export const ErrorCode = {
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   IDENTITY_NOT_SYNCED: 'IDENTITY_NOT_SYNCED',
   FORBIDDEN: 'FORBIDDEN',
+  EMAIL_NOT_VERIFIED: 'EMAIL_NOT_VERIFIED',
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
   ORDER_EXPIRED: 'ORDER_EXPIRED',
+  RATE_LIMITED: 'RATE_LIMITED',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   PROFILE_INCOMPLETE: 'PROFILE_INCOMPLETE',
   GOAL_NOT_FEASIBLE: 'GOAL_NOT_FEASIBLE',
   LLM_UNAVAILABLE: 'LLM_UNAVAILABLE',
@@ -33,6 +36,10 @@ export function errorCodeFromStatus(status: number): ErrorCode {
       return ErrorCode.NOT_FOUND;
     case 409:
       return ErrorCode.CONFLICT;
+    case 413:
+      return ErrorCode.PAYLOAD_TOO_LARGE;
+    case 429:
+      return ErrorCode.RATE_LIMITED;
     case 503:
       return ErrorCode.SERVICE_UNAVAILABLE;
     default:
@@ -53,6 +60,10 @@ export function defaultMessageFromStatus(status: number): string {
       return 'No encontramos lo que buscas';
     case 409:
       return 'La operación no se pudo completar por un conflicto con el estado actual';
+    case 413:
+      return 'La solicitud es demasiado grande';
+    case 429:
+      return 'Hiciste demasiadas solicitudes en poco tiempo. Espera un momento e intenta nuevamente.';
     case 503:
       return 'El servicio no está disponible en este momento. Intenta nuevamente en unos minutos.';
     default:

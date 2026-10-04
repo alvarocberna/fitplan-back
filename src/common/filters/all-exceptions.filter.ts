@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { Prisma } from '../../../generated/prisma';
+import { IdentityProviderUnavailableError } from '../../domain/errors/identity.errors';
 import {
   LlmInvalidResponseError,
   LlmUnavailableError,
@@ -98,6 +99,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    if (exception instanceof IdentityProviderUnavailableError) {
+      return {
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        code: ErrorCode.AUTH_UNAVAILABLE,
+        message:
+          'No pudimos verificar tu cuenta en este momento. Intenta nuevamente en unos minutos.',
+      };
+    }
+
+    // Errores de middlewares de Express (body-parser: cuerpo demasiado grande, JSON malformado) no
+    // son HttpException pero traen su status. Solo se respeta si es un error del cliente (4xx).
+    const status = (exception as { status?: unknown; statusCode?: unknown })?.status ??
+      (exception as { statusCode?: unknown })?.statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      return {
+        statusCode: status,
+        code: errorCodeFromStatus(status),
+        message: defaultMessageFromStatus(status),
+      };
+    }
+
     return {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       code: ErrorCode.INTERNAL_ERROR,
@@ -149,7 +171,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private isFrameworkMessage(message: string): boolean {
-    return /^(Cannot (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) |Validation failed|Unexpected token|Bad Request$|Unauthorized$|Not Found$|Forbidden$|Internal Server Error$)/i.test(
+    return /^(Cannot (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) |Validation failed|Unexpected token|Bad Request$|Unauthorized$|Not Found$|Forbidden$|Internal Server Error$|ThrottlerException|Too Many Requests|request entity too large|Payload Too Large)/i.test(
       message,
     ) || /in JSON at position/.test(message);
   }
@@ -215,7 +237,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const isHttpException = exception instanceof HttpException;
     const error = exception instanceof Error ? exception : undefined;
 
-    if (resolved.statusCode >= 500 || !isHttpException) {
+    const isUnexpected =
+      !isHttpException &&
+      (resolved.statusCode >= 500 ||
+        exception instanceof Prisma.PrismaClientKnownRequestError);
+    if (resolved.statusCode >= 500 || isUnexpected) {
       this.logger.error(
         {
           ...context,

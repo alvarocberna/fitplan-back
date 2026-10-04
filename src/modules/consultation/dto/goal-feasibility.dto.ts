@@ -1,14 +1,16 @@
-import { IsNumber, IsOptional, IsPositive, ValidateNested } from 'class-validator';
+import { IsNumber, IsOptional, IsPositive, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { GoalsDtoImpl } from './consultation.dto';
 
 export class GoalFeasibilityMeasurementsDtoImpl {
   @IsNumber()
   @IsPositive()
+  @Max(500)
   weight!: number;
 
   @IsNumber()
   @IsPositive()
+  @Max(300)
   height!: number;
 }
 

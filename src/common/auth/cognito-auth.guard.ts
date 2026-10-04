@@ -29,7 +29,7 @@ export class CognitoAuthGuard implements CanActivate {
 
     try {
       const payload = await verifier.verify(token);
-      request.cognitoUser = { sub: payload.sub };
+      request.cognitoUser = { sub: payload.sub, accessToken: token };
       return true;
     } catch (error) {
       // Solo un token que no pasa la verificación es un 401. No poder obtener las claves públicas de

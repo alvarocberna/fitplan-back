@@ -8,6 +8,7 @@ import {
   PaymentsWebhookController,
 } from './payments.controller';
 import { PaymentSimulationEnabledGuard } from './payment-simulation-enabled.guard';
+import { PaymentWebhookVerifier } from './payment-webhook-verifier';
 import { OrderLifecycleService } from './order-lifecycle.service';
 import { CreateOrderUseCase } from './use-cases/create-order.use-case';
 import { ConfirmPaymentUseCase } from './use-cases/confirm-payment.use-case';
@@ -24,6 +25,7 @@ import { ExpireUnpaidOrdersJob } from './jobs/expire-unpaid-orders.job';
   controllers: [OrdersController, PaymentsWebhookController, DevPaymentsController],
   providers: [
     PaymentSimulationEnabledGuard,
+    PaymentWebhookVerifier,
     OrderLifecycleService,
     CreateOrderUseCase,
     ConfirmPaymentUseCase,

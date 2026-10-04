@@ -13,7 +13,10 @@ jest.mock('../../infrastructure/auth/cognito/cognito-verifier', () => ({
 }));
 
 function createContext(headers: Record<string, string> = {}) {
-  const request: { headers: Record<string, string>; cognitoUser?: { sub: string } } = { headers };
+  const request: {
+    headers: Record<string, string>;
+    cognitoUser?: { sub: string; accessToken?: string };
+  } = { headers };
   const context = {
     switchToHttp: () => ({ getRequest: () => request }),
   } as unknown as ExecutionContext;
@@ -38,7 +41,7 @@ describe('CognitoAuthGuard', () => {
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(verify).toHaveBeenCalledWith('token-1');
-    expect(request.cognitoUser).toEqual({ sub: 'sub-1' });
+    expect(request.cognitoUser).toEqual({ sub: 'sub-1', accessToken: 'token-1' });
   });
 
   it.each([[{}], [{ authorization: 'Basic abc' }]])(

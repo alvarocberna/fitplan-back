@@ -15,6 +15,8 @@ import type { OrderPaidExtras } from '../../../domain/datasources/commercial-dom
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { ORDER_PAID, OrderPaidEvent } from '../events/order-paid.event';
 import { ErrorCode } from '../../../common/errors/error-codes';
+import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
+import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { OrderLifecycleService } from '../order-lifecycle.service';
 
 export type ConfirmPaymentResult = { status: 'processed' | 'already_processed' };
@@ -29,23 +31,28 @@ export class ConfirmPaymentUseCase {
     private readonly orderRepository: OrderRepository,
     private readonly orderLifecycle: OrderLifecycleService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly currentUser: CurrentUserResolver,
   ) {}
-
-  // Punto de extensión aislado para cuando se integre una pasarela real (Transbank): acá se debe
-  // validar la firma/secreto del webhook contra el header que corresponda y devolver false si no
-  // coincide. Como todavía no hay pasarela, se acepta siempre.
-  verifyWebhookSignature(): boolean {
-    return true;
-  }
 
   // Idempotente: si la orden ya estaba pagada no crea otro payment ni vuelve a emitir order.paid.
   // Una orden rechazada se puede pagar (reintento); una expirada o con el plazo vencido no (409).
   // No espera a que termine lo que dispara el evento (la generación del plan corre en segundo
   // plano), para no bloquear al webhook.
-  async execute(input: { orderId: string }): Promise<ConfirmPaymentResult> {
+  // Con `claims` (pago simulado, lo dispara el propio usuario) la orden debe ser suya: 404 si no (R2).
+  // Sin `claims` es el webhook de la pasarela, ya autenticado por su secreto.
+  async execute(input: {
+    orderId: string;
+    claims?: CognitoUserClaims;
+  }): Promise<ConfirmPaymentResult> {
     const { orderId } = input;
     const order = await this.orderRepository.getOrderWithProductById(orderId);
     if (!order?.product) throw new NotFoundException(`Orden ${orderId} no encontrada`);
+    if (input.claims) {
+      const user = await this.currentUser.resolve(input.claims);
+      if (order.userId !== user.id) {
+        throw new NotFoundException(`Orden ${orderId} no encontrada`);
+      }
+    }
     const { product } = order;
 
     // Un plan estándar ya tiene su PDF: se copia desde el producto en la misma transacción que

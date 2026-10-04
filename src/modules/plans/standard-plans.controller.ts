@@ -1,5 +1,8 @@
 import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { PredefinedPlanPreviewDto, PredefinedProductDto } from '../../domain';
+import { Throttle } from '@nestjs/throttler';
+import { ORDER_THROTTLE } from '../../common/throttling/throttle-limits';
+import { ParseProductCodePipe } from './product-code.pipe';
 import { CognitoAuthGuard } from '../../common/auth/cognito-auth.guard';
 import { CognitoUser } from '../../common/auth/cognito-user.decorator';
 import type { CognitoUserClaims } from '../../common/auth/cognito-user.decorator';
@@ -24,14 +27,15 @@ export class StandardPlansController {
   }
 
   @Get(':code')
-  get(@Param('code') code: string): Promise<PredefinedProductDto> {
+  get(@Param('code', ParseProductCodePipe) code: string): Promise<PredefinedProductDto> {
     return this.getStandardPlan.execute({ code });
   }
 
   @UseGuards(CognitoAuthGuard)
+  @Throttle(ORDER_THROTTLE)
   @Post(':code/purchase')
   purchase(
-    @Param('code') code: string,
+    @Param('code', ParseProductCodePipe) code: string,
     @CognitoUser() claims: CognitoUserClaims,
   ): Promise<{ orderId: string }> {
     return this.purchaseStandardPlan.execute({ claims, code });

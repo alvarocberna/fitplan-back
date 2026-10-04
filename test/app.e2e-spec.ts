@@ -22,6 +22,7 @@ import { OrderRepository } from '../src/domain/repositories/commercial-domain/or
 import {
   EmailSender,
   FileStorage,
+  IdentityProvider,
   LlmProvider,
   PlanDocumentRenderer,
 } from '../src/domain/ports';
@@ -42,9 +43,12 @@ describe('App (e2e)', () => {
   let measurementsRepository: jest.Mocked<MeasurementsRepository>;
   let fileStorage: { getSignedDownloadUrl: jest.Mock };
   let llm: { chatJson: jest.Mock };
+  let identityProvider: { getIdentity: jest.Mock };
 
   const api = (path: string) => `/${API_PREFIX}${path}`;
   const AUTH = { Authorization: 'Bearer token-e2e' };
+  const WEBHOOK_SECRET = 'e2e-webhook-secret';
+  const WEBHOOK = { 'x-webhook-secret': WEBHOOK_SECRET };
   const completeUser = {
     id: 'user-1',
     email: 'ana@example.com',
@@ -61,6 +65,7 @@ describe('App (e2e)', () => {
   };
 
   beforeAll(async () => {
+    process.env.PAYMENT_WEBHOOK_SECRET = WEBHOOK_SECRET;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -71,7 +76,7 @@ describe('App (e2e)', () => {
           if (!req.headers['authorization']) {
             throw new UnauthorizedException('Falta el token de autenticación');
           }
-          req.cognitoUser = { sub: 'sub-1' };
+          req.cognitoUser = { sub: 'sub-1', accessToken: 'token-e2e' };
           return true;
         },
       })
@@ -131,6 +136,8 @@ describe('App (e2e)', () => {
         updateOrderById: jest.fn(),
         incrementOrderFailedAttempt: jest.fn(),
       })
+      .overrideProvider(IdentityProvider)
+      .useValue({ getIdentity: jest.fn() })
       .overrideProvider(LlmProvider)
       .useValue({ chatJson: jest.fn() })
       .overrideProvider(EmailSender)
@@ -155,6 +162,7 @@ describe('App (e2e)', () => {
     measurementsRepository = moduleFixture.get(MeasurementsRepository);
     fileStorage = moduleFixture.get(FileStorage);
     llm = moduleFixture.get(LlmProvider);
+    identityProvider = moduleFixture.get(IdentityProvider);
   });
 
   beforeEach(() => {
@@ -581,6 +589,7 @@ describe('App (e2e)', () => {
     it('marca la orden como pagada la primera vez, dispara la generación (order.paid) y es idempotente la segunda', async () => {
       orderRepository.getOrderWithProductById.mockResolvedValue({
         id: orderId,
+        userId: 'user-1',
         amount: 10000,
         product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
       } as any);
@@ -589,6 +598,7 @@ describe('App (e2e)', () => {
 
       const first = await request(app.getHttpServer())
         .post(api('/webhooks/payments'))
+        .set(WEBHOOK)
         .send({ orderId })
         .expect(201);
       expect(first.body).toEqual({ status: 'processed' });
@@ -596,6 +606,7 @@ describe('App (e2e)', () => {
 
       const second = await request(app.getHttpServer())
         .post(api('/webhooks/payments'))
+        .set(WEBHOOK)
         .send({ orderId })
         .expect(201);
       expect(second.body).toEqual({ status: 'already_processed' });
@@ -605,6 +616,7 @@ describe('App (e2e)', () => {
     it('con un orderId que no es UUID v4 devuelve 400', async () => {
       await request(app.getHttpServer())
         .post(api('/webhooks/payments'))
+        .set(WEBHOOK)
         .send({ orderId: 'no-es-un-uuid' })
         .expect(400);
     });
@@ -612,6 +624,7 @@ describe('App (e2e)', () => {
     it('con status REJECTED registra el rechazo y no marca la orden como pagada', async () => {
       orderRepository.getOrderById.mockResolvedValue({
         id: orderId,
+        userId: 'user-1',
         amount: 10000,
         paymentStatus: 'PENDING',
       } as any);
@@ -619,6 +632,7 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(api('/webhooks/payments'))
+        .set(WEBHOOK)
         .send({ orderId, status: 'REJECTED' })
         .expect(201);
 
@@ -633,6 +647,7 @@ describe('App (e2e)', () => {
     it('con un status desconocido devuelve 400', async () => {
       await request(app.getHttpServer())
         .post(api('/webhooks/payments'))
+        .set(WEBHOOK)
         .send({ orderId, status: 'CANCELLED' })
         .expect(400);
     });
@@ -640,6 +655,7 @@ describe('App (e2e)', () => {
     it('si el plazo de la orden venció responde 409, la expira y borra su consulta (order.expired)', async () => {
       orderRepository.getOrderWithProductById.mockResolvedValue({
         id: orderId,
+        userId: 'user-1',
         amount: 10000,
         paymentStatus: 'PENDING',
         expirationDate: new Date(Date.now() - 60_000),
@@ -651,6 +667,7 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .post(api('/webhooks/payments'))
+        .set(WEBHOOK)
         .send({ orderId })
         .expect(409);
 
@@ -676,6 +693,7 @@ describe('App (e2e)', () => {
 
       await request(app.getHttpServer())
         .post(api(`/dev/orders/${orderId}/simulate-payment`))
+        .set(AUTH)
         .expect(404);
       expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
     });
@@ -684,6 +702,7 @@ describe('App (e2e)', () => {
       process.env.ENABLE_PAYMENT_SIMULATION = 'true';
       orderRepository.getOrderWithProductById.mockResolvedValue({
         id: orderId,
+        userId: 'user-1',
         amount: 14990,
         product: {
           id: 'product-2',
@@ -696,6 +715,7 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(api(`/dev/orders/${orderId}/simulate-payment`))
+        .set(AUTH)
         .expect(201);
 
       expect(response.body).toEqual({ status: 'processed' });
@@ -707,12 +727,14 @@ describe('App (e2e)', () => {
       delete process.env.ENABLE_PAYMENT_SIMULATION;
       await request(app.getHttpServer())
         .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
+        .set(AUTH)
         .expect(404);
       expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
 
       process.env.ENABLE_PAYMENT_SIMULATION = 'true';
       orderRepository.getOrderById.mockResolvedValue({
         id: orderId,
+        userId: 'user-1',
         amount: 14990,
         paymentStatus: 'PENDING',
       } as any);
@@ -720,6 +742,7 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
+        .set(AUTH)
         .expect(201);
       expect(response.body).toEqual({ status: 'rejected' });
     });
@@ -757,6 +780,7 @@ describe('App (e2e)', () => {
     it('400 de validación: code VALIDATION_ERROR, message string en español y el detalle en errors', async () => {
       const response = await request(app.getHttpServer())
         .post(api('/webhooks/payments'))
+        .set(WEBHOOK)
         .send({ orderId: 'no-es-uuid', inventada: true })
         .expect(400);
 
@@ -841,6 +865,7 @@ describe('App (e2e)', () => {
       process.env.ENABLE_PAYMENT_SIMULATION = 'true';
       orderRepository.getOrderWithProductById.mockResolvedValue({
         id: consultationId,
+        userId: 'user-1',
         amount: 4990,
         paymentStatus: 'EXPIRED',
         product: { id: 'product-1', type: 'GENERATED' },
@@ -849,9 +874,184 @@ describe('App (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(api(`/dev/orders/${consultationId}/simulate-payment`))
+        .set(AUTH)
         .expect(409);
 
       expect(response.body.code).toBe('ORDER_EXPIRED');
+    });
+  });
+
+  // Controles de seguridad: pagos, identidad, topes de entrada y rate limiting.
+  describe('seguridad', () => {
+    const orderId = '55555555-5555-4555-8555-555555555555';
+    const previousSimulation = process.env.ENABLE_PAYMENT_SIMULATION;
+
+    beforeEach(() => {
+      process.env.ENABLE_PAYMENT_SIMULATION = 'true';
+    });
+
+    afterAll(() => {
+      if (previousSimulation === undefined) delete process.env.ENABLE_PAYMENT_SIMULATION;
+      else process.env.ENABLE_PAYMENT_SIMULATION = previousSimulation;
+    });
+
+    describe('webhook de pagos', () => {
+      it.each([
+        ['sin el header', {}],
+        ['con un secreto incorrecto', { 'x-webhook-secret': 'otro-secreto' }],
+      ])('%s responde 401 y no toca la orden', async (_name, headers) => {
+        await request(app.getHttpServer())
+          .post(api('/webhooks/payments'))
+          .set(headers)
+          .send({ orderId })
+          .expect(401);
+
+        expect(orderRepository.getOrderWithProductById).not.toHaveBeenCalled();
+        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+      });
+
+      it('falla cerrado: sin PAYMENT_WEBHOOK_SECRET configurado rechaza incluso el secreto correcto', async () => {
+        delete process.env.PAYMENT_WEBHOOK_SECRET;
+        try {
+          await request(app.getHttpServer())
+            .post(api('/webhooks/payments'))
+            .set(WEBHOOK)
+            .send({ orderId })
+            .expect(401);
+        } finally {
+          process.env.PAYMENT_WEBHOOK_SECRET = WEBHOOK_SECRET;
+        }
+        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('pago simulado', () => {
+      it('sin sesión responde 401', async () => {
+        await request(app.getHttpServer())
+          .post(api(`/dev/orders/${orderId}/simulate-payment`))
+          .expect(401);
+        await request(app.getHttpServer())
+          .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
+          .expect(401);
+        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+      });
+
+      it('la orden de otro usuario responde 404 y no se paga ni se rechaza (BOLA)', async () => {
+        const foreignOrder = {
+          id: orderId,
+          userId: 'otro-usuario',
+          amount: 4990,
+          paymentStatus: 'PENDING',
+          product: { id: 'product-1', type: 'GENERATED' },
+        };
+        orderRepository.getOrderWithProductById.mockResolvedValue(foreignOrder as any);
+        orderRepository.getOrderById.mockResolvedValue(foreignOrder as any);
+
+        await request(app.getHttpServer())
+          .post(api(`/dev/orders/${orderId}/simulate-payment`))
+          .set(AUTH)
+          .expect(404);
+        await request(app.getHttpServer())
+          .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
+          .set(AUTH)
+          .expect(404);
+
+        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+        expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('POST /me/sync', () => {
+      beforeEach(() => {
+        authIdentityRepository.findAuthIdentityByProvider.mockResolvedValue(null);
+        userRepository.findOrCreateUserByEmail.mockResolvedValue({ ...completeUser } as any);
+      });
+
+      it('ignora el email del body: liga la identidad al email que informa Cognito', async () => {
+        identityProvider.getIdentity.mockResolvedValue({
+          sub: 'sub-1',
+          email: 'ana@example.com',
+          emailVerified: true,
+        });
+
+        await request(app.getHttpServer())
+          .post(api('/me/sync'))
+          .set(AUTH)
+          .send({ email: 'victima@example.com' })
+          .expect(201);
+
+        expect(identityProvider.getIdentity).toHaveBeenCalledWith('token-e2e');
+        expect(userRepository.findOrCreateUserByEmail).toHaveBeenCalledWith({ email: 'ana@example.com' });
+      });
+
+      it('con un email no verificado responde 403 EMAIL_NOT_VERIFIED y no crea ni liga nada', async () => {
+        identityProvider.getIdentity.mockResolvedValue({
+          sub: 'sub-1',
+          email: 'ana@example.com',
+          emailVerified: false,
+        });
+
+        const response = await request(app.getHttpServer()).post(api('/me/sync')).set(AUTH).expect(403);
+
+        expect(response.body.code).toBe('EMAIL_NOT_VERIFIED');
+        expect(userRepository.findOrCreateUserByEmail).not.toHaveBeenCalled();
+        expect(authIdentityRepository.findOrCreateAuthIdentity).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('topes de entrada', () => {
+      it('un mensaje de chat demasiado largo responde 400 sin llamar al modelo', async () => {
+        const response = await request(app.getHttpServer())
+          .post(api('/consultations/chat'))
+          .set(AUTH)
+          .send({ messages: [{ role: 'user', content: 'a'.repeat(2001) }] })
+          .expect(400);
+
+        expect(response.body.code).toBe('VALIDATION_ERROR');
+        expect(llm.chatJson).not.toHaveBeenCalled();
+      });
+
+      it('un historial con demasiados mensajes responde 400', async () => {
+        const messages = Array.from({ length: 81 }, () => ({ role: 'user', content: 'hola' }));
+
+        await request(app.getHttpServer())
+          .post(api('/consultations/chat'))
+          .set(AUTH)
+          .send({ messages })
+          .expect(400);
+        expect(llm.chatJson).not.toHaveBeenCalled();
+      });
+
+      it('un código de plan con formato inválido responde 404 sin consultar la base', async () => {
+        await request(app.getHttpServer()).get(api('/plans/standard/..%2F..%2Fetc')).expect(404);
+        await request(app.getHttpServer()).get(api('/plans/standard/plan-inventado')).expect(404);
+
+        expect(productRepository.getActivePredefinedProductByCode).not.toHaveBeenCalled();
+      });
+    });
+
+    // Va al final: agota el cupo por minuto de este endpoint para el resto de la corrida.
+    describe('rate limiting', () => {
+      it('pasado el límite por minuto de un endpoint del modelo responde 429 RATE_LIMITED', async () => {
+        const send = () =>
+          request(app.getHttpServer())
+            .post(api('/consultations/goal-feasibility'))
+            .set(AUTH)
+            .send({ goals: null, measurements: { weight: 70, height: 170 } });
+
+        let limited: request.Response | undefined;
+        for (let i = 0; i < 25 && !limited; i++) {
+          const response = await send();
+          if (response.status === 429) limited = response;
+        }
+
+        expect(limited).toBeDefined();
+        expect(limited!.body).toMatchObject({
+          statusCode: 429,
+          code: 'RATE_LIMITED',
+          message: expect.stringContaining('demasiadas solicitudes'),
+        });
+      });
     });
   });
 });

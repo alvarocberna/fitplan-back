@@ -31,7 +31,9 @@ export class MeController {
     @Body() body: SyncIdentityDtoImpl,
     @CognitoUser() claims: CognitoUserClaims,
   ): Promise<ProfileDto> {
-    return this.syncIdentity.execute({ claims, email: body.email });
+    // body.email se acepta por compatibilidad pero no se usa: el email sale de Cognito
+    void body;
+    return this.syncIdentity.execute({ claims });
   }
 
   @Get()

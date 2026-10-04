@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -24,16 +25,27 @@ process.on('uncaughtException', (error) => {
 });
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
+  const isProduction = configService.get<string>('NODE_ENV') === 'production';
+  // Detrás de un reverse proxy (Nginx / load balancer): la IP del cliente es la de X-Forwarded-For
+  // del primer salto. La usa el rate limiting cuando la request no trae token.
+  app.set('trust proxy', 1);
   // Cabeceras de seguridad (oculta X-Powered-By, fija X-Content-Type-Options: nosniff, etc.)
   // CSP desactivada aquí: Swagger UI necesita inline scripts/styles y esta API no sirve HTML propio.
   app.use(helmet({ contentSecurityPolicy: false }));
-  // Habilitar CORS
+  // CORS: solo el origen del frontend. Sin URL_FRONTEND, `origin: undefined` dejaría pasar cualquier
+  // origen, así que en producción es obligatoria. No se usan cookies contra esta API (la sesión viaja
+  // como Authorization: Bearer desde el servidor de Next): credentials queda en false.
+  const frontendOrigin = configService.get<string>('URL_FRONTEND');
+  if (!frontendOrigin && isProduction) {
+    throw new Error('Falta la variable de entorno URL_FRONTEND (origen permitido por CORS)');
+  }
   app.enableCors({
-    origin: configService.get<string>('URL_FRONTEND'),
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
+    origin: frontendOrigin ?? false,
+    methods: ['GET', 'POST', 'PATCH'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'x-request-id'],
+    credentials: false,
   });
   // prefijo /api/v1, id de correlación, ValidationPipe y filtro global de excepciones
   configureApp(app);
@@ -42,8 +54,9 @@ async function bootstrap() {
   // Para que onModuleDestroy (PrismaService.$disconnect) corra ante SIGTERM/SIGINT.
   app.enableShutdownHooks();
 
-  //habilitamos Swagger solo fuera de producción
-  if (configService.get<string>('NODE_ENV') !== 'production') {
+  // Swagger es opt-in (ENABLE_SWAGGER=true) y nunca en producción: describe toda la API, y antes
+  // quedaba expuesto si NODE_ENV no estaba seteado en el ambiente desplegado.
+  if (configService.get<string>('ENABLE_SWAGGER') === 'true' && !isProduction) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('NutriApp API')
       .setDescription('API del agente conversacional de nutrición')

@@ -5,14 +5,18 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 import { calculateAge } from '../../../domain';
 import { UserEntity } from '../../../domain/entities/user.entity';
 
+// Body de POST /me/sync. `email` es opcional y se IGNORA (queda solo para no rechazar a un cliente
+// antiguo): el email de la cuenta se obtiene de Cognito, nunca del cliente.
 export class SyncIdentityDtoImpl {
   @IsEmail()
-  @IsNotEmpty()
-  email!: string;
+  @MaxLength(254)
+  @IsOptional()
+  email?: string;
 }
 
 // Único DTO de PATCH /me: todos los campos son opcionales y solo se actualizan los que vienen. Sin
@@ -20,32 +24,39 @@ export class SyncIdentityDtoImpl {
 // cuenta de Cognito) ni photoUrl (no hay flujo de carga de foto).
 export class UpdateProfileDtoImpl {
   @IsString()
+  @MaxLength(100)
   @IsOptional()
   rut?: string | null;
 
   @IsString()
+  @MaxLength(100)
   @IsOptional()
   rutCheckDigit?: string | null;
 
   @IsString()
+  @MaxLength(100)
   @IsNotEmpty()
   @IsOptional()
   firstName?: string;
 
   @IsString()
+  @MaxLength(100)
   @IsOptional()
   middleName?: string | null;
 
   @IsString()
+  @MaxLength(100)
   @IsNotEmpty()
   @IsOptional()
   paternalLastName?: string;
 
   @IsString()
+  @MaxLength(100)
   @IsOptional()
   maternalLastName?: string | null;
 
   @IsString()
+  @MaxLength(100)
   @IsNotEmpty()
   @IsOptional()
   gender?: string;

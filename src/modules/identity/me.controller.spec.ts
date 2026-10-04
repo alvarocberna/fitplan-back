@@ -37,11 +37,11 @@ describe('MeController', () => {
     controller = module.get(MeController);
   });
 
-  it('sync() delega en SyncIdentityUseCase con los claims y el email del body', async () => {
+  it('sync() delega en SyncIdentityUseCase solo con los claims: el email del body se ignora', async () => {
     syncIdentity.execute.mockResolvedValue(profile);
 
-    await expect(controller.sync({ email: 'ana@example.com' }, claims)).resolves.toBe(profile);
-    expect(syncIdentity.execute).toHaveBeenCalledWith({ claims, email: 'ana@example.com' });
+    await expect(controller.sync({ email: 'victima@example.com' }, claims)).resolves.toBe(profile);
+    expect(syncIdentity.execute).toHaveBeenCalledWith({ claims });
   });
 
   it('get() delega en GetMyProfileUseCase', async () => {

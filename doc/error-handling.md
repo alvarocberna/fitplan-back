@@ -73,12 +73,15 @@ Toda respuesta de error de la API tiene esta forma, sin excepción:
 | `GOAL_NOT_FEASIBLE` | 400 | `POST /consultations` con un objetivo no factible |
 | `UNAUTHENTICATED` | 401 | Falta el token, o es inválido o expiró; firma de webhook inválida |
 | `IDENTITY_NOT_SYNCED` | 401 | Token válido pero sin identidad registrada (`POST /me/sync` pendiente) |
-| `FORBIDDEN` | 403 | Por defecto de un 403 (hoy ningún caso de uso lo lanza) |
+| `FORBIDDEN` | 403 | Por defecto de un 403 |
+| `EMAIL_NOT_VERIFIED` | 403 | `POST /me/sync` de una cuenta cuyo correo no está verificado en Cognito |
 | `NOT_FOUND` | 404 | Recurso inexistente o ajeno (R2), catálogo no disponible, ruta inexistente; Prisma `P2025` |
 | `CONFLICT` | 409 | Prisma `P2002` (unicidad) o `P2003` (llave foránea) |
 | `ORDER_EXPIRED` | 409 | Pagar o rechazar una orden cuyo plazo venció |
+| `PAYLOAD_TOO_LARGE` | 413 | Body JSON sobre el tope (300 kB) |
+| `RATE_LIMITED` | 429 | Se superó el límite de frecuencia del endpoint (`common/throttling/`) |
 | `LLM_UNAVAILABLE` | 503 | El proveedor del modelo no respondió o respondió algo inutilizable |
-| `AUTH_UNAVAILABLE` | 503 | No se pudo verificar el token contra Cognito (red, JWKS) |
+| `AUTH_UNAVAILABLE` | 503 | No se pudo verificar el token contra Cognito (red, JWKS) ni consultar `userInfo` |
 | `DATABASE_UNAVAILABLE` | 503 | No se pudo hablar con la base de datos |
 | `SERVICE_UNAVAILABLE` | 503 | Por defecto de un 503 sin `code` propio |
 | `INTERNAL_ERROR` | 500 | Cualquier error no previsto |
@@ -269,8 +272,8 @@ se loguea y no frena a las demás.
 - `uncaughtException` → log + `process.exit(1)`: tras una excepción no capturada el estado del proceso no es
   confiable y debe reiniciarlo el orquestador.
 - `app.enableShutdownHooks()`: ante `SIGTERM`/`SIGINT` corre `onModuleDestroy` (`PrismaService.$disconnect`).
-- Fallan al arrancar: la conexión a la base, la configuración de S3 y la de Cognito. La API key de OpenAI se
-  lee al primer uso.
+- Fallan al arrancar: la conexión a la base, la configuración de S3, la de Cognito, la API key de OpenAI y, en
+  producción, `URL_FRONTEND`.
 
 El script `src/scripts/seed-predefined-products.ts` tiene su propio manejo: `main().catch` → `console.error` +
 `process.exit(1)`; `objectExists` trata solo el 404 de S3 como "no existe" y propaga cualquier otro error.

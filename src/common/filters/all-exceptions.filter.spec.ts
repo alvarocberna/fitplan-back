@@ -2,6 +2,7 @@ import {
   ArgumentsHost,
   BadRequestException,
   ConflictException,
+  HttpException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import {
   LlmInvalidResponseError,
   LlmUnavailableError,
 } from '../../domain/errors/llm.errors';
+import { IdentityProviderUnavailableError } from '../../domain/errors/identity.errors';
 import { ErrorCode } from '../errors/error-codes';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
@@ -170,6 +172,34 @@ describe('AllExceptionsFilter', () => {
       expect(status).toBe(503);
       expect(body.code).toBe(ErrorCode.LLM_UNAVAILABLE);
       expect(body.message).not.toContain('OpenAI');
+    });
+
+    it('un fallo del proveedor de identidad responde 503 AUTH_UNAVAILABLE', () => {
+      const { status, body } = run(new IdentityProviderUnavailableError('Cognito respondió HTTP 500'));
+
+      expect(status).toBe(503);
+      expect(body.code).toBe(ErrorCode.AUTH_UNAVAILABLE);
+      expect(body.message).not.toContain('Cognito');
+    });
+
+    it('el rate limiting responde 429 RATE_LIMITED con un mensaje en español', () => {
+      const { status, body } = run(new HttpException('ThrottlerException: Too Many Requests', 429));
+
+      expect(status).toBe(429);
+      expect(body.code).toBe(ErrorCode.RATE_LIMITED);
+      expect(body.message).toContain('demasiadas solicitudes');
+    });
+
+    it('un error 4xx de un middleware de Express (body demasiado grande) conserva su status', () => {
+      const { status, body } = run(Object.assign(new Error('request entity too large'), { status: 413 }));
+
+      expect(status).toBe(413);
+      expect(body.code).toBe(ErrorCode.PAYLOAD_TOO_LARGE);
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
+    it('un status 5xx en un error que no es HttpException no se respeta: es un 500', () => {
+      expect(run(Object.assign(new Error('x'), { status: 502 })).status).toBe(500);
     });
 
     it('un error desconocido responde 500 INTERNAL_ERROR con un mensaje genérico', () => {

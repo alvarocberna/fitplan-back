@@ -1,3 +1,4 @@
+import { UNTRUSTED_INPUT_RULES } from '../../../../domain/services/llm/prompt-guard';
 import { CompleteConsultationDto } from '../../../../domain/dtos/consultation.dto';
 
 //prompt extración info
@@ -24,7 +25,7 @@ Reglas:
    - Si el objetivo apunta a mantener el peso/composición actual, mejorar el rendimiento deportivo
      sin otro objetivo asociado, o no hay información suficiente, responde "mantencion".
 
-No incluyas ningún texto fuera del objeto JSON.`;
+No incluyas ningún texto fuera del objeto JSON.${UNTRUSTED_INPUT_RULES}`;
 
 export function buildExtractInfoPromptUserMessage(consultation: CompleteConsultationDto): string {
   return `Determina physicalActivityLevel y goal en base a los siguientes datos de la consulta:

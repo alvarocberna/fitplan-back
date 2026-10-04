@@ -4,10 +4,13 @@ import {
   ValidationError,
   ValidationPipe,
 } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { API_PREFIX } from './common/api-prefix';
 import { ErrorCode } from './common/errors/error-codes';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
+
+const JSON_BODY_LIMIT = '300kb';
 
 // Aplana los errores de class-validator (incluidos los de objetos anidados) a una lista de textos.
 function flattenValidationErrors(errors: ValidationError[], parent = ''): string[] {
@@ -26,6 +29,9 @@ function flattenValidationErrors(errors: ValidationError[], parent = ''): string
 export function configureApp(app: INestApplication): void {
   // Todas las rutas de la API cuelgan de /api/v1 (Swagger queda fuera, en /api-docs).
   app.setGlobalPrefix(API_PREFIX);
+  // Tope explícito del body JSON. Holgado para el turno más grande posible del chat de anamnesis
+  // (CHAT_MAX_MESSAGES x CHAT_MESSAGE_MAX_LENGTH + la ficha), y nada más.
+  (app as NestExpressApplication).useBodyParser('json', { limit: JSON_BODY_LIMIT });
   app.use(requestIdMiddleware);
   // Formato único de error para toda excepción (HttpException, Prisma, proveedores, inesperadas).
   app.useGlobalFilters(new AllExceptionsFilter());

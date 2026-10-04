@@ -12,7 +12,7 @@ Dos conceptos que antes estaban mezclados en un solo paso (crear la orden) y aho
 
 1. **Identidad (`AuthIdentity` + `User` "esqueleto")** — se crea apenas hay una sesión de Cognito
    válida, vía `POST /me/sync`. Lo único garantizado en ese momento es el `sub` (del token) y
-   el `email` (de la sesión de Cognito del frontend, no de un formulario).
+   el `email`, que el backend le pregunta a Cognito (`userInfo`) con el access token: nunca lo toma del cliente.
 2. **Perfil (`User` completo)** — RUT, nombre, apellidos, género, fecha de nacimiento. Cognito
    **no** provee ninguno de estos datos (el scope OIDC en uso es `openid email phone`, sin
    `profile`, y aunque se agregara `profile`, Google no comparte género ni fecha de nacimiento por
@@ -88,11 +88,14 @@ este riesgo porque nunca recibe un id externo: siempre filtra por el usuario del
     identidad para ese `sub` (el frontend nunca llamó a `POST /me/sync`; no debería pasar en el flujo
     normal).
   - **`isProfileComplete(user)`**: `Boolean(firstName && paternalLastName && gender && dateOfBirth)`.
-- **`SyncIdentityUseCase`** (`POST /me/sync`, body `{ email }` — el email de la sesión de Cognito del
-  frontend, no tecleado): idempotente. Si ya existe la `AuthIdentity` devuelve su `User`; si no, busca
-  (o crea) un `User` por `email` — esto reutiliza un `User` que ya existiera de **antes** de este
-  sistema de auth — y crea la `AuthIdentity` primaria vinculándolo al `sub`. El frontend lo llama en el
-  callback de login y al entrar a `consulta/inicio` / `informacion-personal`.
+- **`SyncIdentityUseCase`** (`POST /me/sync`, sin body): idempotente. Si ya existe la `AuthIdentity` devuelve
+  su `User`. Si no, obtiene el email de la cuenta desde Cognito (`IdentityProvider.getIdentity(accessToken)` →
+  endpoint `userInfo`), comprueba que el `sub` coincida con el del token y que el email esté **verificado** (403
+  `EMAIL_NOT_VERIFIED` si no), busca (o crea) un `User` por ese email — esto reutiliza un `User` que ya existiera
+  de **antes** de este sistema de auth, o de la misma persona con otro método de login — y crea la `AuthIdentity`
+  primaria vinculándolo al `sub`. Un `email` en el body se ignora: aceptarlo permitiría que alguien ligara su
+  identidad al correo de otra persona y accediera a sus datos (ver `../doc/security/backend-security.md` §2). El
+  frontend lo llama en el callback de login y al entrar a `consulta/inicio` / `informacion-personal`.
 - **`GetMyProfileUseCase`** (`GET /me`) y **`UpdateMyProfileUseCase`** (`PATCH /me`): un único
   `UpdateProfileDtoImpl` con **todos los campos opcionales** (`rut`, `rutCheckDigit`, `firstName`,
   `middleName`, `paternalLastName`, `maternalLastName`, `gender`, `dateOfBirth`, `athlete`); solo se

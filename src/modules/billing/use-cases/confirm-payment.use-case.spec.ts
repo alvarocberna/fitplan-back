@@ -4,6 +4,7 @@ import { ConfirmPaymentUseCase } from './confirm-payment.use-case';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { ORDER_PAID } from '../events/order-paid.event';
 import { OrderLifecycleService } from '../order-lifecycle.service';
+import { CurrentUserResolver } from '../../identity/current-user.resolver';
 
 describe('ConfirmPaymentUseCase', () => {
   let useCase: ConfirmPaymentUseCase;
@@ -13,6 +14,7 @@ describe('ConfirmPaymentUseCase', () => {
   };
   let orderLifecycle: { isExpired: jest.Mock };
   let eventEmitter: { emit: jest.Mock };
+  let currentUser: { resolve: jest.Mock };
 
   const generatedOrder = {
     id: 'order-1',
@@ -37,15 +39,49 @@ describe('ConfirmPaymentUseCase', () => {
     };
     orderLifecycle = { isExpired: jest.fn().mockResolvedValue(false) };
     eventEmitter = { emit: jest.fn() };
+    currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
     useCase = new ConfirmPaymentUseCase(
       orderRepository as unknown as OrderRepository,
       orderLifecycle as unknown as OrderLifecycleService,
       eventEmitter as unknown as EventEmitter2,
+      currentUser as unknown as CurrentUserResolver,
     );
   });
 
-  it('verifyWebhookSignature siempre devuelve true (placeholder, sin pasarela real todavía)', () => {
-    expect(useCase.verifyWebhookSignature()).toBe(true);
+  describe('dueño de la orden (pago simulado, con claims)', () => {
+    const claims = { sub: 'sub-1' };
+
+    it('paga la orden si es del usuario del token', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue({ ...generatedOrder, userId: 'user-1' });
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
+
+      await expect(useCase.execute({ orderId: 'order-1', claims })).resolves.toEqual({
+        status: 'processed',
+      });
+      expect(currentUser.resolve).toHaveBeenCalledWith(claims);
+    });
+
+    it('responde 404 (R2) y no paga si la orden es de otro usuario', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue({
+        ...generatedOrder,
+        userId: 'otro-usuario',
+      });
+
+      await expect(useCase.execute({ orderId: 'order-1', claims })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('sin claims (webhook de la pasarela) no resuelve usuario', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue(generatedOrder);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
+
+      await useCase.execute({ orderId: 'order-1' });
+
+      expect(currentUser.resolve).not.toHaveBeenCalled();
+    });
   });
 
   it('lanza NotFoundException si la orden no existe, sin marcar el pago ni emitir el evento', async () => {

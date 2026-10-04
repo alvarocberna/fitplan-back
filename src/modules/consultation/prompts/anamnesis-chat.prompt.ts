@@ -1,3 +1,4 @@
+import { UNTRUSTED_INPUT_RULES } from '../../../domain/services/llm/prompt-guard';
 import { AnamnesisDto } from '../../../domain';
 
 // System prompt del chat de anamnesis (CU-CON-01): describe el esquema completo de AnamnesisDto y el
@@ -349,6 +350,8 @@ export function buildAnamnesisChatSystemPrompt(currentAnamnesis: AnamnesisDto | 
       anamnesis".
     - "titleReply" es un campo obligatorio en TODOS los turnos, sin excepción, y nunca puede
       quedar vacío.
+
+    ${UNTRUSTED_INPUT_RULES}
 
     ## ESTADO ACTUAL DE LA ANAMNESIS
     El siguiente es el estado de la anamnesis hasta el momento. Úsalo para saber qué campos ya tienes y cuáles faltan:

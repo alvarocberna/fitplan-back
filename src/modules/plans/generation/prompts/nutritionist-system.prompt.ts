@@ -1,3 +1,5 @@
+import { UNTRUSTED_INPUT_RULES } from '../../../../domain/services/llm/prompt-guard';
+
 // Prompt global (system prompt) usado en la generación del plan nutricional.
 // Define la estructura EXACTA del JSON que debe devolver el modelo.
 export const NUTRITIONIST_SYSTEM_PROMPT = `Eres un nutricionista experto en nutrición deportiva.
@@ -67,4 +69,4 @@ No incluyas los campos "personalInfo", "calories", "protein", "carbohydrate", "f
 "foods" (el objeto final "campo -> porción" que ve el paciente) ni "intake": esos campos se
 completan aparte, fuera de tu respuesta. "equivalences" es distinto de "foods": sí debes incluirlo,
 es el desglose que el sistema usa para construir el texto de equivalencias de "foods".
-No incluyas ningún texto fuera del objeto JSON.`;
+No incluyas ningún texto fuera del objeto JSON.${UNTRUSTED_INPUT_RULES}`;

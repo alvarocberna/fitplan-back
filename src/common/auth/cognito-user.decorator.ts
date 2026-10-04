@@ -4,6 +4,9 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 // identificador estable e inmutable de la identidad.
 export interface CognitoUserClaims {
   sub: string;
+  // El access_token ya verificado por el guard. Solo lo usa SyncIdentityUseCase para preguntarle a
+  // Cognito el email de la cuenta; nunca se loguea ni se devuelve.
+  accessToken?: string;
 }
 
 export const CognitoUser = createParamDecorator(

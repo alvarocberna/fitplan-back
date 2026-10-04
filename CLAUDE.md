@@ -13,7 +13,9 @@ the full plan-generation pipeline, the domain formulas, Prisma schema, and known
 detail. Read it before making non-trivial changes. `doc/flow-happy-path.md` walks the exact
 end-to-end request sequence of a successful consultation; `doc/error-handling.md` describes how errors
 are handled (single error contract `{ statusCode, code, message, errors?, requestId }`, guards, Prisma,
-LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `doc/technical-debt.md` lists known gaps
+LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `../doc/security/backend-security.md`
+lists every security control (guards, order ownership, webhook secret, input caps, rate limiting, CORS, prompt
+guard) — keep it in sync when you touch one; `doc/technical-debt.md` lists known gaps
 in more detail than the README's summary. `to-do-list.md` is stale — it describes a prior
 datasources/repositories architecture that no longer exists in `src/`; ignore it.
 
@@ -52,7 +54,7 @@ module or an endpoint.
 src/
 ├── domain/                    # Pure business rules, no NestJS/SDK dependencies
 │   ├── ports/                  # Abstract classes used as Nest injection tokens: LlmProvider, FileStorage,
-│   │                            # EmailSender, PlanDocumentRenderer, AlertNotifier
+│   │                            # EmailSender, PlanDocumentRenderer, AlertNotifier, IdentityProvider
 │   ├── errors/                 # Plain error classes thrown by adapters (LlmUnavailableError, LlmInvalidResponseError)
 │   ├── dtos/                   # Shared data interfaces + identity-auth/clinical-domain/commercial-domain Create*/Update*Dto
 │   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (*Entity suffix)
@@ -68,7 +70,7 @@ src/
 │   ├── email/                  # LogEmailSender -> EmailSender (EmailModule; stub, logs only)
 │   ├── alerts/                 # LogAlertNotifier -> AlertNotifier (AlertsModule; stub, structured ALERT log)
 │   ├── pdf/                    # ReactPdfPlanDocumentRenderer -> PlanDocumentRenderer (PDF + WebP thumbnail)
-│   └── auth/cognito/           # getCognitoVerifier() (aws-jwt-verify)
+│   └── auth/cognito/           # getCognitoVerifier() (aws-jwt-verify) + CognitoIdentityProvider -> IdentityProvider (userInfo: the account's verified email)
 ├── common/                     # CognitoAuthGuard, @CognitoUser(), AllExceptionsFilter (single error format), errors/error-codes.ts, request-id middleware, API_PREFIX
 ├── modules/                    # NestJS business modules
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
@@ -80,7 +82,7 @@ src/
 │   └── clinical/               # patient history: /me/consultations, /me/measurements (list/detail/record/edit); reads order
 │                                # statuses via the consultation repository (no billing import)
 ├── app.module.ts
-└── main.ts                     # app.setGlobalPrefix('api/v1'), Swagger at /api-docs (outside the prefix)
+└── main.ts                     # app.setGlobalPrefix('api/v1'), Swagger at /api-docs (outside the prefix; opt-in with ENABLE_SWAGGER=true, never in production)
 ```
 
 Inside each module: `<resource>.controller.ts` (HTTP ↔ one use case, no logic), `dto/` (validated
@@ -243,6 +245,16 @@ There is no data-retention job: orders (`Order.planJson`), consultations and `Nu
 are kept indefinitely (the former 45-day `RetentionService` cron was removed). If a retention policy
 is needed later, it must cover `Plan`/`NutritionalPlan` too.
 
+## Security rules (read `../doc/security/backend-security.md`)
+
+- Every new private route: `@UseGuards(CognitoAuthGuard)`, user from the token (R1), filter by owner and answer
+  404 for missing/foreign (R2). Never trust an id, email or amount coming from the client: `POST /me/sync` gets
+  the email from Cognito (`IdentityProvider`), amounts come from `product`.
+- Every DTO string needs `@MaxLength`, every array `@ArrayMaxSize` (these values reach an LLM prompt).
+- Routes that create resources or call the LLM declare `@Throttle(...)` with a constant from
+  `common/throttling/throttle-limits.ts`; the global guard keys by token `sub`, falling back to the IP.
+- Every system prompt appends `UNTRUSTED_INPUT_RULES` (`domain/services/llm/prompt-guard.ts`).
+
 ## Keeping documentation in sync
 
 After making a large or structurally significant change — a new/removed module, a new/removed
@@ -269,8 +281,9 @@ unless the user asks to expand coverage there.
 Be aware these are intentionally fake right now — don't assume they behave like production
 integrations when reasoning about behavior or writing tests:
 
-- `ConfirmPaymentUseCase.verifyWebhookSignature()` always returns `true` — no real payment gateway
-  signature validation.
+- `PaymentWebhookVerifier` checks a shared secret (`x-webhook-secret` header vs `PAYMENT_WEBHOOK_SECRET`, fails
+  closed when unset) — a stand-in for the real gateway signature. The simulated payment endpoints require the
+  session of the order's owner.
 - `LogEmailSender.sendRealEmail()` only logs — no real email provider wired. Decided: Amazon SES, to be
   implemented later as a new `EmailSender` adapter. The email already runs outside the generation retry
   loop (`sendPlanEmail`: a mail failure only logs and raises a `plan_email_failed` alert, it never

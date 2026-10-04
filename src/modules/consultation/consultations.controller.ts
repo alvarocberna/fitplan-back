@@ -1,4 +1,6 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { LLM_THROTTLE, ORDER_THROTTLE } from '../../common/throttling/throttle-limits';
 import { CognitoAuthGuard } from '../../common/auth/cognito-auth.guard';
 import { CognitoUser } from '../../common/auth/cognito-user.decorator';
 import type { CognitoUserClaims } from '../../common/auth/cognito-user.decorator';
@@ -22,6 +24,7 @@ export class ConsultationsController {
   ) {}
 
   // Un turno del chat de anamnesis.
+  @Throttle(LLM_THROTTLE)
   @Post('chat')
   chat(@Body() body: InputChatDtoImpl): Promise<OutputChatDtoImpl> {
     return this.chatAnamnesis.execute(body);
@@ -29,6 +32,7 @@ export class ConsultationsController {
 
   // Evalúa si el objetivo es alcanzable según el estado nutricional (al terminar la evaluación
   // física). Siempre 200: `feasible` indica el resultado.
+  @Throttle(LLM_THROTTLE)
   @Post('goal-feasibility')
   @HttpCode(200)
   goalFeasibility(
@@ -44,6 +48,7 @@ export class ConsultationsController {
 
   // Crea la consulta y su orden pendiente de pago. El frontend navega a la página de pago con el
   // orderId devuelto.
+  @Throttle(ORDER_THROTTLE)
   @Post()
   create(
     @Body() body: CompleteConsultationDtoImpl,
