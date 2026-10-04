@@ -15,7 +15,7 @@ describe('OrderPaidListener', () => {
   it('producto GENERATED: dispara la generación del plan de la orden', () => {
     listener.handle({ orderId: 'order-1', productType: 'GENERATED' });
 
-    expect(generatePersonalizedPlan.execute).toHaveBeenCalledWith({ orderId: 'order-1' });
+    expect(generatePersonalizedPlan.execute).toHaveBeenCalledWith({ orderId: 'order-1', trigger: 'payment' });
   });
 
   it('producto PREDEFINED: no genera nada (el PDF ya se copió desde el producto)', () => {

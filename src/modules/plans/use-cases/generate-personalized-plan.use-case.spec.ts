@@ -264,6 +264,11 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     await service.execute({ orderId: 'order-1' });
 
     expect(llm.chatJson).toHaveBeenCalledTimes(2);
+    // la llamada que genera el plan declara su propio timeout (minutos) y no usa los reintentos del
+    // SDK: con el tope por defecto del adaptador (60 s) la generación nunca alcanzaba a responder
+    const planCallOptions = llm.chatJson.mock.calls[1][4];
+    expect(planCallOptions).toMatchObject({ timeoutMs: 5 * 60_000, maxRetries: 0 });
+    expect(llm.chatJson.mock.calls[0][4]).toMatchObject({ timeoutMs: 60_000, maxRetries: 0 });
     expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
     const [, plan, pdfKey, thumbnailKey] = orderLifecycle.completeGeneration.mock.calls[0];
 
@@ -434,6 +439,18 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     },
   );
 
+  it('lee el modelo del plan del entorno en cada ejecución (no al importar el archivo)', async () => {
+    const previous = process.env.OPENAI_MODEL_PLAN;
+    process.env.OPENAI_MODEL_PLAN = 'modelo-de-prueba';
+    mockMatchingAiResponses();
+
+    await service.execute({ orderId: 'order-1' });
+
+    process.env.OPENAI_MODEL_PLAN = previous;
+    if (previous === undefined) delete process.env.OPENAI_MODEL_PLAN;
+    expect(llm.chatJson.mock.calls.map((call) => call[2])).toEqual(['modelo-de-prueba', 'modelo-de-prueba']);
+  });
+
   it('reintenta con backoff si la IA no calza con las porciones calculadas, y agota los 4 intentos', async () => {
     jest.useFakeTimers();
 
@@ -553,5 +570,173 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
     await expect(service.execute({ orderId: 'order-1' })).resolves.toBeUndefined();
     expect(alertNotifier.notify).toHaveBeenCalled();
+  });
+
+  describe('instrumentación (tiempos por fase)', () => {
+    // objetos estructurados que el caso de uso loguea (resumen de intento y de ronda)
+    function structuredLogs(spy: jest.SpyInstance, event: string): any[] {
+      return spy.mock.calls
+        .map(([message]) => message)
+        .filter((message) => typeof message === 'object' && message?.event === event);
+    }
+
+    let logSpy: jest.SpyInstance;
+    const previousFlag = process.env.PLAN_GENERATION_TIMING_LOGS;
+
+    beforeEach(() => {
+      process.env.PLAN_GENERATION_TIMING_LOGS = 'true';
+      logSpy = jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
+      jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+      jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      if (previousFlag === undefined) delete process.env.PLAN_GENERATION_TIMING_LOGS;
+      else process.env.PLAN_GENERATION_TIMING_LOGS = previousFlag;
+    });
+
+    it.each([[undefined], ['false'], ['1'], ['TRUE']])(
+      'con PLAN_GENERATION_TIMING_LOGS=%p no emite ningún log de tiempos (solo con "true")',
+      async (value) => {
+        if (value === undefined) delete process.env.PLAN_GENERATION_TIMING_LOGS;
+        else process.env.PLAN_GENERATION_TIMING_LOGS = value;
+        mockMatchingAiResponses();
+
+        await service.execute({ orderId: 'order-1' });
+
+        expect(structuredLogs(logSpy, 'plan_generation_attempt')).toHaveLength(0);
+        expect(structuredLogs(logSpy, 'plan_generation_round')).toHaveLength(0);
+        const lines = logSpy.mock.calls.map(([message]) => message).filter((m) => typeof m === 'string');
+        expect(lines.some((line) => /\] \w+: \d+ ms/.test(line))).toBe(false);
+        // el log de operación de siempre se mantiene, y el plan se genera igual
+        expect(lines.some((line) => line.includes('plan generado con éxito'))).toBe(true);
+        expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('ronda exitosa: registra todas las fases, en orden, y un resumen de intento y de ronda', async () => {
+      // respuesta "perfecta" del modelo, que además informa sus métricas a través de onMetrics
+      const { portionAdequacyResult } = mockMatchingAiResponses();
+      const responses = [
+        { physicalActivityLevel, goal },
+        {
+          prescription: { regimen: 'Plan personalizado', goal },
+          mealTimes: buildMatchingGeneratedMealTimes(portionAdequacyResult.calculatedMealTimes),
+          supplements: [],
+          sportsRecommendations: [],
+        },
+      ];
+      llm.chatJson.mockReset();
+      llm.chatJson.mockImplementation(async (...args: any[]) => {
+        const index = llm.chatJson.mock.calls.length - 1;
+        args[4]?.onMetrics?.({
+          model: 'gpt-5-mini',
+          durationMs: 0,
+          promptTokens: index === 1 ? 9000 : 500,
+          completionTokens: index === 1 ? 6000 : 20,
+          reasoningTokens: index === 1 ? 4000 : 0,
+          totalTokens: index === 1 ? 15000 : 520,
+        });
+        return responses[index] as any;
+      });
+      orderLifecycle.findByIdWithUser.mockResolvedValue({
+        ...orderEntity,
+        paymentDate: new Date(Date.now() - 5000),
+      });
+
+      await service.execute({ orderId: 'order-1', trigger: 'payment' });
+
+      const [attempt] = structuredLogs(logSpy, 'plan_generation_attempt');
+      expect(attempt).toMatchObject({ orderId: 'order-1', attempt: 1, ok: true });
+      expect(attempt.phases.map((phase: any) => phase.phase)).toEqual([
+        'llm_classify',
+        'calculate',
+        'build_prompt',
+        'llm_plan',
+        'validate',
+        'merge',
+        'render_pdf',
+        'upload_pdf',
+        'render_thumbnail',
+        'upload_thumbnail',
+        'persist_plan',
+        'complete_order',
+      ]);
+      // las métricas del modelo quedan en la fase de su llamada; el prompt y el PDF, con su tamaño
+      const phase = (name: string) => attempt.phases.find((item: any) => item.phase === name);
+      expect(phase('llm_plan').data).toMatchObject({
+        model: 'gpt-5-mini',
+        promptTokens: 9000,
+        completionTokens: 6000,
+        reasoningTokens: 4000,
+      });
+      expect(phase('build_prompt').data.chars).toBeGreaterThan(0);
+      expect(phase('render_pdf').data).toEqual({ bytes: Buffer.from('contenido-pdf').length });
+
+      const [round] = structuredLogs(logSpy, 'plan_generation_round');
+      expect(round).toMatchObject({
+        orderId: 'order-1',
+        trigger: 'payment',
+        outcome: 'completed',
+        attempts: 1,
+        tokens: { prompt: 9500, completion: 6020, reasoning: 4000 },
+      });
+      expect(round.queueWaitMs).toBeGreaterThanOrEqual(5000);
+      // la ronda suma además las fases de fuera del intento; la espera en cola va aparte
+      const roundPhases = round.phases.map((item: any) => item.phase);
+      expect(roundPhases).toEqual(
+        expect.arrayContaining(['start_guard', 'load_data', 'load_baseline', 'llm_plan', 'send_email']),
+      );
+      expect(roundPhases).not.toContain('queue_wait');
+    });
+
+    it('nunca loguea contenido de la consulta ni el prompt, solo duraciones, tamaños y conteos', async () => {
+      mockMatchingAiResponses();
+
+      await service.execute({ orderId: 'order-1' });
+
+      const logged = JSON.stringify(logSpy.mock.calls);
+      expect(logged).not.toContain('ana@example.com');
+      expect(logged).not.toContain('Pérez');
+      expect(logged).not.toContain('Eres un nutricionista');
+    });
+
+    it('intento fallido: el resumen marca ok: false y la fase donde falló; la ronda queda failed', async () => {
+      jest.useFakeTimers();
+      llm.chatJson.mockRejectedValue(new Error('OpenAI no respondió: Request timed out.'));
+
+      const resultPromise = service.execute({ orderId: 'order-1', trigger: 'retry' });
+      for (let i = 0; i < 5; i++) {
+        await jest.advanceTimersByTimeAsync(60000);
+      }
+      await resultPromise;
+
+      const attempts = structuredLogs(logSpy, 'plan_generation_attempt');
+      expect(attempts).toHaveLength(4);
+      expect(attempts[0]).toMatchObject({ attempt: 1, ok: false, slowest: 'llm_classify' });
+      expect(attempts[0].phases).toEqual([
+        expect.objectContaining({ phase: 'llm_classify', ok: false }),
+      ]);
+
+      const [round] = structuredLogs(logSpy, 'plan_generation_round');
+      expect(round).toMatchObject({ trigger: 'retry', outcome: 'failed', attempts: 4 });
+      // 3 esperas entre los 4 intentos: 1 s + 2 s + 4 s
+      expect(round.phases.find((item: any) => item.phase === 'backoff')).toMatchObject({
+        count: 3,
+        durationMs: 7000,
+      });
+
+      jest.useRealTimers();
+    });
+
+    it('si falla la carga de datos también deja el resumen de la ronda', async () => {
+      orderLifecycle.findByIdWithUser.mockRejectedValue(new Error('db caída'));
+
+      await service.execute({ orderId: 'order-1' });
+
+      const [round] = structuredLogs(logSpy, 'plan_generation_round');
+      expect(round).toMatchObject({ outcome: 'failed', attempts: 0, trigger: 'unknown' });
+      expect(round.phases.find((item: any) => item.phase === 'load_data')).toBeDefined();
+    });
   });
 });

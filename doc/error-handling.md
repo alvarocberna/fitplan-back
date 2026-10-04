@@ -182,7 +182,7 @@ El código sigue **evitando** que los errores ocurran, y ahora el filtro traduce
 
 | Adaptador | Manejo |
 |---|---|
-| `OpenaiLlmProvider` | Cliente con `timeout` (`OPENAI_TIMEOUT_MS`, por defecto 60 s) y `maxRetries: 2` explícitos. Todo error del SDK (red, timeout, 429, 4xx/5xx) → `LlmUnavailableError` (con el status en el mensaje, para el log). Respuesta vacía o que no es JSON → `LlmInvalidResponseError` |
+| `OpenaiLlmProvider` | Cliente con `timeout` (`OPENAI_TIMEOUT_MS`, por defecto 60 s) y `maxRetries: 2` explícitos: es el tope de las llamadas dentro de una request (chat, factibilidad). Una llamada puede declarar sus propios límites (`LlmCallOptions`): la generación del plan, que tarda minutos, usa 5 min (`OPENAI_PLAN_TIMEOUT_MS`) y `maxRetries: 0`, porque ya reintenta su propio bucle. Todo error del SDK (red, timeout, 429, 4xx/5xx) → `LlmUnavailableError` (con el status en el mensaje, para el log). Respuesta vacía o que no es JSON → `LlmInvalidResponseError` |
 | `S3FileStorage` | `maxAttempts: 3`, timeout de conexión 5 s y de respuesta 30 s. `getOrThrow` de la configuración en el constructor (falla al arrancar si falta). Los errores se propagan |
 | `ThumbnailService` | `try/finally` para liberar el documento de pdfjs. Se propaga; el llamador decide si es fatal |
 | `LogEmailSender` | Stub: solo loguea |
@@ -233,6 +233,13 @@ Los 4 intentos son una **ronda**. `RetryPendingGenerationsUseCase` relanza hasta
 15 min / 1 h / 4 h), además de las órdenes pegadas en `GENERATING` por 30+ min y las pagadas que nunca
 arrancaron; con `attempts = 4` el `ERROR` es definitivo. Mientras queden rondas, las lecturas informan
 `GENERATING` en vez de `ERROR`. Constantes en `domain/services/orders/generation-retry.policy.ts`.
+
+### Tiempos por fase
+
+Con `PLAN_GENERATION_TIMING_LOGS=true` cada ronda queda instrumentada: una línea de log por fase, un resumen `plan_generation_attempt` por intento y un
+`plan_generation_round` por ronda (también cuando la ronda falla, con la fase donde se cortó marcada `ok: false`).
+Sirve para saber si un fallo fue lento (timeout del modelo) o rápido (validación, base). La tabla de fases y el
+formato están en el README, sección "Tiempos de la generación".
 
 ### Alertas (`AlertNotifier`)
 

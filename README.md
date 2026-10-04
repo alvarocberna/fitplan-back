@@ -169,7 +169,9 @@ Definidas en `.env.template`:
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_ACCESS_EXPIRATION` / `JWT_REFRESH_EXPIRATION` | Heredadas de un módulo de auth que ya no está presente en `src/` |
 | `BCRYPT_SALT_OR_ROUNDS` | Idem, sin uso actual |
 | `NODE_ENV` | `production` impide montar Swagger y exige `URL_FRONTEND` |
-| `OPENAI_TIMEOUT_MS` | Opcional. Tope por llamada al modelo (por defecto 60000) |
+| `OPENAI_TIMEOUT_MS` | Opcional. Tope de las llamadas al modelo dentro de una request: chat y factibilidad (por defecto 60000) |
+| `OPENAI_PLAN_TIMEOUT_MS` | Opcional. Tope de la llamada que genera el plan, que tarda minutos (por defecto 300000) |
+| `PLAN_GENERATION_TIMING_LOGS` | `true` muestra en el log los tiempos por fase de la generación del plan. Apagado por defecto |
 | `ENABLE_PAYMENT_SIMULATION` | `true` habilita `POST /api/v1/dev/orders/:id/simulate-payment` (con cualquier otro valor responde 404). Mientras no haya pasarela real es el único camino de pago, así que va en `true` también en producción |
 | `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | User Pool y App Client con los que se valida el Access Token (ver [doc/auth.md](./doc/auth.md)) |
 | `AWS_REGION` / `AWS_S3_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Bucket S3 de los PDFs (`S3FileStorage`) |
@@ -525,6 +527,53 @@ requiere intervención manual. Los valores están en `domain/services/orders/gen
 Mientras queden reintentos el usuario no ve el fallo: `GET /orders/:id/status` responde
 `generationStatus: 'GENERATING'` y `planStatus` es `generating` (`isGenerationRetryPending`).
 
+
+### Tiempos de la generación (instrumentación)
+
+`GeneratePersonalizedPlanUseCase` mide cada fase del proceso con `PhaseTimer`
+(`domain/services/utils/phase-timer.ts`) y, **solo con `PLAN_GENERATION_TIMING_LOGS=true`**, lo deja en el log
+para detectar cuellos de botella. Con la variable apagada (por defecto) no se emite ninguno de estos logs; los
+de operación (plan generado, intento fallido, ronda agotada) salen siempre. Solo se
+registran duraciones, tamaños y conteos de tokens: nunca el contenido de la consulta ni el prompt.
+
+| Fase | Qué cubre |
+|---|---|
+| `queue_wait` | Desde `order.paymentDate` hasta que arranca la ronda (se informa aparte, no entra en los porcentajes) |
+| `start_guard` | `tryStartGeneration` (transición a `GENERATING`) |
+| `load_data` | Orden + usuario, consulta con su anamnesis y mediciones, armado del DTO |
+| `load_baseline` | Composición corporal de base del paciente |
+| `llm_classify` | Llamada al modelo que clasifica nivel de actividad y objetivo |
+| `calculate` | Requerimientos, tiempos de comida, porciones, aportes y suplementos (código, sin IA) |
+| `build_prompt` | Armado del prompt del plan (`chars`: tamaño de sistema + usuario) |
+| `llm_plan` | Llamada al modelo que genera el plan |
+| `validate` | Validación de ejemplos y equivalencias contra las porciones calculadas |
+| `merge` | Fusión de la respuesta del modelo con lo calculado |
+| `render_pdf` | Render del PDF (`bytes`) |
+| `upload_pdf` | Subida del PDF a S3 |
+| `render_thumbnail` / `upload_thumbnail` | Miniatura: rasterizado (`bytes`) y subida |
+| `persist_plan` | Upsert de `Plan` + `NutritionalPlan` + tablas hijas + proyección |
+| `complete_order` | `completeGeneration` (orden a `COMPLETED`) |
+| `send_email` | Envío del correo |
+| `backoff` | Espera entre intentos fallidos |
+
+Las fases `llm_*` llevan además `model`, `promptTokens`, `completionTokens` y `reasoningTokens` (los entrega el
+adaptador por `LlmCallOptions.onMetrics`). Los tokens de razonamiento son parte de los de salida: el modelo los
+gasta "pensando" y no aparecen en la respuesta, pero sí en el tiempo y en el costo.
+
+Qué se loguea (contexto `GeneratePersonalizedPlanUseCase`):
+
+1. **Una línea por fase**, apenas termina:
+   `Orden <id> [intento 1/4] llm_plan: 142318 ms (gpt-5-mini, in 9120 / out 6540 / razonamiento 4800 tok)`.
+   Las fases de fuera de un intento salen como `[ronda]`. Una fase que lanza se marca `FALLÓ`.
+2. **Un resumen por intento**: `{ event: 'plan_generation_attempt', orderId, attempt, ok, totalMs, slowest,
+   phases: [{ phase, durationMs, pct, ok, data }] }`.
+3. **Un resumen por ronda**: `{ event: 'plan_generation_round', orderId, trigger, outcome, attempts, totalMs,
+   measuredMs, queueWaitMs, llmMs, llmPct, tokens: { prompt, completion, reasoning }, slowest, phases }`, donde
+   `phases` acumula todos los intentos, de la fase más lenta a la más rápida (`count` = veces que corrió).
+   `trigger` es `payment` (evento del pago) o `retry` (job de reintentos).
+
+Para encontrar el cuello de botella basta buscar `plan_generation_round` en el log y mirar `slowest`, `llmPct`
+y los primeros elementos de `phases`.
 
 ## Capa de dominio
 

@@ -13,7 +13,8 @@ import { LlmProvider } from '../../../domain/ports';
 // CU-CON-01. Este endpoint (POST /consultations/chat) puede ser usado por cualquier visitante de la página, incluso
 // sin llegar a pagar: se mantiene en el modelo económico actual para no disparar costos por tráfico
 // curioso. Configurable vía env var sin necesidad de redeploy.
-const OPENAI_MODEL_CONSULTA = process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
+// Se lee en cada uso (función): al importar este archivo el .env todavía no está cargado.
+const consultationModel = () => process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
 
 @Injectable()
 export class ChatAnamnesisUseCase {
@@ -39,7 +40,7 @@ export class ChatAnamnesisUseCase {
     let llmResponse = await this.llm.chatJson<OutputChatDto>(
       systemPrompt,
       body.messages,
-      OPENAI_MODEL_CONSULTA,
+      consultationModel(),
     );
 
     // si el reply del responde de openai está vacío, reintentamos una vez antes de recurrir
@@ -48,7 +49,7 @@ export class ChatAnamnesisUseCase {
       llmResponse = await this.llm.chatJson<OutputChatDto>(
         systemPrompt,
         body.messages,
-        OPENAI_MODEL_CONSULTA,
+        consultationModel(),
       );
     }
 

@@ -18,7 +18,8 @@ import {
 } from '../prompts/classify-goal.prompt';
 
 // Mismo modelo económico que el chat de anamnesis (ver chat-anamnesis.use-case.ts).
-const OPENAI_MODEL_CONSULTA = process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
+// Se lee en cada uso (función): al importar este archivo el .env todavía no está cargado.
+const consultationModel = () => process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
 
 const GOALS: ProjectionGoalDto[] = ['definicion', 'mantencion', 'volumen'];
 
@@ -75,7 +76,7 @@ export class EvaluateGoalFeasibilityUseCase {
     const { goal } = await this.llm.chatJson<{ goal: string }>(
       CLASSIFY_GOAL_SYSTEM_PROMPT,
       [{ role: 'user', content: buildClassifyGoalUserMessage(goals) }],
-      OPENAI_MODEL_CONSULTA,
+      consultationModel(),
     );
     return GOALS.includes(goal as ProjectionGoalDto)
       ? (goal as ProjectionGoalDto)

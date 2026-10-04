@@ -48,9 +48,17 @@ import {
   AlertNotifier,
   EmailSender,
   FileStorage,
+  LlmCallMetrics,
+  LlmCallOptions,
   LlmProvider,
   PlanDocumentRenderer,
 } from '../../../domain/ports';
+import {
+  aggregatePhases,
+  PhaseEntry,
+  PhaseTimer,
+  summarizePhases,
+} from '../../../domain/services/utils/phase-timer';
 import { MAX_GENERATION_ROUNDS } from '../../../domain/services/orders/generation-retry.policy';
 import {
   buildPersonalizedPlanKey,
@@ -76,7 +84,29 @@ const BACKOFF_BASE_MS = 1000;
 // Configurable vía env var sin necesidad de redeploy.
 // NOTA: no se fija "temperature" acá porque gpt-5-mini solo soporta su valor default (1) -la API
 // devuelve 400 ("Unsupported value: 'temperature'...") si se envía cualquier otro valor-.
-const OPENAI_MODEL_PLAN = process.env.OPENAI_MODEL_PLAN ?? 'gpt-5-mini';
+//
+// Las variables de entorno de este archivo se leen EN CADA USO (funciones), no en una constante a nivel
+// de módulo: este archivo se importa antes de que ConfigModule cargue el .env, así que una constante
+// evaluada al importar nunca vería los valores del .env (solo los del entorno real del proceso).
+const planModel = () => process.env.OPENAI_MODEL_PLAN ?? 'gpt-5-mini';
+
+// true muestra en el log los tiempos de cada fase de la generación (ver logPhase/logAttempt/logRound).
+// Apagado por defecto: es instrumentación para diagnosticar cuellos de botella, no un log de operación.
+const timingLogsEnabled = () => process.env.PLAN_GENERATION_TIMING_LOGS === 'true';
+
+// Límites de las llamadas al modelo durante la generación. El plan completo es una respuesta larga de
+// un modelo con razonamiento: tarda minutos, no segundos, así que NO puede usar el tope por defecto
+// del adaptador (60 s, pensado para las llamadas dentro de una request). Sin reintentos del SDK: ya
+// reintenta el bucle de MAX_ATTEMPTS, y sumar ambos multiplicaría la espera.
+// Peor caso de una ronda: MAX_ATTEMPTS x (1 min de clasificación + 5 min del plan) = 24 min, bajo
+// STALLED_GENERATION_MS (30 min), para que el job de reintentos no dé por interrumpida una generación
+// que sigue corriendo. Si se sube OPENAI_PLAN_TIMEOUT_MS hay que respetar ese margen.
+const planLlmOptions = (): LlmCallOptions => ({
+  timeoutMs: Number(process.env.OPENAI_PLAN_TIMEOUT_MS) || 5 * 60_000,
+  maxRetries: 0,
+});
+// La clasificación previa (nivel de actividad y objetivo) es una respuesta corta.
+const CLASSIFY_LLM_OPTIONS: LlmCallOptions = { timeoutMs: 60_000, maxRetries: 0 };
 
 // Tolerancia (en porciones) al comparar lo que la IA reporta en "components" contra las porciones
 // exactas ya calculadas por código: cubre solo errores de redondeo de punto flotante, no errores reales
@@ -133,6 +163,13 @@ type ExtractedInfo = {
 
 type BaselineComposition = ReturnType<typeof findLatestBodyComposition>;
 
+// Quién disparó la generación: el pago recién confirmado o el job de reintentos.
+export type GenerationTrigger = 'payment' | 'retry';
+
+// Fases que se miden (ver README, "Tiempos de la generación"). Las que empiezan con `llm_` son
+// llamadas al modelo de lenguaje.
+const isLlmPhase = (phase: string) => phase.startsWith('llm_');
+
 // Lanzado por implicitPortions()/validateGeneratedExamples()/validateGeneratedEquivalences() cuando
 // la respuesta del LLM no calza con las porciones ya calculadas por código. Es una subclase de Error
 // solo para poder distinguir en los logs de execute() un reintento por "la IA se equivocó en el
@@ -159,11 +196,33 @@ export class GeneratePersonalizedPlanUseCase {
   //order.paid para un producto GENERATED, y RetryPendingGenerationsUseCase (CU-PLN-08) cuando una
   //ronda anterior falló o quedó interrumpida. Cualquier error queda contenido acá adentro: nunca debe
   //tirar una unhandled rejection.
-  async execute(input: { orderId: string }): Promise<void> {
+  //
+  //Está instrumentada: cada fase se mide con PhaseTimer y, si PLAN_GENERATION_TIMING_LOGS=true, se
+  //loguea (una línea por fase, un resumen por intento y uno por ronda) para detectar cuellos de
+  //botella. Solo se registran duraciones, tamaños y conteos de tokens: nunca el contenido de la
+  //consulta ni el prompt. Con la variable apagada (por defecto) esos logs no se emiten.
+  async execute(input: {
+    orderId: string;
+    trigger?: GenerationTrigger;
+  }): Promise<void> {
     const { orderId } = input;
+    const roundStart = Date.now();
+    // mediciones de las fases de la ronda que ocurren fuera de un intento (carga de datos, esperas)
+    const roundTimer = new PhaseTimer();
+    // todas las mediciones de la ronda, en orden: las de roundTimer más las de cada intento
+    const measured: PhaseEntry[] = [];
+    const onRoundPhase = (entry: PhaseEntry) => {
+      measured.push(entry);
+      this.logPhase(orderId, null, entry);
+    };
+
     //guard de estado: si la orden ya está GENERATING (otro disparo concurrente) o COMPLETED,
     //no hace nada. Solo entra si estaba NOT_STARTED o ERROR (reintento de un fallo previo).
-    const canGenerate = await this.orderLifecycle.tryStartGeneration(orderId);
+    const canGenerate = await roundTimer.measure(
+      'start_guard',
+      () => this.orderLifecycle.tryStartGeneration(orderId),
+      onRoundPhase,
+    );
     if (!canGenerate) {
       this.logger.log(
         `Orden ${orderId}: generación ya en curso o completada, se ignora el disparo`,
@@ -177,9 +236,19 @@ export class GeneratePersonalizedPlanUseCase {
     let consultation: NutritionalConsultationEntity;
     let payload: CompleteConsultationDto;
     try {
-      order = await this.orderLifecycle.findByIdWithUser(orderId);
-      consultation = await this.getConsultationForOrder(orderId);
-      payload = this.buildCompleteConsultationDto(order, consultation);
+      ({ order, consultation, payload } = await roundTimer.measure(
+        'load_data',
+        async () => {
+          const loadedOrder = await this.orderLifecycle.findByIdWithUser(orderId);
+          const loadedConsultation = await this.getConsultationForOrder(orderId);
+          return {
+            order: loadedOrder,
+            consultation: loadedConsultation,
+            payload: this.buildCompleteConsultationDto(loadedOrder, loadedConsultation),
+          };
+        },
+        onRoundPhase,
+      ));
     } catch (error) {
       this.logger.error(
         `Orden ${orderId}: no se pudieron cargar los datos para generar el plan ` +
@@ -187,90 +256,224 @@ export class GeneratePersonalizedPlanUseCase {
         (error as Error).stack,
       );
       await this.failRound(orderId, error as Error, null);
+      this.logRound(orderId, input.trigger, 'failed', 0, roundStart, measured);
       return;
     }
-    const baseline = await this.getBaselineComposition(order.userId);
 
-    const totalStart = Date.now();
+    // Tiempo entre el pago y el arranque de esta ronda: en el primer disparo es la demora del evento;
+    // en un reintento incluye las rondas anteriores y la espera del job.
+    if (order.paymentDate) {
+      onRoundPhase(
+        roundTimer.record(
+          'queue_wait',
+          roundStart - new Date(order.paymentDate).getTime(),
+        ),
+      );
+    }
+
+    const baseline = await roundTimer.measure(
+      'load_baseline',
+      () => this.getBaselineComposition(order.userId),
+      onRoundPhase,
+    );
+
     let validationRejections = 0;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      const attemptStart = Date.now();
+      const timer = new PhaseTimer();
+      const onPhase = (entry: PhaseEntry) => {
+        measured.push(entry);
+        this.logPhase(orderId, attempt, entry);
+      };
       try {
-        const { plan, numericPortions, goal } = await this.processPlan(payload);
-        const attemptDurationMs = Date.now() - attemptStart;
-        this.logger.log(
-          `Orden ${orderId}: intento ${attempt}/${MAX_ATTEMPTS} generado en ${attemptDurationMs}ms`,
+        const { plan, numericPortions, goal } = await this.processPlan(
+          payload,
+          timer,
+          onPhase,
         );
 
         // El PDF se genera UNA sola vez acá (backend), se sube a S3, y el mismo buffer se
         // reutiliza para el adjunto del correo — evita regenerarlo tanto en el frontend como
         // una segunda vez dentro de EmailSender.
-        const pdfBuffer = await this.documentRenderer.renderPdf(plan);
+        const pdfBuffer = await timer.measure(
+          'render_pdf',
+          async () => {
+            const buffer = await this.documentRenderer.renderPdf(plan);
+            timer.annotate('render_pdf', { bytes: buffer.length });
+            return buffer;
+          },
+          onPhase,
+        );
         const pdfKey = buildPersonalizedPlanKey(orderId);
-        await this.fileStorage.uploadPdf(pdfBuffer, pdfKey);
-        const thumbnailKey = await this.tryUploadThumbnail(orderId, pdfBuffer);
+        await timer.measure(
+          'upload_pdf',
+          () => this.fileStorage.uploadPdf(pdfBuffer, pdfKey),
+          onPhase,
+        );
+        const thumbnailKey = await this.tryUploadThumbnail(
+          orderId,
+          pdfBuffer,
+          timer,
+          onPhase,
+        );
 
         // Se persiste el Plan (con su NutritionalPlan principal y todas sus tablas hijas) ANTES de
         // marcar la orden como COMPLETED, así una orden completada siempre tiene su plan normalizado.
         // Es un upsert por orderId, por lo que un reintento del loop no duplica ni rompe el @unique:
         // reemplaza el NutritionalPlan principal, sus hijos y la proyección (que define también el
         // end_date del plan).
-        await this.planRepository.upsertPlanWithMainNutritionalPlanByOrderId({
-          consultationId: consultation.id,
-          orderId,
-          ...this.buildPlanWithProjection(
-            plan,
-            order.product?.name ?? null,
-            numericPortions,
-            goal,
-            payload,
-            baseline,
-          ),
-        });
-
-        await this.orderLifecycle.completeGeneration(
-          orderId,
-          plan,
-          pdfKey,
-          thumbnailKey,
+        await timer.measure(
+          'persist_plan',
+          () =>
+            this.planRepository.upsertPlanWithMainNutritionalPlanByOrderId({
+              consultationId: consultation.id,
+              orderId,
+              ...this.buildPlanWithProjection(
+                plan,
+                order.product?.name ?? null,
+                numericPortions,
+                goal,
+                payload,
+                baseline,
+              ),
+            }),
+          onPhase,
         );
-        const totalDurationMs = Date.now() - totalStart;
+
+        await timer.measure(
+          'complete_order',
+          () =>
+            this.orderLifecycle.completeGeneration(orderId, plan, pdfKey, thumbnailKey),
+          onPhase,
+        );
+        this.logAttempt(orderId, attempt, true, timer);
         this.logger.log(
           `Orden ${orderId}: plan generado con éxito (intento ${attempt}/${MAX_ATTEMPTS}, ` +
-            `${validationRejections} rechazado(s) por validación, ${totalDurationMs}ms totales)`,
+            `${validationRejections} rechazado(s) por validación, ${Date.now() - roundStart}ms totales)`,
         );
 
         // El correo va FUERA del intento: la orden ya está COMPLETED y el plan disponible en el
         // panel, así que un fallo acá no debe volver a generar el plan ni marcar la orden en ERROR.
-        await this.sendPlanEmail(order, plan, pdfBuffer);
+        // (sendPlanEmail nunca lanza.)
+        await roundTimer.measure(
+          'send_email',
+          () => this.sendPlanEmail(order, plan, pdfBuffer),
+          onRoundPhase,
+        );
+        this.logRound(orderId, input.trigger, 'completed', attempt, roundStart, measured);
         return;
       } catch (error) {
-        const attemptDurationMs = Date.now() - attemptStart;
         const isValidationError = error instanceof PlanValidationError;
         if (isValidationError) validationRejections++;
+        this.logAttempt(orderId, attempt, false, timer);
 
         const isLastAttempt = attempt === MAX_ATTEMPTS;
         this.logger.warn(
-          `Orden ${orderId}: falló el intento ${attempt}/${MAX_ATTEMPTS} en ${attemptDurationMs}ms` +
+          `Orden ${orderId}: falló el intento ${attempt}/${MAX_ATTEMPTS} en ${timer.totalMs()}ms` +
             `${isValidationError ? ' (rechazado por validación de ejemplos/equivalencias)' : ''} ` +
             `(${(error as Error).message})`,
         );
 
         if (isLastAttempt) {
-          const totalDurationMs = Date.now() - totalStart;
           this.logger.error(
             `Orden ${orderId}: se agotaron los ${MAX_ATTEMPTS} intentos (${validationRejections} ` +
-              `rechazado(s) por validación), ${totalDurationMs}ms totales`,
+              `rechazado(s) por validación), ${Date.now() - roundStart}ms totales`,
             (error as Error).stack,
           );
           await this.failRound(orderId, error as Error, order.attempts ?? 0);
+          this.logRound(orderId, input.trigger, 'failed', attempt, roundStart, measured);
           return;
         }
 
-        await this.sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1));
+        await roundTimer.measure(
+          'backoff',
+          () => this.sleep(BACKOFF_BASE_MS * 2 ** (attempt - 1)),
+          onRoundPhase,
+        );
       }
     }
+  }
+
+  //instrumentación - una línea por fase, apenas termina. Ej:
+  //  Orden <id> [intento 1/4] llm_plan: 142318 ms (gpt-5-mini, in 9120 / out 6540 / razonamiento 4800 tok)
+  private logPhase(orderId: string, attempt: number | null, entry: PhaseEntry): void {
+    if (!timingLogsEnabled()) return;
+    const scope = attempt === null ? 'ronda' : `intento ${attempt}/${MAX_ATTEMPTS}`;
+    const data = entry.data ?? {};
+    const details: string[] = [];
+    if (typeof data.model === 'string') {
+      details.push(
+        `${data.model}, in ${data.promptTokens ?? '?'} / out ${data.completionTokens ?? '?'} / ` +
+          `razonamiento ${data.reasoningTokens ?? '?'} tok`,
+      );
+    }
+    if (typeof data.chars === 'number') details.push(`${data.chars} caracteres`);
+    if (typeof data.bytes === 'number') details.push(`${data.bytes} bytes`);
+    if (!entry.ok) details.push('FALLÓ');
+    this.logger.log(
+      `Orden ${orderId} [${scope}] ${entry.phase}: ${entry.durationMs} ms` +
+        (details.length > 0 ? ` (${details.join(', ')})` : ''),
+    );
+  }
+
+  //instrumentación - resumen estructurado de un intento: cada fase con su duración y porcentaje.
+  private logAttempt(orderId: string, attempt: number, ok: boolean, timer: PhaseTimer): void {
+    if (!timingLogsEnabled()) return;
+    const summary = timer.summary();
+    this.logger.log({
+      event: 'plan_generation_attempt',
+      orderId,
+      attempt,
+      ok,
+      totalMs: summary.totalMs,
+      slowest: summary.slowest,
+      phases: summary.phases,
+    });
+  }
+
+  //instrumentación - resumen estructurado de la ronda completa: tiempo total, cuánto fue del modelo,
+  //tokens consumidos y las fases acumuladas de todos los intentos, de la más lenta a la más rápida.
+  private logRound(
+    orderId: string,
+    trigger: GenerationTrigger | undefined,
+    outcome: 'completed' | 'failed',
+    attempts: number,
+    roundStart: number,
+    measured: PhaseEntry[],
+  ): void {
+    if (!timingLogsEnabled()) return;
+    // queue_wait es tiempo anterior a la ronda: se informa aparte y no entra en los porcentajes
+    const work = measured.filter((entry) => entry.phase !== 'queue_wait');
+    const queueWaitMs =
+      measured.find((entry) => entry.phase === 'queue_wait')?.durationMs ?? null;
+    const summary = summarizePhases(work);
+    const llmMs = work
+      .filter((entry) => isLlmPhase(entry.phase))
+      .reduce((sum, entry) => sum + entry.durationMs, 0);
+    const sumTokens = (key: string) =>
+      work.reduce(
+        (sum, entry) => sum + (typeof entry.data?.[key] === 'number' ? (entry.data[key] as number) : 0),
+        0,
+      );
+    this.logger.log({
+      event: 'plan_generation_round',
+      orderId,
+      trigger: trigger ?? 'unknown',
+      outcome,
+      attempts,
+      totalMs: Date.now() - roundStart,
+      measuredMs: summary.totalMs,
+      queueWaitMs,
+      llmMs,
+      llmPct: summary.totalMs > 0 ? Math.round((llmMs / summary.totalMs) * 1000) / 10 : 0,
+      tokens: {
+        prompt: sumTokens('promptTokens'),
+        completion: sumTokens('completionTokens'),
+        reasoning: sumTokens('reasoningTokens'),
+      },
+      slowest: summary.slowest,
+      phases: aggregatePhases(work),
+    });
   }
 
   //helper de execute() - cierra una ronda fallida: la orden queda en ERROR con attempts + 1 (el job de
@@ -390,11 +593,25 @@ export class GeneratePersonalizedPlanUseCase {
   private async tryUploadThumbnail(
     orderId: string,
     pdfBuffer: Buffer,
+    timer: PhaseTimer,
+    onPhase: (entry: PhaseEntry) => void,
   ): Promise<string | null> {
     try {
-      const thumbnail = await this.documentRenderer.renderThumbnail(pdfBuffer);
+      const thumbnail = await timer.measure(
+        'render_thumbnail',
+        async () => {
+          const image = await this.documentRenderer.renderThumbnail(pdfBuffer);
+          timer.annotate('render_thumbnail', { bytes: image.length });
+          return image;
+        },
+        onPhase,
+      );
       const thumbnailKey = buildPlanThumbnailKey(orderId);
-      await this.fileStorage.uploadImage(thumbnail, thumbnailKey);
+      await timer.measure(
+        'upload_thumbnail',
+        () => this.fileStorage.uploadImage(thumbnail, thumbnailKey),
+        onPhase,
+      );
       return thumbnailKey;
     } catch (error) {
       this.logger.warn(
@@ -423,15 +640,26 @@ export class GeneratePersonalizedPlanUseCase {
   //tiempo de comida (alineadas por índice con plan.mealTimes). Estas últimas no viajan en el plan
   //(que se serializa en order.plan_json con las porciones como texto): solo se usan para poblar las
   //columnas numéricas de plan_meal_time.
+  //`timer`/`onPhase`: instrumentación, cada paso se mide como una fase del intento.
   private async processPlan(
     body: CompleteConsultationDto,
+    timer: PhaseTimer,
+    onPhase: (entry: PhaseEntry) => void,
   ): Promise<{
     plan: NutritionPlanDto;
     numericPortions: NumericMealTimePortions[];
     goal: string;
   }> {
     //se extrae informacion del prompt: NAF y objetivo
-    const { physicalActivityLevel, goal } = await this.extractInfoPrompt(body);
+    const { physicalActivityLevel, goal } = await timer.measure(
+      'llm_classify',
+      () =>
+        this.extractInfoPrompt(body, (metrics) =>
+          timer.annotate('llm_classify', { ...metrics }),
+        ),
+      onPhase,
+    );
+    const calculateStart = performance.now();
     //se extrae informacion del body
     const weight: number = body.measurements?.weight!;
     const height: number = body.measurements?.height!;
@@ -480,34 +708,60 @@ export class GeneratePersonalizedPlanUseCase {
 
     //PASO 6 - recomendaciones deportivas: la IA decide cuales prescribe en base al prompt NUTRITIONIST_SYSTEM_PROMPT
 
+    // todo el cálculo por código de los pasos 1, 3 y 5 (sin IA)
+    onPhase(timer.record('calculate', performance.now() - calculateStart));
+
+    const userPrompt = await timer.measure(
+      'build_prompt',
+      () => {
+        const prompt = buildUserPrompt(
+          body,
+          requirements,
+          goal,
+          supplementsPrescription,
+          calculatedMealTimes,
+          supplementIntakeNote,
+          supplementIntake,
+        );
+        // tamaño del prompt (sistema + usuario): cuánto texto se le manda al modelo
+        timer.annotate('build_prompt', {
+          chars: NUTRITIONIST_SYSTEM_PROMPT.length + prompt.length,
+        });
+        return prompt;
+      },
+      onPhase,
+    );
+
     //generación de plan - codigo + IA
-    const generated = await this.llm.chatJson<GeneratedNutritionPlan>(
-      NUTRITIONIST_SYSTEM_PROMPT,
-      [
-        {
-          role: 'user',
-          content: buildUserPrompt(
-            body,
-            requirements,
-            goal,
-            supplementsPrescription,
-            calculatedMealTimes,
-            supplementIntakeNote,
-            supplementIntake,
-          ),
-        },
-      ],
-      OPENAI_MODEL_PLAN,
+    const generated = await timer.measure(
+      'llm_plan',
+      () =>
+        this.llm.chatJson<GeneratedNutritionPlan>(
+          NUTRITIONIST_SYSTEM_PROMPT,
+          [{ role: 'user', content: userPrompt }],
+          planModel(),
+          undefined,
+          {
+            ...planLlmOptions(),
+            onMetrics: (metrics: LlmCallMetrics) =>
+              timer.annotate('llm_plan', { ...metrics }),
+          },
+        ),
+      onPhase,
     );
 
     // si los "examples"/"equivalences" que devolvió la IA no calzan con las porciones ya calculadas
     // por código, se lanza un error acá: lo captura el loop de reintentos de execute() (con
     // backoff), que vuelve a llamar a processPlan() y a pedirle el plan completo a la IA desde cero.
-    this.validateGeneratedExamples(calculatedMealTimes, generated.mealTimes);
-    this.validateGeneratedEquivalences(
-      calculatedMealTimes,
-      generated.mealTimes,
+    await timer.measure(
+      'validate',
+      () => {
+        this.validateGeneratedExamples(calculatedMealTimes, generated.mealTimes);
+        this.validateGeneratedEquivalences(calculatedMealTimes, generated.mealTimes);
+      },
+      onPhase,
     );
+    const mergeStart = performance.now();
 
     //merge: "foods" (porción calculada por código + equivalencia redactada por la IA) e "intake"
     //vienen del cálculo por código; "hour", "examples" y "comments" vienen de la IA, alineados por
@@ -562,6 +816,7 @@ export class GeneratePersonalizedPlanUseCase {
       supplements: generated.supplements,
       sportsRecommendations: generated.sportsRecommendations,
     };
+    onPhase(timer.record('merge', performance.now() - mergeStart));
     return {
       plan,
       numericPortions: calculatedMealTimes.map((calculated) => calculated.numericPortions),
@@ -727,11 +982,14 @@ export class GeneratePersonalizedPlanUseCase {
   //helper de processPlan() - el LLM extrae el NAF y objetivo del body
   private async extractInfoPrompt(
     body: CompleteConsultationDto,
+    onMetrics?: (metrics: LlmCallMetrics) => void,
   ): Promise<ExtractedInfo> {
     return this.llm.chatJson<ExtractedInfo>(
       EXTRACT_INFO_SYSTEM_PROMPT,
       [{ role: 'user', content: buildExtractInfoPromptUserMessage(body) }],
-      OPENAI_MODEL_PLAN,
+      planModel(),
+      undefined,
+      { ...CLASSIFY_LLM_OPTIONS, onMetrics },
     );
   }
 

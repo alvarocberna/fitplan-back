@@ -23,7 +23,7 @@ export class OrderPaidListener {
     // fire-and-forget: el caso de uso maneja sus propios reintentos y estados de error, así que este
     // catch es solo una red de seguridad contra errores realmente inesperados.
     this.generatePersonalizedPlan
-      .execute({ orderId: event.orderId })
+      .execute({ orderId: event.orderId, trigger: 'payment' })
       .catch((error: Error) => {
         this.logger.error(
           `Orden ${event.orderId}: error no controlado al generar el plan: ${error.message}`,

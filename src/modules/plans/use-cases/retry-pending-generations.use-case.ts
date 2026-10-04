@@ -22,6 +22,7 @@ export class RetryPendingGenerationsUseCase {
   ) {}
 
   async execute(): Promise<{ released: number; retried: number }> {
+    const startedAt = Date.now();
     // primero: las generaciones interrumpidas pasan a ERROR (cuenta como ronda fallida) y quedan
     // disponibles para la búsqueda de abajo.
     const released = await this.orderLifecycle.releaseStalledGenerations();
@@ -37,7 +38,7 @@ export class RetryPendingGenerationsUseCase {
       // GeneratePersonalizedPlanUseCase contiene sus propios errores y deja la orden en ERROR si la
       // ronda falla; este catch es una red de seguridad para que una orden no frene al resto.
       try {
-        await this.generatePersonalizedPlan.execute({ orderId });
+        await this.generatePersonalizedPlan.execute({ orderId, trigger: 'retry' });
       } catch (error) {
         this.logger.error(
           `Orden ${orderId}: error no controlado al reintentar la generación: ${(error as Error).message}`,
@@ -46,6 +47,11 @@ export class RetryPendingGenerationsUseCase {
       }
     }
 
+    if (orderIds.length > 0) {
+      this.logger.log(
+        `Corrida de reintentos: ${orderIds.length} orden(es) relanzadas en ${Date.now() - startedAt} ms`,
+      );
+    }
     return { released, retried: orderIds.length };
   }
 }

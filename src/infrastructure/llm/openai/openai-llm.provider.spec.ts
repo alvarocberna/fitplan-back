@@ -95,4 +95,87 @@ describe('OpenaiLlmProvider', () => {
       service.chatJson('system', [{ role: 'user', content: 'hola' }]),
     ).rejects.toBeInstanceOf(LlmInvalidResponseError);
   });
+
+  it('sin opciones no pasa límites por llamada: rigen el timeout y los reintentos por defecto del cliente', async () => {
+    createMock.mockResolvedValue({ choices: [{ message: { content: '{}' } }] });
+
+    await service.chatJson('system', [{ role: 'user', content: 'hola' }]);
+
+    expect(createMock.mock.calls[0]).toHaveLength(1);
+  });
+
+  it('pasa al SDK el timeout y los reintentos propios de la llamada (la generación del plan tarda minutos)', async () => {
+    createMock.mockResolvedValue({ choices: [{ message: { content: '{}' } }] });
+
+    await service.chatJson('system', [{ role: 'user', content: 'hola' }], 'gpt-5-mini', undefined, {
+      timeoutMs: 300_000,
+      maxRetries: 0,
+    });
+
+    expect(createMock.mock.calls[0][1]).toEqual({ timeout: 300_000, maxRetries: 0 });
+  });
+
+  describe('métricas de la llamada (onMetrics)', () => {
+    it('informa modelo, duración y tokens de entrada, salida y razonamiento', async () => {
+      createMock.mockResolvedValue({
+        choices: [{ message: { content: '{}' } }],
+        usage: {
+          prompt_tokens: 9000,
+          completion_tokens: 6000,
+          total_tokens: 15000,
+          completion_tokens_details: { reasoning_tokens: 4000 },
+        },
+      });
+      const onMetrics = jest.fn();
+
+      await service.chatJson('system', [{ role: 'user', content: 'hola' }], 'gpt-5-mini', undefined, {
+        onMetrics,
+      });
+
+      expect(onMetrics).toHaveBeenCalledWith({
+        model: 'gpt-5-mini',
+        durationMs: expect.any(Number),
+        promptTokens: 9000,
+        completionTokens: 6000,
+        reasoningTokens: 4000,
+        totalTokens: 15000,
+      });
+      // onMetrics no es una opción del SDK: no se le pasa
+      expect(createMock.mock.calls[0]).toHaveLength(1);
+    });
+
+    it('si el proveedor no informa el consumo, los tokens van en null', async () => {
+      createMock.mockResolvedValue({ choices: [{ message: { content: '{}' } }] });
+      const onMetrics = jest.fn();
+
+      await service.chatJson('system', [{ role: 'user', content: 'hola' }], undefined, undefined, { onMetrics });
+
+      expect(onMetrics).toHaveBeenCalledWith(
+        expect.objectContaining({ promptTokens: null, completionTokens: null, reasoningTokens: null }),
+      );
+    });
+
+    it('un error dentro de onMetrics no rompe la llamada', async () => {
+      createMock.mockResolvedValue({ choices: [{ message: { content: '{"ok":true}' } }] });
+
+      await expect(
+        service.chatJson('system', [{ role: 'user', content: 'hola' }], undefined, undefined, {
+          onMetrics: () => {
+            throw new Error('bug en la instrumentación');
+          },
+        }),
+      ).resolves.toEqual({ ok: true });
+    });
+
+    it('no informa métricas si la llamada falla', async () => {
+      createMock.mockRejectedValue(new Error('timeout'));
+      const onMetrics = jest.fn();
+
+      await service
+        .chatJson('system', [{ role: 'user', content: 'hola' }], undefined, undefined, { onMetrics })
+        .catch(() => undefined);
+
+      expect(onMetrics).not.toHaveBeenCalled();
+    });
+  });
 });

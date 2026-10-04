@@ -43,8 +43,8 @@ describe('RetryPendingGenerationsUseCase', () => {
 
     expect(calls).toEqual(['release', 'find']);
     expect(generatePersonalizedPlan.execute.mock.calls).toEqual([
-      [{ orderId: 'order-1' }],
-      [{ orderId: 'order-2' }],
+      [{ orderId: 'order-1', trigger: 'retry' }],
+      [{ orderId: 'order-2', trigger: 'retry' }],
     ]);
   });
 
