@@ -3,8 +3,7 @@
 Este documento describe cómo el backend valida la identidad de un usuario autenticado con Amazon
 Cognito (desde `nutricionista-virtual-front`) y cómo esa identidad se conecta con `User`/
 `AuthIdentity` en Postgres. El flujo completo, incluida la parte del frontend (Hosted UI, Server
-Actions, refresh de tokens), está en `nutricionista-virtual-front/doc/auth.md` y
-`nutricionista-virtual-front/doc/flow.md` — este documento se enfoca en lo que vive en este repo.
+Actions, refresh de tokens), está en `nutricionista-virtual-front/doc/auth.md` — este documento se enfoca en lo que vive en este repo.
 
 ## Idea central: identidad separada de perfil
 
@@ -147,4 +146,4 @@ Login real (nativo) → `POST /me/sync` crea `User`+`AuthIdentity` → `informac
 completa el perfil vía `PATCH /me` → `/consultations` funciona con el perfil ya completo →
 una segunda orden con la misma sesión reutiliza el mismo `User`/`AuthIdentity` (no duplica). Login
 vía Google no se ejerció todavía contra el User Pool real (integrado en código, pendiente de
-probar — ver `nutricionista-virtual-front/doc/auth-pending.md`).
+probar).

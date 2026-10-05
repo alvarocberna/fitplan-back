@@ -11,7 +11,6 @@ Eres el responsable de mantener al día la documentación de este backend NestJS
 
 Solo puedes crear/editar archivos de documentación:
 - `README.md` (raíz) — fuente de verdad principal: endpoints, pipeline completo de generación de plan, fórmulas de dominio, schema de Prisma, deuda técnica.
-- `doc/flow-happy-path.md` — secuencia end-to-end exacta de una consulta exitosa.
 - `doc/technical-debt.md` — huecos conocidos, con más detalle que el resumen del README.
 - Otros archivos dentro de `doc/` si el cambio justifica un documento nuevo (por ejemplo un nuevo subdirectorio como `doc/nutrition-plan/`).
 
@@ -23,7 +22,6 @@ Nunca edites código fuente (`src/`, `prisma/schema.prisma`, tests, config). Si 
 2. Lee el `README.md` y los archivos de `doc/` relevantes actuales para entender su estructura, tono y nivel de detalle existente, y para localizar exactamente qué sección hay que tocar.
 3. Decide dónde va cada cambio:
    - Cambios de arquitectura, endpoints, pipeline, fórmulas, schema, deuda técnica → `README.md`.
-   - Cambios en la secuencia paso a paso de una consulta exitosa → `doc/flow-happy-path.md`.
    - Huecos o funcionalidad pendiente/no conectada → `doc/technical-debt.md`.
    - Si nada existente encaja y el cambio lo amerita, crea un documento nuevo bajo `doc/` siguiendo el estilo de los existentes, y enlázalo desde el README si corresponde.
 4. Edita de forma quirúrgica: actualiza solo las secciones afectadas por el cambio, preservando el resto del documento, su formato y su estilo (Markdown, code blocks para árboles de directorios, backticks para nombres de archivo/símbolo, etc.). No reescribas documentos enteros salvo que ya no reflejen la realidad en su mayoría.

@@ -5,7 +5,7 @@ recopila la anamnesis de un paciente por chat, procesa el pago de la consulta y 
 asíncrona un plan nutricional personalizado (enviado por correo en PDF y descargable desde el frontend).
 
 > Para el recorrido end-to-end de una consulta exitosa, con el orden exacto en que se usan los
-> endpoints, ver **[flow-happy-path.md](./doc/flow-happy-path.md)**.
+> endpoints, ver **[purchase-flow-personalized-plan.md](../doc/flows/purchase-flow-personalized-plan.md)**.
 
 > Estado actual: el proyecto cubre el flujo completo **anamnesis (chat) → creación de orden → pago
 > (simulado) → generación del plan con IA en background → consulta de estado/plan → envío por
@@ -13,8 +13,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 > un panel del usuario (`GET /me/summary`). La persistencia (Prisma + **Postgres**) está conectada
 > para el dominio comercial completo (`User`, `ClinicalRecord`,
 > `NutritionalConsultation`/`Anamnesis`/`Measurements`, `Order`, `Product`) — ver
-> [Base de datos](#base-de-datos-prisma) y
-> [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md). La autenticación es real,
+> [Base de datos](#base-de-datos-prisma). La autenticación es real,
 > vía Amazon Cognito (`modules/identity/`, `CognitoAuthGuard`) — ver **[doc/auth.md](./doc/auth.md)**
 > — el `User` se resuelve por el `sub` del token validado, no por email suelto.
 
@@ -196,7 +195,7 @@ Todas las rutas llevan el prefijo `/api/v1` (se omite abajo). Las que dicen "ses
 `Authorization: Bearer <access_token de Cognito>` (`CognitoAuthGuard`) y resuelven el usuario con
 `CurrentUserResolver.resolve` (R1 de use-cases.md). El detalle de cada caso de uso (flujo, errores,
 salida) está en [`../doc/product/use-cases.md`](../doc/product/use-cases.md); el orden en que el frontend
-los consume, en [flow-happy-path.md](./doc/flow-happy-path.md).
+los consume, en [purchase-flow-personalized-plan.md](../doc/flows/purchase-flow-personalized-plan.md).
 
 | Método | Ruta | Sesión | Caso de uso | Módulo |
 |---|---|---|---|---|
@@ -377,8 +376,7 @@ llama al terminar la evaluación física, antes de generar la orden.
   `NutritionalConsultation` (con `orderId` y `consultationNumber` correlativo) + `Anamnesis`/`Measurements`
   y sus hijas en una escritura anidada. Orden y consulta se escriben en dos operaciones separadas,
   por diseño: si falla la segunda, la orden huérfana no se puede pagar (su id no llega al cliente) y expira
-  a las 24 h (ver CU-CON-02 en use-cases.md). Mapeo completo: `consultation.mapper.ts` y
-  [doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md).
+  a las 24 h (ver CU-CON-02 en use-cases.md). Mapeo completo: `consultation.mapper.ts`.
 
 ### plans: `/plans/standard` y `/me/plans`
 
@@ -482,7 +480,7 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
 No es un endpoint HTTP: `OrderPaidListener` (`modules/plans/listeners/`) escucha `order.paid` y, solo
 para productos `GENERATED`, ejecuta `GeneratePersonalizedPlanUseCase` sin esperarlo (fire-and-forget,
 con un `catch` de red de seguridad). Ver el detalle paso a paso en
-[flow-happy-path.md § Generación del plan](./doc/flow-happy-path.md#7-generación-del-plan-proceso-en-segundo-plano-sin-request-http-del-frontend).
+[purchase-flow-personalized-plan.md](../doc/flows/purchase-flow-personalized-plan.md).
 
 Resumen:
 
@@ -764,11 +762,7 @@ Rate limiting: `@nestjs/throttler` global, por (endpoint, usuario); los límites
 (identidad/auth, historial clínico, comercial) — 35 modelos en total, organizados en tres secciones
 del schema: `IDENTITY & AUTH`, `CLINICAL DOMAIN`, `COMMERCIAL DOMAIN`. El flujo comercial descrito en
 este README (`POST /consultations` → pago → generación del plan) persiste sobre este dominio real, no
-sobre una tabla plana con un payload JSON crudo. Ver el detalle completo de la arquitectura de esta
-capa (entidades, DTOs, datasources, repositories) en
-**[doc/postgres-domain-groundwork.md](./doc/postgres-domain-groundwork.md)**, y el detalle de cómo se
-conectó al flujo comercial en
-**[doc/orders-postgres-migration.md](./doc/orders-postgres-migration.md)**.
+sobre una tabla plana con un payload JSON crudo.
 
 Modelos que participan directamente en el flujo comercial hoy:
 
@@ -797,8 +791,8 @@ Campos relevantes de `Order` (tabla `order`):
 | `nutritionalConsultation` | Relación inversa 1:1 hacia la `NutritionalConsultation` con los datos de la anamnesis/mediciones de esta orden |
 
 La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
-[doc/auth.md](./doc/auth.md)) — ver `doc/orders-postgres-migration.md` y `doc/technical-debt.md` para
-el detalle de esa migración y su deuda pendiente. `Payment` sí está conectado: el webhook de pago crea su fila (`AUTHORIZED`, hoy con datos simulados) en la misma transacción que marca la orden pagada. Buena parte del resto del dominio (la
+[doc/auth.md](./doc/auth.md)) — ver `doc/technical-debt.md` para
+la deuda pendiente. `Payment` sí está conectado: el webhook de pago crea su fila (`AUTHORIZED`, hoy con datos simulados) en la misma transacción que marca la orden pagada. Buena parte del resto del dominio (la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
 la fila principal y sus tablas hijas) está conectado: `GeneratePersonalizedPlanUseCase` lo **escribe**
@@ -831,8 +825,7 @@ decisiones de infraestructura (stub de `@react-pdf/renderer`), y la deuda pendie
 
 ## Deuda técnica y pendientes
 
-Ver también `doc/technical-debt.md`, `doc/postgres-domain-groundwork.md` y
-`doc/orders-postgres-migration.md` (deuda específica de la conexión del dominio Postgres al flujo
+Ver también `doc/technical-debt.md` (incluye la deuda de la conexión del dominio Postgres al flujo
 comercial) y `to-do-list.md` (esta última describe deuda de una versión anterior con capa de
 datasources/repositories que ya no existe en el código actual).
 
@@ -872,7 +865,7 @@ datasources/repositories que ya no existe en el código actual).
 - El mapeo de `CompleteConsultationDto` hacia el árbol `NutritionalConsultation`/`Anamnesis`/`Measurements`
   tiene varias simplificaciones conocidas (campos clínicos singulares envueltos en arrays de 1,
   `mealHour` siempre `''`, `somatotype` guardado como texto libre en `Measurements.description`,
-  `AnamnesisPsychosocial`/`Supplements` sin poblar) — ver `doc/orders-postgres-migration.md § 12` y
+  `AnamnesisPsychosocial`/`Supplements` sin poblar) — ver
   `doc/technical-debt.md` para el detalle completo.
 - Los datos de salud (`Order.planJson`, `NutritionalConsultation` y `NutritionalPlan`) se conservan
   sin límite de tiempo: se eliminó el job de retención de 45 días. Si más adelante se necesita una

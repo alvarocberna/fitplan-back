@@ -10,8 +10,8 @@ personalized nutrition plan (emailed as PDF, also downloadable from the frontend
 
 The **README.md is the primary source of truth** for this project — it documents every endpoint,
 the full plan-generation pipeline, the domain formulas, Prisma schema, and known technical debt in
-detail. Read it before making non-trivial changes. `doc/flow-happy-path.md` walks the exact
-end-to-end request sequence of a successful consultation; `doc/error-handling.md` describes how errors
+detail. Read it before making non-trivial changes. `../doc/flows/purchase-flow-personalized-plan.md` walks the
+end-to-end sequence of a successful consultation; `doc/error-handling.md` describes how errors
 are handled (single error contract `{ statusCode, code, message, errors?, requestId }`, guards, Prisma,
 LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `../doc/security/backend-security.md`
 lists every security control (guards, order ownership, webhook secret, input caps, rate limiting, CORS, prompt
@@ -223,9 +223,7 @@ rest (`Projection` is written by plan generation, nested in the same `Plan` upse
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
 the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
 written by the payment webhook (`OrderRepository.markOrderAsPaidWithPayment`, same transaction that
-marks the order paid; `provider = 'SIMULATED'` while the gateway is simulated). See
-`doc/postgres-domain-groundwork.md` for the full architecture of that layer and
-`doc/orders-postgres-migration.md` for exactly what got connected and why.
+marks the order paid; `provider = 'SIMULATED'` while the gateway is simulated).
 
 **Predefined plans** (a second product type, `Product.type = 'PREDEFINED'`, 112 versions identified by
 `Product.code` — `<plan>-<minKg>-<maxKg>-<m|f>-<joven|adulto>`, see

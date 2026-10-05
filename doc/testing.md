@@ -9,7 +9,7 @@ correctamente su grafo de DI (instanciaba `ConsultationService` real sin proveer
 decisiones de infraestructura que hicieron falta para que corriera.
 
 Si buscas la arquitectura general del proyecto o el flujo end-to-end, ver el README principal y
-`doc/flow-happy-path.md`. Este documento es específico de testing.
+`../doc/flows/purchase-flow-personalized-plan.md`. Este documento es específico de testing.
 
 ## 1. Alcance de esta fase
 
