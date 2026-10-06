@@ -60,10 +60,14 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
 
+# SQLite (dev/local) - incluye los archivos de journal del modo WAL
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/*.db-wal
+/prisma/*.db-shm
+
 # Otros
 /to-do-list.md
 to-do-list.md
-/doc.md
-doc.md
 
-doc 
+/doc/technical-debt.md

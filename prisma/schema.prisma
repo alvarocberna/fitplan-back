@@ -1,8 +1,9 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Prisma schema — PostgreSQL.
+// Los modelos debajo del modelo `Order` provienen de doc/database/entity-relation-diagram.md
+// (formato dbdiagram.io) y representan el esquema de dominio completo (identidad, historial
+// clínico, plan nutricional, comercial). Todavía no están conectados a ningún módulo de src/.
+// Convención: nombres de modelo/campo en camelCase (uso en el backend), @map/@@map preservan
+// el nombre snake_case de columna/tabla tal como está definido en el ERD.
 
 generator client {
   provider = "prisma-client-js"
@@ -14,360 +15,856 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Usuario {
-  id                  String      @id @default(uuid())
-  rut                 Int         @db.Integer
-  dv_rut              String      @db.VarChar
-  nombre_primero      String      @db.VarChar
-  nombre_segundo      String      @db.VarChar
-  apellido_paterno    String      @db.VarChar
-  apellido_materno    String      @db.VarChar
-  genero              Genero      
-  correo              String      @db.VarChar
-  celular             Int         @db.Integer
-  fecha_nacimiento    DateTime    @db.Date
-  fecha_creacion      DateTime    @db.Date
-  password            String      @db.VarChar
-  hashedRt            String? 
-  rol                 Rol         @default(PACIENTE)
-  //--relations
-  consulta_pro        Consulta[]        @relation("fk_con_usu_pro")
-  consulta_pac        Consulta[]        @relation("fk_con_usu_pac")
-  mediciones_pro      Mediciones[]      @relation("fk_med_usu_pro")
-  mediciones_pac      Mediciones[]      @relation("fk_med_usu_pac")
-  mediciones_bas_pro  Basicas[]         @relation("fk_med_bas_usu_pro")
-  mediciones_bas_pac  Basicas[]         @relation("fk_med_bas_usu_pac")
-  mediciones_pli_pro  Pliegues[]        @relation("fk_med_pli_usu_pro")
-  mediciones_pli_pac  Pliegues[]        @relation("fk_med_pli_usu_pac")
-  mediciones_per_pro  Perimetros[]      @relation("fk_med_per_usu_pro")
-  mediciones_per_pac  Perimetros[]      @relation("fk_med_per_usu_pac")
-  mediciones_dia_pro  Diametros[]       @relation("fk_med_dia_usu_pro")
-  mediciones_dia_pac  Diametros[]       @relation("fk_med_dia_usu_pac")
-  mediciones_res_pro  ResultadosMed[]   @relation("fk_med_res_usu_pro")
-  mediciones_res_pac  ResultadosMed[]   @relation("fk_med_res_usu_pac")
-  relacion_pro        RelacionPacPro[]  @relation("fk_rel_usu_pro")
-  relacion_pac        RelacionPacPro[]  @relation("fk_rel_usu_pac")
-  @@map("usuario")
+// Modelo usado por el flujo legacy de la app (consulta -> pago -> generación de plan).
+// Comentado: reemplazado por el modelo `Order` de abajo (renombrado desde `CommercialOrder`).
+// model Order {
+//   id               String   @id @default(uuid())
+//   email            String   @map("correo")
+//   payloadJson      String?  @map("payload_json") // ConsultaCompletaDto completo (personalInfo + anamnesis + measurements)
+//   paymentStatus    String   @default("pendiente") @map("estado_pago") // 'pendiente' | 'pagado'
+//   generationStatus String   @default("no_iniciado") @map("estado_generacion") // 'no_iniciado' | 'generando' | 'completado' | 'error'
+//   planJson         String?  @map("plan_json") // PlanNutricionalDto resultante, null hasta que se genera
+//   attempts         Int      @default(0) @map("intentos")
+//   createdAt        DateTime @default(now()) @map("created_at")
+//   updatedAt        DateTime @updatedAt @map("updated_at")
+//
+//   @@map("orden")
+// }
+
+// =========================================
+// ENUMS
+// Columnas con un conjunto cerrado de valores (enums nativos de Postgres).
+// =========================================
+
+enum AuthProvider {
+  COGNITO
+  GOOGLE
 }
 
-model RelacionPacPro{
-  id                Int         @id @default(autoincrement())
-  //--foreign keys
-  profesional       Usuario     @relation(name: "fk_rel_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id    String      @db.VarChar
-  paciente          Usuario     @relation(name: "fk_rel_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id       String      @db.VarChar
-  @@map("relacion_pac_pro")
+enum SportsEventType {
+  TRAINING
+  COMPETITION
 }
 
-model Consulta {
-  id                 String      @id @default(uuid())
-  nro_consulta       Int         @db.Integer
-  fecha_consulta     DateTime    @db.Date
-  descripcion        String      @db.VarChar
-  //--foreign keys
-  profesional        Usuario     @relation(name: "fk_con_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id     String      @db.VarChar
-  paciente           Usuario     @relation(name: "fk_con_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id        String      @db.VarChar
-  //--relaciones
-  anamnesis         Anamnesis?   
-  mediciones        Mediciones?
-  plan              Plan?
-  @@map("consulta")
+enum MeasurementLevel {
+  BASIC
+  ISAK_1       @map("ISAK 1")
+  BIOIMPEDANCE
+}
+
+enum PlanPeriod {
+  EVENTO
+  MICROCICLO
+  MESOCICLO
+  MACROCICLO
+}
+
+enum PlanMealTimeSlot {
+  BREAKFAST
+  LUNCH
+  AFTERNOON_TEA
+  DINNER
+  SNACK
+}
+
+enum PlanMealTimeNoteType {
+  EXAMPLE
+  COMMENT
+  // Equivalencias de un grupo de alimentos: "<grupo>: <alimentos alternativos>"
+  EQUIVALENCE
+}
+
+enum PlanSupplementNoteType {
+  EFFECT
+  CONSIDERATION
+}
+
+enum ProductType {
+  PREDEFINED
+  GENERATED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REJECTED
+  EXPIRED
+}
+
+enum GenerationStatus {
+  NOT_STARTED
+  GENERATING
+  COMPLETED
+  ERROR
+}
+
+enum PaymentProvider {
+  TRANSBANK
+  SIMULATED
+}
+
+enum PaymentTransactionStatus {
+  AUTHORIZED
+  REJECTED
+  CANCELLED
+}
+
+// =========================================
+// IDENTITY & AUTH
+// =========================================
+
+model User {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  rut           String?
+  rutCheckDigit String? @map("rut_check_digit")
+  email         String? @unique
+
+  firstName        String? @map("first_name")
+  middleName       String? @map("middle_name")
+  paternalLastName String? @map("paternal_last_name")
+  maternalLastName String? @map("maternal_last_name")
+
+  gender String?
+
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  photoUrl    String?   @map("photo_url")
+
+  // Se captura en el perfil (PATCH /auth/perfil); antes vivía en nutritional_consultation.
+  athlete Boolean @default(false)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
+
+  authIdentities           AuthIdentity[]
+  clinicalRecord           ClinicalRecord?
+  nutritionalConsultations NutritionalConsultation[]
+  orders                   Order[]
+
+  @@map("user")
+}
+
+model AuthIdentity {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  provider AuthProvider
+
+  providerUserId String @map("provider_user_id")
+
+  email String
+
+  emailVerified Boolean @map("email_verified")
+
+  isPrimary Boolean @map("is_primary")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, providerUserId])
+  @@map("auth_identity")
+}
+
+// =========================================
+// CLINICAL DOMAIN
+// =========================================
+
+model ClinicalRecord {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  patientId String @unique @map("patient_id") @db.Uuid
+  patient   User   @relation(fields: [patientId], references: [id])
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
+
+  nutritionalConsultations NutritionalConsultation[]
+  measurements             Measurements[]
+
+  @@map("clinical_record")
+}
+
+model NutritionalConsultation {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  clinicalRecordId String         @map("clinical_record_id") @db.Uuid
+  clinicalRecord   ClinicalRecord @relation(fields: [clinicalRecordId], references: [id])
+
+  patientId String @map("patient_id") @db.Uuid
+  patient   User   @relation(fields: [patientId], references: [id])
+
+  consultationNumber Int      @map("consultation_number")
+  consultationDate   DateTime @map("consultation_date")
+  description        String?
+
+  // Vínculo con la orden comercial que originó esta consulta (flujo consulta -> pago -> generación
+  // de plan). La orden también queda vinculada al Plan resultante (Plan.orderId).
+  orderId String? @unique @map("order_id") @db.Uuid
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
+
+  anamneses    Anamnesis[]
+  measurements Measurements[]
+  plans        Plan[]
+
+  @@map("nutritional_consultation")
 }
 
 model Anamnesis {
-  id                 Int         @id @default(autoincrement())
-  //--foreign keys
-  consulta           Consulta    @relation(fields: [consulta_id], references: [id], onDelete: Cascade)
-  consulta_id        String      @unique @db.VarChar
-  //relations
-  anamnesis_cli      AnamnesisCli?
-  anamnesis_ali      AnamnesisAli?
-  anamnesis_psi      AnamnesisPsi?
-  evs                EVS?
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  consultationId String                  @map("consultation_id") @db.Uuid
+  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
+  goals                 Goals[]
+  anamnesisClinical     AnamnesisClinical[]
+  anamnesisDietary      AnamnesisDietary[]
+  anamnesisPsychosocial AnamnesisPsychosocial[]
+  lifestyles            Lifestyle[]
+
   @@map("anamnesis")
 }
 
-model AnamnesisCli {
-  id                 Int         @id @default(autoincrement())
-  patologias         String      @db.VarChar
-  antecedentes_fam   String      @db.VarChar
-  alergias           String      @db.VarChar
-  intolerancias      String      @db.VarChar
-  farmacos           String      @db.VarChar
-  antecedentes_gi    String      @db.VarChar
-  cirugias           String      @db.VarChar
-  deposiciones       String      @db.VarChar
-  examenes           String      @db.VarChar
-  //--foreign keys
-  anamnesis          Anamnesis   @relation(fields: [anamnesis_id], references: [id], onDelete: Cascade)
-  anamnesis_id       Int         @unique@db.Integer
-  @@map("anamnesis_cli")
+model Goals {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  mainGoal      String?  @map("main_goal")
+  secondaryGoal String[] @map("secondary_goal")
+
+  @@map("goals")
 }
 
-model AnamnesisAli {
-  id                 Int         @id @default(autoincrement())
-  tipo_dieta        String      @db.VarChar
-  alergia           String      @db.VarChar
-  intolerancia      String      @db.VarChar
-  suplemento        String      @db.VarChar
-  //--foreign keys
-  anamnesis         Anamnesis   @relation(fields: [anamnesis_id], references: [id], onDelete: Cascade)
-  anamnesis_id      Int         @unique@db.Integer
-  //relations
-  r24h              R24H?
-  @@map("anamnesis_ali")
+model AnamnesisClinical {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  pathology        String[]
+  familyHistory    String?  @map("family_history")
+  allergy          String[]
+  intolerance      String[]
+  medication       String[]
+  gastrointestinal String[]
+  surgery          String[]
+  bowelMovement    String?  @map("bowel_movement")
+  exams            String?
+
+  clinicalConditions ClinicalCondition[]
+
+  @@map("anamnesis_clinical")
 }
 
-model R24H {
-  id                Int              @id @default(autoincrement())
-  tiempo            String           @db.VarChar
-  hora              String           @db.VarChar
-  lugar             String           @db.VarChar
-  descripcion       String           @db.VarChar
-  //--foreign keys
-  anamnesis_ali     AnamnesisAli     @relation(fields: [anamnesis_ali_id], references: [id], onDelete: Cascade)
-  anamnesis_ali_id  Int              @unique @db.Integer
-  @@map("r24h") 
+// pathologies, allergies, intolerances, etc
+model ClinicalCondition {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisClinicalId String            @map("anamnesis_clinical_id") @db.Uuid
+  anamnesisClinical   AnamnesisClinical @relation(fields: [anamnesisClinicalId], references: [id], onDelete: Cascade)
+
+  name         String?
+  detail       String?
+  type         String? // allergy, intolerance, etc
+  snomedCtCode String? @map("snomed_ct_code")
+  status       String?
+
+  @@map("clinical_condition")
 }
 
-model AnamnesisPsi {
-  id                 Int        @id @default(autoincrement())
-  ocupacion         String      @db.VarChar
-  educacion         String      @db.VarChar
-  ingreso           String      @db.VarChar
-  grupo_familiar    String      @db.VarChar
-  //--foreign keys
-  anamnesis         Anamnesis   @relation(fields: [anamnesis_id], references: [id], onDelete: Cascade)
-  anamnesis_id      Int         @unique @db.Integer
-  @@map("anamnesis_psi")
+model AnamnesisDietary {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  dietType String? @map("diet_type")
+
+  dietaryRecalls24h DietaryRecall24h[]
+  foodPreferences   FoodPreference[]
+  supplements       Supplements[]
+
+  @@map("anamnesis_dietary")
 }
 
-model EVS {
-  id                 Int        @id @default(autoincrement())
-  tabaco            String      @db.VarChar
-  alcohol           String      @db.VarChar
-  deporte           String      @db.VarChar
-  //--foreign keys
-  anamnesis         Anamnesis   @relation(fields: [anamnesis_id], references: [id], onDelete: Cascade)
-  anamnesis_id      Int         @unique @db.Integer
-  @@map("evs")
+model DietaryRecall24h {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id], onDelete: Cascade)
+
+  meals DietaryRecall24hMeal[]
+
+  @@map("dietary_recall_24h")
 }
 
-model Mediciones{
-  id                Int         @id @default(autoincrement())
-  nro_medicion      Int         @db.Integer
-  nivel             String      @db.VarChar
-  descripcion       String      @db.VarChar
-  //--foreign keys
-  consulta          Consulta    @relation(fields: [consulta_id], references: [id], onDelete: Cascade)
-  consulta_id       String      @unique @db.VarChar
-  profesional       Usuario     @relation(name: "fk_med_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id    String      @db.VarChar
-  paciente          Usuario     @relation(name: "fk_med_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id       String      @db.VarChar
-  //--relations
-  basicas           Basicas?
-  pliegues          Pliegues?
-  perimetros        Perimetros?
-  diametros         Diametros?
-  resultados_med    ResultadosMed?
-  @@map("mediciones")
+// dietary_recall_24h is composed of an array of Meal (one row per meal in the 24-hour recall)
+model DietaryRecall24hMeal {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  dietaryRecall24hId String           @map("dietary_recall_24h_id") @db.Uuid
+  dietaryRecall24h   DietaryRecall24h @relation(fields: [dietaryRecall24hId], references: [id], onDelete: Cascade)
+
+  mealTime                    String  @map("meal_time")
+  mealHour                    String? @map("meal_hour")
+  description                 String?
+  cereals                     String?
+  freeConsumptionVegetable    String? @map("free_consumption_vegetable")
+  generalConsumptionVegetable String? @map("general_consumption_vegetable")
+  fruit                       String?
+  highFatProtein              String? @map("high_fat_protein")
+  lowFatProtein               String? @map("low_fat_protein")
+  highFatDairy                String? @map("high_fat_dairy")
+  mediumFatDairy              String? @map("medium_fat_dairy")
+  lowFatDairy                 String? @map("low_fat_dairy")
+  highProteinDairy            String? @map("high_protein_dairy")
+  lipidRich                   String? @map("lipid_rich")
+  oil                         String?
+  sugar                       String?
+  alcohol                     String?
+
+  @@map("dietary_recall_24h_meal")
 }
 
-model Basicas {
-  id                Int         @id @default(autoincrement())
-  peso              Float       @db.Real
-  talla             Float       @db.Real
-  talla_sentado     Float       @db.Real
-  envergadura       Float       @db.Real
-  //--foreign keys
-  mediciones        Mediciones  @relation(fields: [mediciones_id], references: [id], onDelete: Cascade)
-  mediciones_id     Int         @unique @db.Integer
-  profesional       Usuario     @relation(name: "fk_med_bas_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id    String      @db.VarChar
-  paciente          Usuario     @relation(name: "fk_med_bas_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id       String      @db.VarChar
-  @@map("basicas")
+model FoodPreference {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id], onDelete: Cascade)
+
+  group String?
+
+  groups FoodPreferenceGroup[]
+
+  @@map("food_preference")
 }
 
-model Pliegues{
-  id                Int         @id @default(autoincrement())
-  tricep            Float       @db.Real
-  subescapular      Float       @db.Real
-  bicep             Float       @db.Real
-  cresta_iliaca     Float       @db.Real
-  supraespinal      Float       @db.Real
-  abdominal         Float       @db.Real
-  muslo             Float       @db.Real
-  pierna            Float       @db.Real
-  //--foreign keys
-  mediciones        Mediciones  @relation(fields: [mediciones_id], references: [id], onDelete: Cascade)
-  mediciones_id     Int         @unique @db.Integer
-  profesional       Usuario     @relation(name: "fk_med_pli_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id    String      @db.VarChar
-  paciente          Usuario     @relation(name: "fk_med_pli_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id       String      @db.VarChar
-  @@map("pliegues")
+// food_preference is composed of an array of foods, each classified by consumption level
+model FoodPreferenceGroup {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  foodPreferenceId String         @map("food_preference_id") @db.Uuid
+  foodPreference   FoodPreference @relation(fields: [foodPreferenceId], references: [id], onDelete: Cascade)
+
+  group                 String?
+  frequentConsumption   String[] @map("frequent_consumption")
+  occasionalConsumption String[] @map("occasional_consumption")
+  rareConsumption       String[] @map("rare_consumption")
+  avoidedFoods          String[] @map("avoided_foods")
+
+  @@map("food_preference_group")
 }
 
-model Perimetros{
-  id                Int         @id @default(autoincrement())
-  brazo_relajado    Float       @db.Real
-  brazo_flexionado  Float       @db.Real
-  cintura           Float       @db.Real
-  cadera            Float       @db.Real
-  muslo_medio       Float       @db.Real
-  pierna            Float       @db.Real
-  //--foreign keys
-  mediciones        Mediciones  @relation(fields: [mediciones_id], references: [id], onDelete: Cascade)
-  mediciones_id     Int         @unique @db.Integer
-  profesional       Usuario     @relation(name: "fk_med_per_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id    String      @db.VarChar
-  paciente          Usuario     @relation(name: "fk_med_per_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id       String      @db.VarChar
-  @@map("perimetros")
+// supplements is composed of an array of strings (one supplement per row)
+model Supplements {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisDietaryId String           @map("anamnesis_dietary_id") @db.Uuid
+  anamnesisDietary   AnamnesisDietary @relation(fields: [anamnesisDietaryId], references: [id], onDelete: Cascade)
+
+  supplement String
+  quantity   String?
+  frequency  String?
+  detail     String?
+
+  @@map("supplements")
 }
 
-model Diametros{
-  id                Int         @id @default(autoincrement())
-  humero            Float       @db.Real
-  biestiloideo      Float       @db.Real
-  femur             Float       @db.Real
-  //--foreign keys
-  mediciones        Mediciones  @relation(fields: [mediciones_id], references: [id], onDelete: Cascade)
-  mediciones_id     Int         @unique @db.Integer
-  profesional       Usuario     @relation(name: "fk_med_dia_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id    String      @db.VarChar
-  paciente          Usuario     @relation(name: "fk_med_dia_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id       String      @db.VarChar
-  @@map("diametros")
+model AnamnesisPsychosocial {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  occupation  String?
+  education   String?
+  income      String?
+  familyGroup String? @map("family_group")
+
+  @@map("anamnesis_psychosocial")
 }
 
-model ResultadosMed{
-  id                 Int                   @id @default(autoincrement())
-  imc                Float                 @db.Real
-  imc_clasificacion  IMCClasificacion      
-  gc_kg              Float                 @db.Real
-  gc_porcentaje      Float                 @db.Real
-  gc_clasificacion   EvaClasificacion      
-  gv_kg              Float                 @db.Real
-  gv_porcentaje      Float                 @db.Real
-  gv_clasificacion   EvaClasificacion      
-  mm_kg              Float                 @db.Real
-  mm_porcentaje      Float                 @db.Real
-  mm_clasificacion   EvaClasificacion      
-  imm                Float                 @db.Real
-  imm_clasificacion  EvaClasificacion         
-  endo               Float                 @db.Real
-  meso               Float                 @db.Real
-  ecto               Float                 @db.Real
-  pha_peso           Float                 @db.Real
-  pha_pli_triceps    Float                 @db.Real
-  pha_pli_subescapular Float               @db.Real
-  pha_pli_biceps    Float                  @db.Real
-  pha_pli_cresta_iliaca Float              @db.Real
-  pha_pli_supraespinal Float               @db.Real
-  pha_pli_abdominal Float                  @db.Real
-  pha_pli_muslo     Float                  @db.Real
-  pha_pli_pierna    Float                  @db.Real 
-  pha_per_brazo     Float                  @db.Real
-  pha_per_brazo_flex Float                 @db.Real
-  pha_per_cintura   Float                  @db.Real
-  pha_per_cadera    Float                  @db.Real
-  pha_per_muslo     Float                  @db.Real
-  pha_per_pierna    Float                  @db.Real
-  pha_dia_humero    Float                  @db.Real
-  pha_dia_biestiloideo Float               @db.Real
-  pha_dia_femur     Float                  @db.Real
-  //--foreign keys
-  mediciones        Mediciones             @relation(fields: [mediciones_id], references: [id], onDelete: Cascade)
-  mediciones_id     Int                    @unique @db.Integer
-  profesional       Usuario                @relation(name: "fk_med_res_usu_pro", fields: [profesional_id], references: [id], onDelete: Cascade)
-  profesional_id    String                 @db.VarChar
-  paciente          Usuario                @relation(name: "fk_med_res_usu_pac",fields: [paciente_id], references: [id], onDelete: Cascade)
-  paciente_id       String                 @db.VarChar
-  @@map("resultados_med")
+model Lifestyle {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  anamnesisId String    @map("anamnesis_id") @db.Uuid
+  anamnesis   Anamnesis @relation(fields: [anamnesisId], references: [id], onDelete: Cascade)
+
+  tobacco               String?
+  alcohol               String?
+  physicalActivityLevel String?  @map("physical_activity_level")
+  sport                 String[]
+
+  sportsSessions   SportsSession[]
+  sportsStrategies SportsStrategy[]
+
+  @@map("lifestyle")
 }
 
-model Plan{
-  id                Int         @id @default(autoincrement())
-  descripcion       String      @db.VarChar
-  //--foreign keys
-  consulta          Consulta    @relation(fields: [consulta_id], references: [id], onDelete: Cascade)
-  consulta_id       String      @unique @db.VarChar
-  //relations
-  comida            Comida[]
-  requerimiento     Requerimiento[]
+// lifestyle can have multiple sports sessions
+model SportsSession {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  lifestyleId String    @map("lifestyle_id") @db.Uuid
+  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id], onDelete: Cascade)
+
+  description String?
+  discipline  String?
+  duration    Int?
+  intensity   String?
+  eventType   SportsEventType? @map("event_type")
+  days        String?
+  schedule    String?
+
+  @@map("sports_session")
+}
+
+model SportsStrategy {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  lifestyleId String    @map("lifestyle_id") @db.Uuid
+  lifestyle   Lifestyle @relation(fields: [lifestyleId], references: [id], onDelete: Cascade)
+
+  supplement         String?
+  hydration          String?
+  preActivityMeal    String? @map("pre_activity_meal")
+  duringActivityMeal String? @map("during_activity_meal")
+  postActivityMeal   String? @map("post_activity_meal")
+
+  @@map("sports_strategy")
+}
+
+// Una medición siempre pertenece al historial clínico del paciente (clinicalRecordId). Si se tomó en
+// una consulta, además apunta a ella (consultationId); si la registró el usuario por su cuenta,
+// consultationId queda en null.
+model Measurements {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  clinicalRecordId String         @map("clinical_record_id") @db.Uuid
+  clinicalRecord   ClinicalRecord @relation(fields: [clinicalRecordId], references: [id])
+
+  // onDelete: Restrict explícito: al volverse opcional, Prisma usaría SET NULL por defecto.
+  consultationId String?                  @map("consultation_id") @db.Uuid
+  consultation   NutritionalConsultation? @relation(fields: [consultationId], references: [id], onDelete: Restrict)
+
+  // Fecha de la medición. En las de consulta coincide con consultationDate.
+  measuredAt DateTime @default(now()) @map("measured_at")
+
+  measurementNumber Int               @map("measurement_number")
+  level             MeasurementLevel?
+  description       String?
+
+  basicMeasurements  BasicMeasurements[]
+  skinfolds          Skinfolds[]
+  circumferences     Circumferences[]
+  diameters          Diameters[]
+  measurementResults MeasurementResults[]
+
+  @@index([clinicalRecordId, measuredAt])
+  @@map("measurements")
+}
+
+model BasicMeasurements {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  weight        Float
+  height        Float
+  sittingHeight Float? @map("sitting_height")
+  armSpan       Float? @map("arm_span")
+
+  @@map("basic_measurements")
+}
+
+model Skinfolds {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  triceps     Float?
+  subscapular Float?
+  biceps      Float?
+  iliacCrest  Float? @map("iliac_crest")
+  supraspinal Float?
+  abdominal   Float?
+  thigh       Float?
+  calf        Float?
+
+  @@map("skinfolds")
+}
+
+model Circumferences {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  relaxedArm Float? @map("relaxed_arm")
+  flexedArm  Float? @map("flexed_arm")
+  waist      Float?
+  hip        Float?
+  midThigh   Float? @map("mid_thigh")
+  calf       Float?
+
+  @@map("circumferences")
+}
+
+model Diameters {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  humerus   Float?
+  bistyloid Float?
+  femur     Float?
+
+  @@map("diameters")
+}
+
+model MeasurementResults {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  measurementsId String       @map("measurements_id") @db.Uuid
+  measurements   Measurements @relation(fields: [measurementsId], references: [id])
+
+  // Los calcula calculateMeasurementResults al crear/editar una medición; nullable porque una
+  // medición sin peso o talla no tiene IMC.
+  bmi               Float?
+  bmiClassification String? @map("bmi_classification")
+
+  bfKg             Float?  @map("bf_kg")
+  bfPercentage     Float?  @map("bf_percentage")
+  bfClassification String? @map("bf_classification")
+  bfMethod         String? @map("bf_method")
+
+  vfKg             Float?  @map("vf_kg")
+  vfPercentage     Float?  @map("vf_percentage")
+  vfClassification String? @map("vf_classification")
+  vfMethod         String? @map("vf_method")
+
+  mmKg             Float?  @map("mm_kg")
+  mmPercentage     Float?  @map("mm_percentage")
+  mmClassification String? @map("mm_classification")
+  mmMethod         String? @map("mm_method")
+
+  bmKg             Float?  @map("bm_kg")
+  bmPercentage     Float?  @map("bm_percentage")
+  bmClassification String? @map("bm_classification")
+  bmMethod         String? @map("bm_method")
+
+  lbmi               Float? // lean body mass index
+  lbmiClassification String? @map("lbmi_classification")
+
+  endo Float?
+  meso Float?
+  ecto Float?
+
+  phaWeight                 Float? @map("pha_weight")
+  phaSkinfoldTriceps        Float? @map("pha_skinfold_triceps")
+  phaSkinfoldSubscapular    Float? @map("pha_skinfold_subscapular")
+  phaSkinfoldBiceps         Float? @map("pha_skinfold_biceps")
+  phaSkinfoldIliacCrest     Float? @map("pha_skinfold_iliac_crest")
+  phaSkinfoldSupraspinal    Float? @map("pha_skinfold_supraspinal")
+  phaSkinfoldAbdominal      Float? @map("pha_skinfold_abdominal")
+  phaSkinfoldThigh          Float? @map("pha_skinfold_thigh")
+  phaSkinfoldCalf           Float? @map("pha_skinfold_calf")
+  phaCircumferenceArm       Float? @map("pha_circumference_arm")
+  phaCircumferenceArmFlexed Float? @map("pha_circumference_arm_flexed")
+  phaCircumferenceWaist     Float? @map("pha_circumference_waist")
+  phaCircumferenceHip       Float? @map("pha_circumference_hip")
+  phaCircumferenceThigh     Float? @map("pha_circumference_thigh")
+  phaCircumferenceCalf      Float? @map("pha_circumference_calf")
+  phaDiameterHumerus        Float? @map("pha_diameter_humerus")
+  phaDiameterBistyloid      Float? @map("pha_diameter_bistyloid")
+  phaDiameterFemur          Float? @map("pha_diameter_femur")
+
+  @@map("measurement_results")
+}
+
+// Proyección de composición corporal asociada a un Plan (un Plan puede tener N). La crea la
+// generación del plan personalizado (CU-PLN-06) según doc/nutrition-plan/proyeccion.md.
+model Projection {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId String @map("plan_id") @db.Uuid
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  projectedStartDate    DateTime @map("projected_start_date") @db.Date
+  projectedEndDate      DateTime @map("projected_end_date") @db.Date
+  projectedWeight       Float    @map("projected_weight")
+  projectedBfKg         Float?   @map("projected_bf_kg")
+  projectedBfPercentage Float?   @map("projected_bf_percentage")
+  projectedMmKg         Float?   @map("projected_mm_kg")
+  projectedMmPercentage Float?   @map("projected_mm_percentage")
+  projectedBmi          Float?   @map("projected_bmi")
+
+  @@map("projection")
+}
+
+// Plan: agrupa uno o más NutritionalPlan generados a partir de una consulta y la orden que lo
+// originó. Hoy cada Plan tiene un único NutritionalPlan (mainPlan = true), pero el modelo soporta N.
+model Plan {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  consultationId String                  @map("consultation_id") @db.Uuid
+  consultation   NutritionalConsultation @relation(fields: [consultationId], references: [id])
+
+  orderId String @unique @map("order_id") @db.Uuid
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  active Boolean @default(true)
+
+  nutritionalPlans NutritionalPlan[]
+  projections      Projection[]
+
   @@map("plan")
 }
 
-model Requerimiento{
-  id                Int        @id @default(autoincrement())
-  descripcion       String      @db.VarChar
-  tmb               Int         @db.Integer
-  actividad_fisica  Int         @db.Integer
-  termogenesis      Int         @db.Integer
-  ejercicio_fisico  Int         @db.Integer
-  f_patologias      Int         @db.Integer
-  f_crecimiento     Int         @db.Integer
-  get               Int         @db.Integer
-  balance           Int         @db.Integer
-  dist_proteina     Int         @db.Integer
-  dist_carbohidrato Int         @db.Integer
-  dist_lipido       Int         @db.Integer
-  req_cal           Int         @db.Integer
-  req_proteina      Int         @db.Integer
-  req_carbohidrato  Int         @db.Integer
-  req_lipido        Int         @db.Integer
-  plan              Plan        @relation(fields: [plan_id], references: [id], onDelete: Cascade)
-  plan_id           Int         @db.Integer
-  @@map("requerimiento")
+model NutritionalPlan {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId String @map("plan_id") @db.Uuid
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  planName  String      @map("plan_name")
+  period    PlanPeriod?
+  mainPlan  Boolean     @default(true) @map("main_plan")
+  startDate DateTime    @map("start_date") @db.Date
+  // El ERD lo define NOT NULL; la generación lo fija con el período proyectado, pero los planes
+  // anteriores no lo tienen: queda nullable.
+  endDate   DateTime?   @map("end_date") @db.Date
+
+  goal        String
+  dietRegimen String @map("diet_regimen")
+
+  calorieRequirement      Float @map("calorie_requirement")
+  proteinRequirement      Float @map("protein_requirement")
+  carbohydrateRequirement Float @map("carbohydrate_requirement")
+  lipidRequirement        Float @map("lipid_requirement")
+
+  calorieIntake      Float @map("calorie_intake")
+  proteinIntake      Float @map("protein_intake")
+  carbohydrateIntake Float @map("carbohydrate_intake")
+  lipidIntake        Float @map("lipid_intake")
+
+  mealTimes             PlanMealTime[]
+  supplements           PlanSupplement[]
+  sportsRecommendations PlanSportsRecommendation[]
+
+  @@map("nutritional_plan")
 }
 
-model Comida{
-  id                Int         @id @default(autoincrement())
-  descripcion       String      @db.VarChar
-  cereal            Int         @db.Integer
-  verdura_lc        Int         @db.Integer
-  verdura_cg        Int         @db.Integer
-  fruta             Int         @db.Integer
-  carne             Int         @db.Integer
-  legumbre          Int         @db.Integer
-  lacteo            Int         @db.Integer
-  rico_lipido       Int         @db.Integer
-  aceite            Int         @db.Integer
-  plan              Plan        @relation(fields: [plan_id], references: [id], onDelete: Cascade)
-  plan_id           Int         @db.Integer
-  @@map("comida")
+// nutritional_plan can have multiple meal times (meal_time array)
+model PlanMealTime {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId          String          @map("plan_id") @db.Uuid
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  time PlanMealTimeSlot  @map("time")
+  hour String?           @map("hour")
+
+  calorieIntake      Float @map("calorie_intake")
+  proteinIntake      Float @map("protein_intake")
+  carbohydrateIntake Float @map("carbohydrate_intake")
+  fatIntake          Float @map("fat_intake")
+
+  cereal                      Float?
+  freeConsumptionVegetable    Float? @map("free_consumption_vegetable")
+  generalConsumptionVegetable Float? @map("general_consumption_vegetable")
+  fruit                       Float?
+  highFatProtein              Float? @map("high_fat_protein")
+  lowFatProtein               Float? @map("low_fat_protein")
+  highFatDairy                Float? @map("high_fat_dairy")
+  mediumFatDairy              Float? @map("medium_fat_dairy")
+  lowFatDairy                 Float? @map("low_fat_dairy")
+  highProteinDairy            Float? @map("high_protein_dairy")
+  lipidRich                   Float? @map("lipid_rich")
+  oil                         Float?
+  sugar                       Float?
+
+  notes PlanMealTimeNote[]
+
+  @@map("plan_meal_time")
 }
 
-enum IMCClasificacion {
-  BAJO_PESO
-  NORMO_PESO
-  SOBRE_PESO
-  OBESIDAD_I
-  OBESIDAD_II
-  OBESIDAD_III
+// plan_meal_time can have multiple examples and comments (examples/comments arrays)
+model PlanMealTimeNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planMealTimeId String       @map("plan_meal_time_id") @db.Uuid
+  planMealTime   PlanMealTime @relation(fields: [planMealTimeId], references: [id], onDelete: Cascade)
+
+  note String
+  type PlanMealTimeNoteType
+
+  @@map("plan_meal_time_note")
 }
 
-enum EvaClasificacion{
-  BAJO
-  MEDIO
-  ALTO 
-  MUY_ALTO
+// nutritional_plan has at most one associated supplement (supplement object, not an array)
+model PlanSupplement {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId          String          @map("plan_id") @db.Uuid
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  supplement         String
+  requirement        Float
+  doseInstructions   String? @map("dose_instructions")
+  intakeInstructions String? @map("intake_instructions")
+
+  calorieIntake      Float @map("calorie_intake")
+  proteinIntake      Float @map("protein_intake")
+  carbohydrateIntake Float @map("carbohydrate_intake")
+  fatIntake          Float @map("fat_intake")
+
+  notes PlanSupplementNote[]
+
+  @@map("plan_supplement")
 }
 
-enum Rol {
-  ADMIN
-  PROFESIONAL
-  PACIENTE
+// plan_supplement can have multiple effects and considerations (effects/considerations arrays)
+model PlanSupplementNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planSupplementId String         @map("plan_supplement_id") @db.Uuid
+  planSupplement   PlanSupplement @relation(fields: [planSupplementId], references: [id], onDelete: Cascade)
+
+  note String
+  type PlanSupplementNoteType
+
+  @@map("plan_supplement_note")
 }
 
-enum Genero {
-  MASCULINO
-  FEMENINO
-  OTRO
+// nutritional_plan can have multiple sports recommendations (sports_recommendation array)
+model PlanSportsRecommendation {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  planId          String          @map("plan_id") @db.Uuid
+  nutritionalPlan NutritionalPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  session        String?
+  strategy       String?
+  preActivity    String? @map("pre_activity")
+  duringActivity String? @map("during_activity")
+  postActivity   String? @map("post_activity")
+
+  @@map("plan_sports_recommendation")
+}
+
+// =========================================
+// COMMERCIAL DOMAIN
+// =========================================
+
+model Product {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  type        ProductType
+  name        String
+  description String
+
+  price    Decimal @db.Decimal(12, 2)
+  currency String
+
+  // Identificador legible de la versión de un plan predefinido, p. ej. 'plan-gimnasio-volumen-50-60-m-joven'
+  // (<plan>-<pesoMin>-<pesoMax>-<sexo>-<edad>). Es también el nombre de los archivos en S3. Null para
+  // productos GENERATED. También puede ser solo el slug de la familia (p. ej. 'plan-gimnasio-volumen',
+  // sin peso/sexo/edad): identifica una fila "vista previa" por familia (sin pdfKey, no comprable — el
+  // regex de compra exige peso/sexo/edad), usada por GET /productos/vista-previa.
+  code String? @unique
+
+  // Object key en S3 (carpeta productos-estandarizados/) del PDF estático y de su miniatura WebP;
+  // solo aplican si type = PREDEFINED. Al confirmarse el pago se copian a order.pdf_key /
+  // order.thumbnail_key. En una fila "vista previa" (ver `code`) pdfKey queda null: no hay PDF, solo
+  // la miniatura para el carrusel del home.
+  pdfKey       String? @map("pdf_key")
+  thumbnailKey String? @map("thumbnail_key")
+
+  // Resumen nutricional básico, espejo en inglés de los campos de NutritionalPlan (goal, dietRegimen,
+  // *Intake). Nullable: hoy no se puebla para ninguna fila. Sirve para mostrar algo cuando un plan
+  // predefinido —que no genera NutritionalPlan— se muestre en el perfil del usuario.
+  goal        String?
+  dietRegimen String? @map("diet_regimen")
+
+  calorieIntake      Float? @map("calorie_intake")
+  proteinIntake      Float? @map("protein_intake")
+  carbohydrateIntake Float? @map("carbohydrate_intake")
+  lipidIntake        Float? @map("lipid_intake")
+
+  active Boolean
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("product")
+}
+
+// Tabla `order` del ERD. Antes se nombraba CommercialOrder en Prisma para no chocar con el
+// modelo `Order` legacy (tabla `orden`); ese modelo quedó comentado arriba, así que este pasa
+// a llamarse Order.
+model Order {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  productId String  @map("product_id") @db.Uuid
+  product   Product @relation(fields: [productId], references: [id])
+
+  amount   Decimal @db.Decimal(12, 2) // monto efectivamente cobrado (puede diferir de product.price por descuentos/promos)
+  currency String
+
+  paymentStatus PaymentStatus @default(PENDING) @map("payment_status")
+
+  // Estado del pipeline de generación del plan (background, fire-and-forget desde el webhook de pago).
+  // No es un dato comercial del pedido en sí, pero vive acá por continuidad con el flujo legacy
+  // (antes columnas de la tabla `orden`) y porque el pipeline opera 1:1 sobre una Order.
+  generationStatus GenerationStatus @default(NOT_STARTED) @map("generation_status")
+  planJson         String?          @map("plan_json") // NutritionPlanDto serializado, null hasta que se genera
+  pdfKey           String?          @map("pdf_key") // object key en S3 (carpeta productos-personalizados/) del PDF ya generado y subido
+  thumbnailKey     String?          @map("thumbnail_key") // object key en S3 (productos-personalizados/miniaturas/) de la miniatura WebP de la página 1 del PDF; null si no se pudo generar
+  attempts         Int              @default(0) // rondas de generación fallidas (cada ronda son hasta 4 intentos)
+  // Último cambio de generationStatus (entrada a GENERATING o fallo de una ronda). Lo usa el job de
+  // reintentos para respetar la espera entre rondas y detectar generaciones interrumpidas.
+  generationUpdatedAt DateTime? @map("generation_updated_at")
+
+  creationDate   DateTime  @map("creation_date")
+  paymentDate    DateTime? @map("payment_date")
+  expirationDate DateTime? @map("expiration_date")
+
+  payments                Payment[]
+  plan                    Plan?
+  nutritionalConsultation NutritionalConsultation?
+
+  @@map("order")
+}
+
+model Payment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  orderId String @map("order_id") @db.Uuid
+  order   Order  @relation(fields: [orderId], references: [id])
+
+  provider          PaymentProvider
+  paymentIdentifier String                   @map("payment_identifier") // identificador transbank
+  authorizationCode String                   @map("authorization_code")
+  amount            Decimal                  @db.Decimal(12, 2)
+  installmentCount  Int                      @map("installment_count")
+  status            PaymentTransactionStatus
+  transactionDate   DateTime                 @map("transaction_date")
+  movementType      String                   @map("movement_type")
+  cardType          String                   @map("card_type")
+
+  @@map("payment")
 }

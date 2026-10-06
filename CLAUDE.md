@@ -1,0 +1,309 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+NestJS backend for NutriApp: a conversational agent that, backed by OpenAI, collects a patient's
+anamnesis via chat, processes payment for the consultation, and asynchronously generates a
+personalized nutrition plan (emailed as PDF, also downloadable from the frontend).
+
+The **README.md is the primary source of truth** for this project — it documents every endpoint,
+the full plan-generation pipeline, the domain formulas, Prisma schema, and known technical debt in
+detail. Read it before making non-trivial changes. `../doc/flows/purchase-flow-personalized-plan.md` walks the
+end-to-end sequence of a successful consultation; `doc/error-handling.md` describes how errors
+are handled (single error contract `{ statusCode, code, message, errors?, requestId }`, guards, Prisma,
+LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `../doc/security/backend-security.md`
+lists every security control (guards, order ownership, webhook secret, input caps, rate limiting, CORS, prompt
+guard) — keep it in sync when you touch one; `doc/technical-debt.md` lists known gaps
+in more detail than the README's summary. `to-do-list.md` is stale — it describes a prior
+datasources/repositories architecture that no longer exists in `src/`; ignore it.
+
+## Commands
+
+```bash
+npm run start:dev      # dev server, watch mode
+npm run build           # nest build
+npm run start:prod      # run compiled dist/main
+npm run lint             # eslint --fix over src/apps/libs/test
+npm run format            # prettier --write over src/ and test/
+npm run test               # unit tests (jest)
+npm run test:watch
+npm run test:cov
+npm run test:e2e           # e2e tests (separate jest config: test/jest-e2e.json)
+npx prisma migrate dev    # apply/create a Postgres migration (see prisma/migrations/)
+```
+
+Run a single unit test file (Jest `rootDir` is `src`, so pass a name that matches the `.spec.ts`
+path/filename, not a project-root-relative path):
+
+```bash
+npm test -- confirm-payment.use-case
+npm test -- src/modules/billing/use-cases/confirm-payment.use-case.spec.ts
+```
+
+Every controller, use case, adapter and domain service has its `.spec.ts` next to the file it tests.
+
+## Architecture
+
+The structure follows `../doc/product/refactor.md` (modules, ports, routes) and
+`../doc/product/use-cases.md` (one class per use case, shared rules R1–R7). Read both before adding a
+module or an endpoint.
+
+```
+src/
+├── domain/                    # Pure business rules, no NestJS/SDK dependencies
+│   ├── ports/                  # Abstract classes used as Nest injection tokens: LlmProvider, FileStorage,
+│   │                            # EmailSender, PlanDocumentRenderer, AlertNotifier, IdentityProvider
+│   ├── errors/                 # Plain error classes thrown by adapters (LlmUnavailableError, LlmInvalidResponseError)
+│   ├── dtos/                   # Shared data interfaces + identity-auth/clinical-domain/commercial-domain Create*/Update*Dto
+│   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (*Entity suffix)
+│   ├── datasources/ repositories/  # Abstract persistence contracts per entity (use cases depend on repositories/)
+│   └── services/
+│       ├── formulas/            # indexes/ (BMI, muscle-mass index), body-composition/, skinfolds/, perimeters/, phantom/, somatotype/, requirements/ (requirements, supplements, sport sessions); classifications.enum.ts shared
+│       ├── alimentos/           # Food exchange-portion table
+│       └── utils/                # Age, predefined plan codes, S3 keys (storage-keys.ts)
+├── infrastructure/             # Adapters: implement domain/ports and domain repositories
+│   ├── persistence/            # orm/prisma (PrismaService, global), datasources/ (Prisma impls), repositories/ (thin delegation)
+│   ├── llm/openai/             # OpenaiLlmProvider -> LlmProvider (LlmModule)
+│   ├── storage/s3/             # S3FileStorage -> FileStorage (FileStorageModule)
+│   ├── email/                  # LogEmailSender -> EmailSender (EmailModule; stub, logs only)
+│   ├── alerts/                 # LogAlertNotifier -> AlertNotifier (AlertsModule; stub, structured ALERT log)
+│   ├── pdf/                    # ReactPdfPlanDocumentRenderer -> PlanDocumentRenderer (PDF + WebP thumbnail)
+│   └── auth/cognito/           # getCognitoVerifier() (aws-jwt-verify) + CognitoIdentityProvider -> IdentityProvider (userInfo: the account's verified email)
+├── common/                     # CognitoAuthGuard, @CognitoUser(), AllExceptionsFilter (single error format), errors/error-codes.ts, request-id middleware, API_PREFIX
+├── modules/                    # NestJS business modules
+│   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
+│   ├── consultation/           # /consultations/chat, /consultations/goal-feasibility, /consultations
+│   ├── plans/                  # /plans/standard/*, /plans/personalized (public price of the GENERATED product), /me/plans, /me/plans/latest/projection, /me/plans/:orderId, plan generation (listener of order.paid)
+│   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment[-rejection];
+│   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid and
+│   │                            # order.expired; jobs/ holds the cron that expires unpaid orders
+│   └── clinical/               # patient history: /me/consultations, /me/measurements (list/detail/record/edit); reads order
+│                                # statuses via the consultation repository (no billing import)
+├── app.module.ts
+└── main.ts                     # app.setGlobalPrefix('api/v1'), Swagger at /api-docs (outside the prefix; opt-in with ENABLE_SWAGGER=true, never in production)
+```
+
+Inside each module: `<resource>.controller.ts` (HTTP ↔ one use case, no logic), `dto/` (validated
+`*Impl` classes implementing the plain interfaces in `domain/dtos`), `use-cases/<verb>-<resource>.use-case.ts`
+(class `VerbResourceUseCase` with a single public `execute(input)`), and `listeners/` for use cases
+triggered by events. Don't add `XxxService` god-classes; if two use cases share logic, extract a
+domain service or an internal use case (e.g. `CreateOrderUseCase`).
+
+**Dependency rules (important):**
+
+- `domain/` never imports from `modules/`, `infrastructure/` or `common/`. Use cases depend on
+  `domain/ports`, never on the OpenAI/S3 SDKs or the concrete adapters; specs mock the port.
+- Between modules: `consultation`/`plans`/`clinical` → `billing` → nothing (`clinical` doesn't import it today); everyone may use `identity` only for
+  `CurrentUserResolver`. `billing` never imports `plans`: it emits `order.paid`
+  (`modules/billing/events/order-paid.event.ts`, `@nestjs/event-emitter` v3 — v12 is ESM-only and breaks
+  Jest) and `plans/listeners/order-paid.listener.ts` reacts. Same for `order.expired`:
+  `consultation/listeners/order-expired.listener.ts` deletes the expired order's consultation, with
+  `consultation/jobs/purge-expired-consultations.job.ts` (hourly) as the safety net for a failed delete
+  or a lost in-memory event.
+- Only `billing` writes `order`/`payment`. New orders go through `CreateOrderUseCase`; generation state
+  transitions through `OrderLifecycleService`.
+
+**Route conventions:** every route lives under `/api/v1`, uses English plural nouns
+(`POST /consultations`, not `/create-consultation`), and everything that belongs to the authenticated
+user lives under `/me` (the user always comes from the token via `CurrentUserResolver.resolve`, never
+from a body/URL id — R1). A route with an id must filter by the user too and answer 404 for both
+"missing" and "not yours" (R2). The frontend (`../nutricionista-virtual-front`) calls these routes
+through `apiFetch`, which adds the `api/v1` prefix — a route change is a coordinated back + front change.
+
+### Request/response flow
+
+0. `POST /me/sync` — creates `AuthIdentity` + skeleton `User` for the Cognito `sub` (idempotent), called
+   by the frontend's login callback. `PATCH /me` completes the profile (single DTO, all fields optional,
+   including `athlete`). See `doc/auth.md`.
+1. `POST /consultations/chat` — one call per chat turn (`ChatAnamnesisUseCase`). Builds a system prompt
+   (`modules/consultation/prompts/anamnesis-chat.prompt.ts`) describing the full `AnamnesisDto` schema and
+   current fill-state, calls the LLM, normalizes the model's JSON (`dto/anamnesis-normalizer.ts`) and
+   **recomputes `isComplete` on the server** rather than trusting the model.
+2. `POST /consultations/goal-feasibility` (`EvaluateGoalFeasibilityUseCase`, CU-CON-03) — called by the
+   frontend when the physical assessment ends: classifies the goal via the LLM
+   (`prompts/classify-goal.prompt.ts`) and applies `evaluateGoalFeasibility`
+   (`domain/services/projection/projection.service.ts`): losing weight is not feasible if not even 1 month
+   (−2 kg) keeps BMI ≥ 20 and body fat % above the per-sex floor. Always 200 with `{ feasible, goal, message }`.
+3. `POST /consultations` (`CreateConsultationUseCase`, requires a **complete** profile — 400 otherwise;
+   also 400 if the goal is not feasible, re-running CU-CON-03 as a backstop) — resolves the user and their `ClinicalRecord`, the active `GENERATED` `Product` (loaded by a migration with its real price — the backend never creates it; missing → 500; its price is public at `GET /plans/personalized`), creates the `Order`
+   through billing's `CreateOrderUseCase` (`paymentStatus='PENDING'`), and persists the full
+   `NutritionalConsultation` (with `orderId`) + `Anamnesis`/`Measurements` in one nested Prisma write
+   (`consultation.mapper.ts`). Order and consultation are two separate writes, by design (no shared transaction): if the second fails the orphan `PENDING` order can't be paid (its id never reaches the client) and expires after 24h.
+   `personalInfo` is still required by the contract but not read.
+4. Payment (`POST /webhooks/payments` or the simulated `POST /dev/orders/:id/simulate-payment`, enabled
+   only with `ENABLE_PAYMENT_SIMULATION=true`) → `ConfirmPaymentUseCase` marks the order paid
+   **idempotently** (+ `payment` row, same transaction; for `PREDEFINED` products it also copies the PDF
+   keys and completes the order) and emits `order.paid` only if this call marked it. It responds
+   immediately (`processed` | `already_processed`).
+5. `OrderPaidListener` runs `GeneratePersonalizedPlanUseCase` fire-and-forget for `GENERATED` products:
+   rebuilds the consultation by `order_id` → classifies activity level/objective via the LLM → computes
+   energy/macro requirements and supplements **without AI** → asks the LLM for the plan using those numbers
+   verbatim, as exchange-group portions (validated in code by `generation/plan-validation.ts`; rejected meal
+   times are fixed with up to 2 targeted repair calls, `llm_repair`, before the attempt fails) → retries up to 4x with exponential backoff →
+   renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan` (its `endDate`) + its
+   `Projection` (`calculateProjection`, rules in `doc/nutrition-plan/proyeccion.md`; none for
+   "mantencion"), completes the order (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
+   Those 4 tries are one **round**; a failed round leaves the order `ERROR` with `attempts + 1`.
+   `RetryPendingGenerationsJob` (`modules/plans/jobs/`, every 10 min) → `RetryPendingGenerationsUseCase`
+   re-runs the generation for paid `GENERATED` orders that are in `ERROR` with rounds left (3 automatic
+   retries, waiting 15 min / 1 h / 4 h since `generationUpdatedAt`), stuck in `GENERATING` for 30+ min
+   (process restarted mid-run; counted as a failed round) or paid but still `NOT_STARTED` after 5 min
+   (the in-memory `order.paid` event was lost). Policy constants and `isGenerationRetryPending` live in
+   `domain/services/orders/generation-retry.policy.ts`; while retries are pending the user-facing
+   reads report `GENERATING`/`generating` instead of the error. After 4 failed rounds the `ERROR` is
+   final (manual intervention).
+6. `GET /orders/:id/status` (`GetOrderStatusUseCase`) — polling endpoint; validates ownership (404 for
+   missing or foreign orders). `GET /me/plans` lists the user's ready plans (with name, type and summary);
+   `GET /me/plans/:orderId` returns one plan's full detail (child tables, or `order.planJson` for older plans);
+   `GET /me/plans/latest/projection` returns the latest dated plan's period and its `Projection` (404 if none).
+
+`LlmProvider.chatJson<T>` is the single point of access to the model: `OpenaiLlmProvider` calls
+`chat.completions.create` and returns the parsed result. A call that passes `LlmCallOptions.schema`
+(a hand-written `NamedJsonSchema`, `domain/services/llm/json-schema.ts`) gets structured output in strict mode
+(`response_format: json_schema`) and the adapter also validates the answer against it
+(`LlmInvalidResponseError` otherwise); without a schema it is plain `json_object` (the anamnesis chat). Schemas
+live next to their TS type (`modules/plans/generation/schemas/`, `modules/consultation/prompts/classify-goal.schema.ts`)
+and must stay strict (`strictObject`: every property required, no additional properties, optional = union with
+null) — their specs check it. Each use
+case passes its own model (env-driven, with fallbacks) — `OPENAI_MODEL_CONSULTA` for the chat (cheap
+model, no payment gate) vs `OPENAI_MODEL_PLAN` for generation (paid gate; this model only accepts the
+default `temperature=1` — passing any other value causes a 400).
+
+### Domain formulas
+
+`domain/services/formulas/requirements/requirements.service.ts` computes TMB (Harris-Benedict for 18+,
+FAO/OMS/UNU for minors) → GET (TMB adjusted for activity + thermogenesis) → energy/macro targets
+based on `objetivo` (`definicion` | `mantencion` | `volumen`). `requirements/supplements.service.ts` computes a
+supplement prescription from weight alone. Both are computed once in `GeneratePersonalizedPlanUseCase` and handed
+to the AI as fixed inputs it must not recalculate.
+
+`domain/services/measurements/measurement-results.calculator.ts` (`calculateMeasurementResults`) builds
+the `measurement_results` row whenever a measurement is created or edited (CU-CON-02, CU-CLI-05,
+CU-CLI-06): BMI + classification from weight/height (`formulas/indexes/bmi.service.ts`) and, for
+`BIOIMPEDANCE`, kg and % of body fat, muscle mass, visceral fat and bone mass — the user enters one
+unit per component and the other is derived from weight (`formulas/body-composition/mass-conversion.service.ts`).
+On edit, the stored **percentage** is the source of truth (a weight change keeps % and recalculates kg).
+
+Several other formula services exist (skinfolds, muscle mass, body fat % from skinfolds, phantom, IMM,
+corrected perimeters, somatocarta, sports-session expenditure) but are **not yet wired into the
+plan-generation flow** (nor into measurements) — only weight and height (`peso`/`talla`) from `MedicionesDto` are currently
+used. See the README's "Deuda técnica" section and `doc/technical-debt.md` before assuming any of
+these are live.
+
+`domain/services/alimentos/porciones-alimentos.ts` defines the food-exchange portion table used by
+the plan-generation prompt to tell the AI the nutritional value per portion of each food group.
+
+### Persistence
+
+**Postgres**, via a full domain schema (`prisma/schema.prisma`, 35 models across three sections —
+`IDENTITY & AUTH`, `CLINICAL DOMAIN`, `COMMERCIAL DOMAIN`). The old single-model SQLite setup (one
+`Order`, tables `orden`) is gone — that legacy model is left commented out in the schema for
+reference only, and its table was dropped. Closed-value columns (`Order.paymentStatus`/`generationStatus`,
+`Payment.provider`/`status`, `Product.type`, `SportsSession.eventType`, `Measurements.level`,
+`NutritionalPlan.period`, `PlanMealTime.time`, ...) are **native Postgres enums** (`enum` blocks in
+`schema.prisma`), mirrored in the domain as `as const` objects + union types in
+`domain/entities/enums.ts` — use those constants (`PaymentStatus.PAID`, `GenerationStatus.COMPLETED`)
+instead of string literals. Order statuses are English (`PENDING|PAID|REJECTED|EXPIRED`,
+`NOT_STARTED|GENERATING|COMPLETED|ERROR`) and that's also what `GET /orders/:id/status` returns.
+
+Only part of this schema has a real consumer today — the consultation → billing → plan-generation
+pipeline uses `User`, `ClinicalRecord`, `NutritionalConsultation` (+ its `Anamnesis`/`Measurements`
+children), `Plan` + `NutritionalPlan` (`GeneratePersonalizedPlanUseCase` upserts the order's `Plan` by `orderId`
+— `Plan.orderId` is `@unique`, 1 order → 1 plan — together with its main `NutritionalPlan`
+(`mainPlan = true`) before marking the order `COMPLETED`; a `Plan` can hold N `NutritionalPlan`s,
+though only one is created today, together with its child tables `PlanMealTime` (+ notes, numeric
+portions from the calculation), `PlanSupplement` (one row per supplement, + notes) and
+`PlanSportsRecommendation` — see `modules/plans/generation/plan-generation.mapper.ts`; children are
+replaced via `ON DELETE CASCADE` on retries), `Order`, and `Product`;
+`AuthIdentity` is used by `modules/identity/` (see below). The
+rest (`Projection` is written by plan generation, nested in the same `Plan` upsert, and read by
+`GET /me/plans/latest/projection`; several `clinical-domain` leaf entities)
+exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
+the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
+written by the payment webhook (`OrderRepository.markOrderAsPaidWithPayment`, same transaction that
+marks the order paid; `provider = 'SIMULATED'` while the gateway is simulated).
+
+**Predefined plans** (a second product type, `Product.type = 'PREDEFINED'`, 112 versions identified by
+`Product.code` — `<plan>-<minKg>-<maxKg>-<m|f>-<joven|adulto>`, see
+`domain/services/utils/predefined-plan-code.ts`): the PDF already exists in S3
+(`productos-estandarizados/<code>.pdf`), uploaded by hand, and `npm run seed:predefined` loads/activates
+the catalog. `POST /plans/standard/:code/purchase` creates the order **without** `pdfKey`; payment confirmation copies
+`Product.pdfKey`/`thumbnailKey` to the order (and marks it `COMPLETED`) only when payment is confirmed,
+so an unpaid order never exposes the PDF, and it does **not** run plan generation for these. Full flow:
+`../doc/flows/purchase-flow-predefined-plan.md`.
+
+**Login/registration is implemented** with Amazon Cognito (Hosted UI, native + Google as a
+federated Identity Provider) — see `doc/auth.md` for the full picture. `common/auth/CognitoAuthGuard` (with
+`infrastructure/auth/cognito`) validates the Cognito Access Token
+(`aws-jwt-verify` against the User Pool's JWKS) and resolves/creates `AuthIdentity`+`User` by the
+token's `sub` (`CurrentUserResolver`, `modules/identity/`) — `POST /me/sync` creates the identity ("skeleton" `User`, no password ever
+stored) as soon as there's a valid session, and `PATCH /me` completes the profile
+(`firstName`/`paternalLastName`/`gender`/`dateOfBirth`, all nullable in the schema for exactly this
+reason, plus the optional `athlete` flag, which lives on `User`) separately, since Cognito never provides those fields. `JWT_ACCESS_SECRET`/
+`JWT_REFRESH_SECRET`/`BCRYPT_SALT_OR_ROUNDS` in `.env.template` are still leftovers from an
+unrelated, removed local-auth module — `COGNITO_USER_POOL_ID`/`COGNITO_CLIENT_ID` are the ones
+actually used by the Guard.
+
+There is no data-retention job: orders (`Order.planJson`), consultations and `NutritionalPlan` rows
+are kept indefinitely (the former 45-day `RetentionService` cron was removed). If a retention policy
+is needed later, it must cover `Plan`/`NutritionalPlan` too.
+
+## Security rules (read `../doc/security/backend-security.md`)
+
+- Every new private route: `@UseGuards(CognitoAuthGuard)`, user from the token (R1), filter by owner and answer
+  404 for missing/foreign (R2). Never trust an id, email or amount coming from the client: `POST /me/sync` gets
+  the email from Cognito (`IdentityProvider`), amounts come from `product`.
+- Every DTO string needs `@MaxLength`, every array `@ArrayMaxSize` (these values reach an LLM prompt).
+- Routes that create resources or call the LLM declare `@Throttle(...)` with a constant from
+  `common/throttling/throttle-limits.ts`; the global guard keys by token `sub`, falling back to the IP.
+- Every system prompt appends `UNTRUSTED_INPUT_RULES` (`domain/services/llm/prompt-guard.ts`).
+
+## Keeping documentation in sync
+
+After making a large or structurally significant change — a new/removed module, a new/removed
+endpoint, a change to the plan-generation pipeline, a Prisma schema change, a mass rename/refactor
+of the kind this repo has had before — invoke the `doc-updater` subagent (Agent tool,
+`subagent_type: "doc-updater"`) before considering the task done, so it updates `README.md` and/or
+`doc/` to match. Don't rely on hooks for this; it's a step you take yourself as part of finishing
+the task. Skip it for small/internal changes with no observable impact on architecture, endpoints,
+or documented flows.
+
+## Keeping tests in sync
+
+This repo has a real test suite now (`*.spec.ts` co-located under `src/`, e2e under `test/` — see
+`doc/testing.md` for scope, coverage, and the mocking patterns established). After modifying a
+file that already has a `.spec.ts`, or adding a new service/function to the core pipeline
+(consultation → billing → plans generation, and wired-in domain formulas), invoke the `test-updater`
+subagent (Agent tool, `subagent_type: "test-updater"`) before considering the task done, so it
+updates/adds the relevant tests and confirms they pass. Skip it for changes to code that has no
+test coverage by design (see `doc/testing.md §7` — dead formulas, `ReactPdfPlanDocumentRenderer`, prompt builders)
+unless the user asks to expand coverage there.
+
+## Stubs / not-yet-real integrations
+
+Be aware these are intentionally fake right now — don't assume they behave like production
+integrations when reasoning about behavior or writing tests:
+
+- `PaymentWebhookVerifier` checks a shared secret (`x-webhook-secret` header vs `PAYMENT_WEBHOOK_SECRET`, fails
+  closed when unset) — a stand-in for the real gateway signature. The simulated payment endpoints require the
+  session of the order's owner.
+- `LogEmailSender.sendRealEmail()` only logs — no real email provider wired. Decided: Amazon SES, to be
+  implemented later as a new `EmailSender` adapter. The email already runs outside the generation retry
+  loop (`sendPlanEmail`: a mail failure only logs and raises a `plan_email_failed` alert, it never
+  re-generates a `COMPLETED` plan). See `../doc/flows/purchase-flow-personalized-plan.md` §9.
+- `LogAlertNotifier` (`AlertNotifier` port) only writes a structured `ALERT` log — no real channel yet. It is
+  what `GeneratePersonalizedPlanUseCase` uses for `plan_generation_failed` (`critical` once the `ERROR` is final).
+- Payments are simulated: `POST /dev/orders/:id/simulate-payment` (behind `ENABLE_PAYMENT_SIMULATION`)
+  is the only payment path until Transbank is integrated; `payment.provider = 'SIMULATED'`.
+  `POST /dev/orders/:id/simulate-payment-rejection` simulates a rejected payment (`RejectPaymentUseCase`).
+- Unpaid orders expire: `CreateOrderUseCase` sets `expirationDate = creationDate + 24h`; an order is
+  payable while `PENDING` or `REJECTED` (a rejection can be retried and doesn't reset the window).
+  `ExpireUnpaidOrdersJob` (`@nestjs/schedule`, every 10 min) → `ExpireUnpaidOrdersUseCase` →
+  `OrderLifecycleService.expireIfDue` marks them `EXPIRED` and emits `order.expired`; paying, rejecting or
+  reading the status of an overdue order expires it on the spot (`isExpired`; pay/reject answer 409).
+  On `order.expired`, `DeleteExpiredConsultationUseCase` deletes the order's consultation (anamnesis
+  subtree cascades; its measurements are kept, detached with `consultationId = null`), which is why
+  `consultationNumber` is `max + 1` rather than `count + 1`, and why the `clinical` consultation
+  reads exclude consultations whose order is `EXPIRED`.

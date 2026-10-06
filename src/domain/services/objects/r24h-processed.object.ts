@@ -1,0 +1,72 @@
+//Objetos creados para probar funciones
+
+export const r24hProcessed1 = [
+    {
+        "mealTime": "desayuno",
+        "cereals": true,
+        "freeConsumptionVegetable": null,
+        "generalConsumptionVegetable": null,
+        "fruit": true,
+        "highFatProtein": null,
+        "lowFatProtein": true,
+        "highFatDairy": null,
+        "mediumFatDairy": null,
+        "lowFatDairy": null,
+        "highProteinDairy": null,
+        "highLipid": true,
+        "oil": null,
+        "sugar": null,
+        "alcohol": null
+    },
+    {
+        "mealTime": "almuerzo",
+        "cereals": true,
+        "freeConsumptionVegetable": true,
+        "generalConsumptionVegetable": null,
+        "fruit": null,
+        "highFatProtein": null,
+        "lowFatProtein": true,
+        "highFatDairy": null,
+        "mediumFatDairy": null,
+        "lowFatDairy": null,
+        "highProteinDairy": null,
+        "highLipid": null,
+        "oil": null,
+        "sugar": null,
+        "alcohol": null
+    },
+        {
+        "mealTime": "colacion",
+        "cereals": null,
+        "freeConsumptionVegetable": null,
+        "generalConsumptionVegetable": null,
+        "fruit": null,
+        "highFatProtein": null,
+        "lowFatProtein": null,
+        "highFatDairy": null,
+        "mediumFatDairy": null,
+        "lowFatDairy": null,
+        "highProteinDairy": null,
+        "highLipid": null,
+        "oil": null,
+        "sugar": null,
+        "alcohol": null
+    },
+    {
+        "mealTime": "once",
+        "cereals": true,
+        "freeConsumptionVegetable": null,
+        "generalConsumptionVegetable": null,
+        "fruit": true,
+        "highFatProtein": null,
+        "lowFatProtein": true,
+        "highFatDairy": null,
+        "mediumFatDairy": null,
+        "lowFatDairy": null,
+        "highProteinDairy": null,
+        "highLipid": true,
+        "oil": null,
+        "sugar": null,
+        "alcohol": null
+    }
+]

@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git remote *)",
+      "PowerShell(cd \"C:\\\\Users\\\\cbern\\\\OneDrive\\\\Desktop\\\\PROYECTOS\\\\PRODUCTOS\\\\nutri-agente\\\\nutri-agente-back\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -notmatch \"spec\\\\.ts|e2e-spec\" })",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "WebFetch(domain:github.com)",
+      "Bash(npx tsc *)",
+      "Bash(npx jest *)",
+      "Bash(git stash *)",
+      "Bash(npx ts-node *)",
+      "Bash(OPENAI_API_KEY=sk-test npx jest src/presentation/consulta --silent)",
+      "Bash(git ls-remote *)",
+      "Bash(xargs wc -l)",
+      "Bash(git mv *)",
+      "Bash(mkdir -p src/presentation/consulta)",
+      "Bash(mv src/presentation/anamnesis/dto src/presentation/consulta/dto)",
+      "Bash(mv src/presentation/anamnesis/anamnesis.controller.ts src/presentation/consulta/consulta.controller.ts)",
+      "Bash(mv src/presentation/anamnesis/anamnesis.controller.spec.ts src/presentation/consulta/consulta.controller.spec.ts)",
+      "Bash(mv src/presentation/anamnesis/anamnesis.module.ts src/presentation/consulta/consulta.module.ts)",
+      "Bash(xargs grep -l \"generacion-plan\\\\|adecuacion\\\\|porciones\\\\|tiempos-comida\")",
+      "Bash(npx eslint *)",
+      "Bash(npx nest *)",
+      "WebSearch"
+    ],
+    "ask": [
+      "Bash(npx eslint * --fix*)",
+      "Bash(npx eslint * --fix-force*)",
+      "Bash(npm run lint -- --fix*)",
+      "Bash(npm run lint -- --fix-force*)",
+      "Bash(npx next lint * --fix*)",
+      "Bash(npx next lint * --fix-force*)"
+    ]
+  }
+}
