@@ -12,6 +12,7 @@ import {
   LlmUnavailableError,
 } from '../../domain/errors/llm.errors';
 import { IdentityProviderUnavailableError } from '../../domain/errors/identity.errors';
+import { PaymentGatewayUnavailableError } from '../../domain/errors/payment.errors';
 import { ErrorCode } from '../errors/error-codes';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
@@ -172,6 +173,14 @@ describe('AllExceptionsFilter', () => {
       expect(status).toBe(503);
       expect(body.code).toBe(ErrorCode.LLM_UNAVAILABLE);
       expect(body.message).not.toContain('OpenAI');
+    });
+
+    it('un fallo de la pasarela de pago responde 503 PAYMENT_UNAVAILABLE, sin detalle del proveedor', () => {
+      const { status, body } = run(new PaymentGatewayUnavailableError('Transbank commit: 422'));
+
+      expect(status).toBe(503);
+      expect(body.code).toBe(ErrorCode.PAYMENT_UNAVAILABLE);
+      expect(body.message).not.toContain('Transbank');
     });
 
     it('un fallo del proveedor de identidad responde 503 AUTH_UNAVAILABLE', () => {

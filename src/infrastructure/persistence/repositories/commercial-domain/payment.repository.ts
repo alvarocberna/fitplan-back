@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { PaymentRepository } from '../../../../domain/repositories/commercial-domain/payment.repository';
 import { PaymentDatasource } from '../../../../domain/datasources/commercial-domain/payment.datasource';
 import { PaymentEntity } from '../../../../domain/entities/payment.entity';
-import { CreatePaymentDto, UpdatePaymentDto } from '../../../../domain';
+import {
+  ClosePaymentDto,
+  CreatePaymentDto,
+  UpdatePaymentDto,
+} from '../../../../domain';
 
 @Injectable()
 export class PaymentRepositoryImpl implements PaymentRepository {
@@ -25,5 +29,19 @@ export class PaymentRepositoryImpl implements PaymentRepository {
 
   deletePaymentById(id: string): Promise<void> {
     return this.datasource.deletePaymentById(id);
+  }
+
+  getPaymentByToken(token: string): Promise<PaymentEntity | null> {
+    return this.datasource.getPaymentByToken(token);
+  }
+
+  getPaymentByIdentifier(
+    paymentIdentifier: string,
+  ): Promise<PaymentEntity | null> {
+    return this.datasource.getPaymentByIdentifier(paymentIdentifier);
+  }
+
+  closeInitiatedPayment(id: string, result: ClosePaymentDto): Promise<boolean> {
+    return this.datasource.closeInitiatedPayment(id, result);
   }
 }

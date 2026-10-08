@@ -61,13 +61,15 @@ protegidas hoy:
 | `GET /orders/:id/status` | Sí | Sí — valida que la orden pertenezca al usuario del token (ver más abajo) |
 | `GET /me/plans` | Sí | Sí — filtra siempre por el usuario del token |
 | `POST /me/sync`, `PATCH /me` | Sí | Sí |
-| `POST /webhooks/payments`, `POST /dev/orders/:id/simulate-payment`, `POST /dev/orders/:id/simulate-payment-rejection` | **No** | — |
+| `POST /orders/:id/payments` | Sí | Sí — valida que la orden pertenezca al usuario del token |
+| `POST /dev/orders/:id/simulate-payment`, `POST /dev/orders/:id/simulate-payment-rejection` | Sí | Sí — la orden debe ser del usuario (solo con `ENABLE_PAYMENT_SIMULATION=true`) |
+| `POST /payments/webpay/commit` | **No** | — |
 
-`POST /webhooks/payments` y `POST /dev/orders/:id/simulate-payment[-rejection]` quedan deliberadamente fuera:
-los llama la pasarela de pago (o, en el caso simulado, el frontend sin que medie una sesión de usuario;
-el simulador además solo responde con `ENABLE_PAYMENT_SIMULATION=true`), y necesitan su propia verificación de firma
-(`ConfirmPaymentUseCase.verifyWebhookSignature`, hoy un stub que siempre pasa — ver
-`doc/technical-debt.md`), no una sesión de Cognito.
+`POST /payments/webpay/commit` queda deliberadamente fuera: lo llama el servidor del frontend cuando Webpay
+devuelve al usuario, y en esa redirección entre sitios la cookie de sesión puede no viajar. El llamador
+se identifica por el token de la transacción (64 caracteres aleatorios que genera Transbank y que solo
+conocen el backend y quien pagó), y el resultado del pago se consulta siempre a Transbank, nunca se toma
+de lo que envía el llamador.
 
 **Gap de BOLA en `GET /orders/:id/status` — resuelto**: exigía sesión válida, pero no
 validaba que la orden perteneciera al usuario del token (BOLA — Broken Object Level Authorization),

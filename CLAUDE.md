@@ -14,7 +14,7 @@ detail. Read it before making non-trivial changes. `../doc/flows/purchase-flow-p
 end-to-end sequence of a successful consultation; `doc/error-handling.md` describes how errors
 are handled (single error contract `{ statusCode, code, message, errors?, requestId }`, guards, Prisma,
 LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `../doc/security/backend-security.md`
-lists every security control (guards, order ownership, webhook secret, input caps, rate limiting, CORS, prompt
+lists every security control (guards, order ownership, the Webpay return endpoint, input caps, rate limiting, CORS, prompt
 guard) — keep it in sync when you touch one; `doc/technical-debt.md` lists known gaps
 in more detail than the README's summary. `to-do-list.md` is stale — it describes a prior
 datasources/repositories architecture that no longer exists in `src/`; ignore it.
@@ -54,7 +54,7 @@ module or an endpoint.
 src/
 ├── domain/                    # Pure business rules, no NestJS/SDK dependencies
 │   ├── ports/                  # Abstract classes used as Nest injection tokens: LlmProvider, FileStorage,
-│   │                            # EmailSender, PlanDocumentRenderer, AlertNotifier, IdentityProvider
+│   │                            # EmailSender, PlanDocumentRenderer, AlertNotifier, IdentityProvider, PaymentGateway
 │   ├── errors/                 # Plain error classes thrown by adapters (LlmUnavailableError, LlmInvalidResponseError)
 │   ├── dtos/                   # Shared data interfaces + identity-auth/clinical-domain/commercial-domain Create*/Update*Dto
 │   ├── entities/                # Plain TS interfaces mirroring prisma/schema.prisma (*Entity suffix)
@@ -66,6 +66,7 @@ src/
 ├── infrastructure/             # Adapters: implement domain/ports and domain repositories
 │   ├── persistence/            # orm/prisma (PrismaService, global), datasources/ (Prisma impls), repositories/ (thin delegation)
 │   ├── llm/openai/             # OpenaiLlmProvider -> LlmProvider (LlmModule)
+│   ├── payments/transbank/     # TransbankPaymentGateway -> PaymentGateway (Webpay Plus, SDK transbank-sdk)
 │   ├── storage/s3/             # S3FileStorage -> FileStorage (FileStorageModule)
 │   ├── email/                  # LogEmailSender -> EmailSender (EmailModule; stub, logs only)
 │   ├── alerts/                 # LogAlertNotifier -> AlertNotifier (AlertsModule; stub, structured ALERT log)
@@ -76,7 +77,7 @@ src/
 │   ├── identity/               # /me, /me/sync, /me/summary; exports CurrentUserResolver
 │   ├── consultation/           # /consultations/chat, /consultations/goal-feasibility, /consultations
 │   ├── plans/                  # /plans/standard/*, /plans/personalized (public price of the GENERATED product), /me/plans, /me/plans/latest/projection, /me/plans/:orderId, plan generation (listener of order.paid)
-│   ├── billing/                # /orders/:id/status, /webhooks/payments, /dev/orders/:id/simulate-payment[-rejection];
+│   ├── billing/                # /orders/:id/status, /orders/:id/payments, /payments/webpay/commit, /dev/orders/:id/simulate-payment[-rejection];
 │   │                            # exports CreateOrderUseCase + OrderLifecycleService, emits order.paid and
 │   │                            # order.expired; jobs/ holds the cron that expires unpaid orders
 │   └── clinical/               # patient history: /me/consultations, /me/measurements (list/detail/record/edit); reads order
@@ -132,11 +133,18 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    `NutritionalConsultation` (with `orderId`) + `Anamnesis`/`Measurements` in one nested Prisma write
    (`consultation.mapper.ts`). Order and consultation are two separate writes, by design (no shared transaction): if the second fails the orphan `PENDING` order can't be paid (its id never reaches the client) and expires after 24h.
    `personalInfo` is still required by the contract but not read.
-4. Payment (`POST /webhooks/payments` or the simulated `POST /dev/orders/:id/simulate-payment`, enabled
-   only with `ENABLE_PAYMENT_SIMULATION=true`) → `ConfirmPaymentUseCase` marks the order paid
-   **idempotently** (+ `payment` row, same transaction; for `PREDEFINED` products it also copies the PDF
-   keys and completes the order) and emits `order.paid` only if this call marked it. It responds
-   immediately (`processed` | `already_processed`).
+4. Payment with **Webpay Plus** (Transbank, behind the `PaymentGateway` port): `POST /orders/:id/payments`
+   (`StartPaymentUseCase`, session + owner) creates the transaction with the order's amount, stores a
+   `payment` row `INITIATED` (one row per attempt) and answers `{ url, token }`; the browser posts
+   `token_ws` to Webpay. When Webpay sends the user back, the frontend's `/api/webpay/return` calls
+   `POST /payments/webpay/commit` (`CommitWebpayPaymentUseCase`, **no session**: identified by the
+   transaction token, result always asked to Transbank, idempotent on reload). Approved →
+   `ConfirmPaymentUseCase` marks the order paid **idempotently** (completing that `payment` row in the same
+   transaction; for `PREDEFINED` products it also copies the PDF keys and completes the order) and emits
+   `order.paid` only if this call marked it; rejected → `RejectPaymentUseCase`; aborted/timed out → the
+   attempt is closed `CANCELLED` and the order stays payable. The simulated
+   `POST /dev/orders/:id/simulate-payment[-rejection]` (only with `ENABLE_PAYMENT_SIMULATION=true`, off in
+   production) runs the same two use cases without Webpay.
 5. `OrderPaidListener` runs `GeneratePersonalizedPlanUseCase` fire-and-forget for `GENERATED` products:
    rebuilds the consultation by `order_id` → classifies activity level/objective via the LLM → computes
    energy/macro requirements and supplements **without AI** → asks the LLM for the plan using those numbers
@@ -222,7 +230,8 @@ rest (`Projection` is written by plan generation, nested in the same `Plan` upse
 `GET /me/plans/latest/projection`; several `clinical-domain` leaf entities)
 exists as fully-built domain/infrastructure code (entities, DTOs, datasources, repositories — see
 the `domain/`/`infrastructure/` tree above) but is not wired into any endpoint yet. `Payment` is
-written by the payment webhook (`OrderRepository.markOrderAsPaidWithPayment`, same transaction that
+written by the payment flow (one row per attempt: `INITIATED` when the Webpay transaction is created, then
+completed by `OrderRepository.markOrderAsPaidWithPayment`, in the same transaction that
 marks the order paid; `provider = 'SIMULATED'` while the gateway is simulated).
 
 **Predefined plans** (a second product type, `Product.type = 'PREDEFINED'`, 112 versions identified by
@@ -286,22 +295,22 @@ unless the user asks to expand coverage there.
 Be aware these are intentionally fake right now — don't assume they behave like production
 integrations when reasoning about behavior or writing tests:
 
-- `PaymentWebhookVerifier` checks a shared secret (`x-webhook-secret` header vs `PAYMENT_WEBHOOK_SECRET`, fails
-  closed when unset) — a stand-in for the real gateway signature. The simulated payment endpoints require the
-  session of the order's owner.
 - `LogEmailSender.sendRealEmail()` only logs — no real email provider wired. Decided: Amazon SES, to be
   implemented later as a new `EmailSender` adapter. The email already runs outside the generation retry
   loop (`sendPlanEmail`: a mail failure only logs and raises a `plan_email_failed` alert, it never
   re-generates a `COMPLETED` plan). See `../doc/flows/purchase-flow-personalized-plan.md` §9.
 - `LogAlertNotifier` (`AlertNotifier` port) only writes a structured `ALERT` log — no real channel yet. It is
   what `GeneratePersonalizedPlanUseCase` uses for `plan_generation_failed` (`critical` once the `ERROR` is final).
-- Payments are simulated: `POST /dev/orders/:id/simulate-payment` (behind `ENABLE_PAYMENT_SIMULATION`)
-  is the only payment path until Transbank is integrated; `payment.provider = 'SIMULATED'`.
-  `POST /dev/orders/:id/simulate-payment-rejection` simulates a rejected payment (`RejectPaymentUseCase`).
+- Payments are real (Webpay Plus), but in the Transbank **integration** environment by default
+  (`TRANSBANK_ENVIRONMENT`; public test credentials unless `TRANSBANK_COMMERCE_CODE`/`TRANSBANK_API_KEY` are
+  set). There is no refund in `PaymentGateway` and no job closing abandoned `INITIATED` attempts.
+  `POST /dev/orders/:id/simulate-payment[-rejection]` (behind `ENABLE_PAYMENT_SIMULATION`, dev/test only)
+  still marks an order paid/rejected without Webpay, with `payment.provider = 'SIMULATED'`.
 - Unpaid orders expire: `CreateOrderUseCase` sets `expirationDate = creationDate + 24h`; an order is
   payable while `PENDING` or `REJECTED` (a rejection can be retried and doesn't reset the window).
   `ExpireUnpaidOrdersJob` (`@nestjs/schedule`, every 10 min) → `ExpireUnpaidOrdersUseCase` →
-  `OrderLifecycleService.expireIfDue` marks them `EXPIRED` and emits `order.expired`; paying, rejecting or
+  `OrderLifecycleService.expireIfDue` marks them `EXPIRED` and emits `order.expired`; starting a payment
+  extends a window shorter than 15 min (`CHECKOUT_MIN_WINDOW_MS`); paying, rejecting or
   reading the status of an overdue order expires it on the spot (`isExpired`; pay/reject answer 409).
   On `order.expired`, `DeleteExpiredConsultationUseCase` deletes the order's consultation (anamnesis
   subtree cascades; its measurements are kept, detached with `consultationId = null`), which is why

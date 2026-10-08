@@ -4,3 +4,4 @@ export * from './email-sender';
 export * from './plan-document-renderer';
 export * from './alert-notifier';
 export * from './identity-provider';
+export * from './payment-gateway';

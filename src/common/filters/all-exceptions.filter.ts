@@ -13,6 +13,7 @@ import {
   LlmInvalidResponseError,
   LlmUnavailableError,
 } from '../../domain/errors/llm.errors';
+import { PaymentGatewayUnavailableError } from '../../domain/errors/payment.errors';
 import {
   defaultMessageFromStatus,
   ErrorCode,
@@ -96,6 +97,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
         statusCode: HttpStatus.SERVICE_UNAVAILABLE,
         code: ErrorCode.LLM_UNAVAILABLE,
         message: LLM_UNAVAILABLE_MESSAGE,
+      };
+    }
+
+    if (exception instanceof PaymentGatewayUnavailableError) {
+      return {
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        code: ErrorCode.PAYMENT_UNAVAILABLE,
+        message:
+          'No pudimos conectar con el medio de pago en este momento. Intenta nuevamente en unos minutos.',
       };
     }
 

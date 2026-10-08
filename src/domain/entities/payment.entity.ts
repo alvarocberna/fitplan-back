@@ -7,6 +7,8 @@ import type { PaymentProvider, PaymentTransactionStatus } from './enums';
 
 export { PaymentProvider, PaymentTransactionStatus } from './enums';
 
+// Una fila por intento de pago. Con Transbank se crea INITIATED al iniciar el pago (solo con
+// paymentIdentifier, token y amount) y se completa con el resultado al volver de la pasarela.
 // Con provider = SIMULATED los campos de detalle (identificador, autorización, tarjeta) son placeholders.
 
 export interface PaymentEntity {
@@ -16,12 +18,17 @@ export interface PaymentEntity {
   order?: OrderEntity;
 
   provider: PaymentProvider;
-  paymentIdentifier: string; // identificador Transbank
-  authorizationCode: string;
+  paymentIdentifier: string; // orden de compra (buy_order) en Transbank
+  token: string | null; // token de la transacción en la pasarela
+  authorizationCode: string | null;
   amount: number;
-  installmentCount: number;
+  installmentCount: number | null;
   status: PaymentTransactionStatus;
-  transactionDate: Date;
-  movementType: string;
-  cardType: string;
+  responseCode: number | null; // código de respuesta de la pasarela (0 = aprobado)
+  transactionDate: Date | null;
+  movementType: string | null; // tipo de pago de la pasarela (VD, VN, VP, ...)
+  cardType: string | null;
+  cardLastDigits: string | null;
+
+  createdAt: Date;
 }

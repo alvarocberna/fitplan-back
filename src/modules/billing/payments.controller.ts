@@ -1,11 +1,10 @@
 import {
   Body,
   Controller,
-  Headers,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
-  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -14,9 +13,13 @@ import { CognitoUser } from '../../common/auth/cognito-user.decorator';
 import type { CognitoUserClaims } from '../../common/auth/cognito-user.decorator';
 import {
   ORDER_THROTTLE,
-  WEBHOOK_THROTTLE,
+  PAYMENT_RETURN_THROTTLE,
 } from '../../common/throttling/throttle-limits';
-import { PaymentWebhookDtoImpl } from './dto/payment-webhook.dto';
+import { CommitWebpayPaymentDtoImpl } from './dto/commit-webpay-payment.dto';
+import {
+  CommitWebpayPaymentResult,
+  CommitWebpayPaymentUseCase,
+} from './use-cases/commit-webpay-payment.use-case';
 import {
   ConfirmPaymentResult,
   ConfirmPaymentUseCase,
@@ -26,45 +29,26 @@ import {
   RejectPaymentUseCase,
 } from './use-cases/reject-payment.use-case';
 import { PaymentSimulationEnabledGuard } from './payment-simulation-enabled.guard';
-import {
-  PAYMENT_WEBHOOK_SECRET_HEADER,
-  PaymentWebhookVerifier,
-} from './payment-webhook-verifier';
-import { PaymentTransactionStatus } from '../../domain/entities/enums';
 
-// Webhook de la pasarela de pago (server a server, sin sesión de usuario).
-@Controller('webhooks')
-export class PaymentsWebhookController {
-  constructor(
-    private readonly confirmPayment: ConfirmPaymentUseCase,
-    private readonly rejectPayment: RejectPaymentUseCase,
-    private readonly webhookVerifier: PaymentWebhookVerifier,
-  ) {}
+// Retorno de la pasarela de pago. Lo llama el frontend (server a server) cuando Webpay devuelve al
+// usuario; no hay sesión: se identifica por el token de la transacción (ver CommitWebpayPaymentUseCase).
+@Controller('payments')
+export class PaymentsController {
+  constructor(private readonly commitWebpayPayment: CommitWebpayPaymentUseCase) {}
 
-  // No hay sesión de usuario: el llamador se autentica con el secreto compartido del header
-  // x-webhook-secret (PaymentWebhookVerifier; se reemplazará por la firma de la pasarela real). Sin
-  // esa verificación cualquiera podría marcar una orden como pagada. Un pago rechazado (status
-  // REJECTED) va a RejectPaymentUseCase.
-  @Throttle(WEBHOOK_THROTTLE)
-  @Post('payments')
-  receive(
-    @Body() body: PaymentWebhookDtoImpl,
-    @Headers(PAYMENT_WEBHOOK_SECRET_HEADER) secret?: string,
-  ): Promise<ConfirmPaymentResult | RejectPaymentResult> {
-    if (!this.webhookVerifier.isValid(secret)) {
-      throw new UnauthorizedException('Firma de webhook inválida');
-    }
-    if (body.status === PaymentTransactionStatus.REJECTED) {
-      return this.rejectPayment.execute({ orderId: body.orderId });
-    }
-    return this.confirmPayment.execute({ orderId: body.orderId });
+  @Throttle(PAYMENT_RETURN_THROTTLE)
+  @HttpCode(200)
+  @Post('webpay/commit')
+  commitWebpay(
+    @Body() body: CommitWebpayPaymentDtoImpl,
+  ): Promise<CommitWebpayPaymentResult> {
+    return this.commitWebpayPayment.execute(body);
   }
 }
 
-// Mientras no exista una pasarela real, estos endpoints disparan la misma lógica del webhook para
-// una orden dada (pago autorizado o rechazado). Solo responden con ENABLE_PAYMENT_SIMULATION=true
-// (404 en cualquier otro caso) y, como son el camino de pago del usuario, exigen su sesión y que la
-// orden sea suya (404 si no, regla R2): nadie puede pagar ni rechazar la orden de otro.
+// Pago simulado, para desarrollo y pruebas sin pasar por la pasarela: marca la orden como pagada o
+// rechazada directamente. Solo responde con ENABLE_PAYMENT_SIMULATION=true (404 en cualquier otro
+// caso; en producción va en false) y exige la sesión del dueño de la orden (404 si no, regla R2).
 @UseGuards(PaymentSimulationEnabledGuard, CognitoAuthGuard)
 @Throttle(ORDER_THROTTLE)
 @Controller('dev/orders')

@@ -1,5 +1,5 @@
 import { PaymentEntity } from '../../entities/payment.entity';
-import { CreatePaymentDto, UpdatePaymentDto } from '../..';
+import { ClosePaymentDto, CreatePaymentDto, UpdatePaymentDto } from '../..';
 
 export abstract class PaymentRepository {
   abstract createPayment(
@@ -11,4 +11,12 @@ export abstract class PaymentRepository {
     updatePaymentDto: UpdatePaymentDto,
   ): Promise<PaymentEntity>;
   abstract deletePaymentById(id: string): Promise<void>;
+  abstract getPaymentByToken(token: string): Promise<PaymentEntity | null>;
+  abstract getPaymentByIdentifier(
+    paymentIdentifier: string,
+  ): Promise<PaymentEntity | null>;
+  abstract closeInitiatedPayment(
+    id: string,
+    result: ClosePaymentDto,
+  ): Promise<boolean>;
 }

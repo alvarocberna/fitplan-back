@@ -25,8 +25,9 @@ export const ORDER_THROTTLE = {
   [THROTTLE_DAILY]: { ttl: DAY_MS, limit: 200 },
 };
 
-// Webhook de la pasarela (server a server, una sola IP de origen).
-export const WEBHOOK_THROTTLE = {
+// Retorno de la pasarela de pago: lo llama el servidor del frontend, sin token (una sola IP de origen
+// para todos los usuarios).
+export const PAYMENT_RETURN_THROTTLE = {
   [THROTTLE_SHORT]: { ttl: MINUTE_MS, limit: 60 },
   [THROTTLE_DAILY]: { ttl: DAY_MS, limit: 20_000 },
 };
