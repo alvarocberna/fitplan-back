@@ -1,9 +1,9 @@
 # Autenticación — `common/auth/`, `infrastructure/auth/cognito/` y `modules/identity/`
 
 Este documento describe cómo el backend valida la identidad de un usuario autenticado con Amazon
-Cognito (desde `nutricionista-virtual-front`) y cómo esa identidad se conecta con `User`/
+Cognito (desde `fitplan-front`) y cómo esa identidad se conecta con `User`/
 `AuthIdentity` en Postgres. El flujo completo, incluida la parte del frontend (Hosted UI, Server
-Actions, refresh de tokens), está en `nutricionista-virtual-front/doc/auth.md` — este documento se enfoca en lo que vive en este repo.
+Actions, refresh de tokens), está en `fitplan-front/doc/auth.md` — este documento se enfoca en lo que vive en este repo.
 
 ## Idea central: identidad separada de perfil
 

@@ -58,7 +58,7 @@ async function bootstrap() {
   // quedaba expuesto si NODE_ENV no estaba seteado en el ambiente desplegado.
   if (configService.get<string>('ENABLE_SWAGGER') === 'true' && !isProduction) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('NutriApp API')
+      .setTitle('Fitplan API')
       .setDescription('API del agente conversacional de nutrición')
       .setVersion('1.0')
       .build();
