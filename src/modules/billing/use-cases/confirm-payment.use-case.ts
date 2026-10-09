@@ -11,6 +11,7 @@ import {
   PaymentTransactionStatus,
   ProductType,
 } from '../../../domain/entities/enums';
+import type { PaymentResultDto } from '../../../domain';
 import type { OrderPaidExtras } from '../../../domain/datasources/commercial-domain/order.datasource';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { ORDER_PAID, OrderPaidEvent } from '../events/order-paid.event';
@@ -21,7 +22,13 @@ import { OrderLifecycleService } from '../order-lifecycle.service';
 
 export type ConfirmPaymentResult = { status: 'processed' | 'already_processed' };
 
-// CU-BIL-02. Lo usan el webhook de la pasarela (POST /webhooks/payments) y el simulador
+// Intento de pago de la pasarela (fila payment INITIATED) y el resultado con que se cierra.
+export interface SettledPayment {
+  paymentId: string;
+  result: PaymentResultDto;
+}
+
+// CU-BIL-02. Lo usan el retorno de Webpay (CommitWebpayPaymentUseCase, CU-BIL-07) y el simulador
 // (POST /dev/orders/:id/simulate-payment).
 @Injectable()
 export class ConfirmPaymentUseCase {
@@ -37,12 +44,14 @@ export class ConfirmPaymentUseCase {
   // Idempotente: si la orden ya estaba pagada no crea otro payment ni vuelve a emitir order.paid.
   // Una orden rechazada se puede pagar (reintento); una expirada o con el plazo vencido no (409).
   // No espera a que termine lo que dispara el evento (la generación del plan corre en segundo
-  // plano), para no bloquear al webhook.
+  // plano), para no bloquear la respuesta.
   // Con `claims` (pago simulado, lo dispara el propio usuario) la orden debe ser suya: 404 si no (R2).
-  // Sin `claims` es el webhook de la pasarela, ya autenticado por su secreto.
+  // Sin `claims` es el retorno de la pasarela (CommitWebpayPaymentUseCase), que ya verificó el cobro
+  // con ella y pasa en `payment` el intento a completar.
   async execute(input: {
     orderId: string;
     claims?: CognitoUserClaims;
+    payment?: SettledPayment;
   }): Promise<ConfirmPaymentResult> {
     const { orderId } = input;
     const order = await this.orderRepository.getOrderWithProductById(orderId);
@@ -73,11 +82,11 @@ export class ConfirmPaymentUseCase {
     }
 
     // En UNA transacción: paymentStatus PENDING|REJECTED -> PAID (solo si seguía pagable) + fila payment
-    // AUTHORIZED. El pago hoy es simulado: los campos de detalle son placeholders hasta integrar
-    // una pasarela real (que los entregaría en su webhook).
+    // AUTHORIZED. Con `payment` (pasarela real) se completa el intento INITIATED con el resultado que
+    // informó la pasarela; sin él es el pago simulado y los campos de detalle son placeholders.
     const markedNow = await this.orderRepository.markOrderAsPaidWithPayment(
       orderId,
-      {
+      input.payment?.result ?? {
         provider: PaymentProvider.SIMULATED,
         paymentIdentifier: `SIM-${orderId}`,
         authorizationCode: 'SIMULATED',
@@ -89,6 +98,7 @@ export class ConfirmPaymentUseCase {
         cardType: 'SIMULATED',
       },
       extras,
+      input.payment?.paymentId,
     );
 
     if (!markedNow) {

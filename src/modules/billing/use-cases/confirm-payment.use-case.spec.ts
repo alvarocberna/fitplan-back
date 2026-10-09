@@ -74,7 +74,34 @@ describe('ConfirmPaymentUseCase', () => {
       expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
 
-    it('sin claims (webhook de la pasarela) no resuelve usuario', async () => {
+    it('con el resultado de la pasarela completa ese intento en vez de crear un pago simulado', async () => {
+      orderRepository.getOrderWithProductById.mockResolvedValue(generatedOrder);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
+      const result = {
+        provider: 'TRANSBANK' as const,
+        paymentIdentifier: 'buy-order-1',
+        amount: 19990,
+        status: 'AUTHORIZED' as const,
+        authorizationCode: '1213',
+      };
+
+      await expect(
+        useCase.execute({ orderId: 'order-1', payment: { paymentId: 'payment-1', result } }),
+      ).resolves.toEqual({ status: 'processed' });
+
+      expect(orderRepository.markOrderAsPaidWithPayment).toHaveBeenCalledWith(
+        'order-1',
+        result,
+        undefined,
+        'payment-1',
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(ORDER_PAID, {
+        orderId: 'order-1',
+        productType: 'GENERATED',
+      });
+    });
+
+    it('sin claims (retorno de la pasarela) no resuelve usuario', async () => {
       orderRepository.getOrderWithProductById.mockResolvedValue(generatedOrder);
       orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
 
@@ -112,6 +139,7 @@ describe('ConfirmPaymentUseCase', () => {
         transactionDate: expect.any(Date),
       }),
       undefined,
+      undefined,
     );
     expect(eventEmitter.emit).toHaveBeenCalledWith(ORDER_PAID, {
       orderId: 'order-1',
@@ -135,6 +163,7 @@ describe('ConfirmPaymentUseCase', () => {
         thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
         generationStatus: 'COMPLETED',
       },
+      undefined,
     );
     expect(eventEmitter.emit).toHaveBeenCalledWith(ORDER_PAID, {
       orderId: 'order-2',

@@ -15,7 +15,7 @@ Si buscas la arquitectura general del proyecto o el flujo end-to-end, ver el REA
 
 Se priorizó el **pipeline core**: la infraestructura de testing en sí, las fórmulas de dominio que
 están efectivamente conectadas a un endpoint (`plan-generation`), y los servicios de
-`modules/` que arman el flujo `POST /consultations` → webhook de pago → generación del plan.
+`modules/` que arman el flujo `POST /consultations` → pago → generación del plan.
 
 **Fuera de esta fase** (deuda pendiente, ver §6): las fórmulas de `domain/services/formulas/`
 que hoy no tienen ningún consumidor real (`body-fat.service.ts`,
@@ -182,10 +182,12 @@ por válido con un `sub` fijo; sin él, 401). Cubre:
 - `POST /consultations` — payload válido (201 + `orderId`) y propiedad desconocida (400,
   `forbidNonWhitelisted`).
 - `GET /orders/:id/status` — estado (200), id no-UUID (400), orden de otro usuario (404).
-- `POST /webhooks/payments` — `processed` → `already_processed` (idempotencia), el evento `order.paid`
-  dispara el listener de generación, `orderId` no-UUID (400), `status: 'REJECTED'` registra el rechazo,
-  `status` desconocido (400), orden con el plazo vencido (409, la expira y borra su consulta vía
-  `order.expired`).
+- `POST /orders/:id/payments` — crea la transacción con el monto de la orden y registra el intento
+  `INITIATED`; orden ajena (404), ya pagada (409 `ORDER_ALREADY_PAID`), sin sesión (401).
+- `POST /payments/webpay/commit` — aprobado (paga la orden, el evento `order.paid` dispara el listener de
+  generación, e idempotente al repetir la llamada), rechazado, anulado (`tbkToken`), orden expirada (no
+  confirma la transacción), token desconocido o sin parámetros (404). `PaymentGateway` y
+  `PaymentRepository` van mockeados: no se llama a Transbank.
 - `POST /dev/orders/:id/simulate-payment` — 404 sin `ENABLE_PAYMENT_SIMULATION=true`; con el flag
   procesa el pago (un plan estándar no dispara la generación). `simulate-payment-rejection`: 404 sin el
   flag; con él deja la orden rechazada.

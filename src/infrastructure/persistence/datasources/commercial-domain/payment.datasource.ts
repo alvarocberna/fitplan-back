@@ -3,7 +3,12 @@ import { Payment as PrismaPayment } from '../../../../../generated/prisma';
 import { PrismaService } from '../../orm/prisma/prisma.service';
 import { PaymentDatasource } from '../../../../domain/datasources/commercial-domain/payment.datasource';
 import { PaymentEntity } from '../../../../domain/entities/payment.entity';
-import { CreatePaymentDto, UpdatePaymentDto } from '../../../../domain';
+import {
+  ClosePaymentDto,
+  CreatePaymentDto,
+  UpdatePaymentDto,
+} from '../../../../domain';
+import { PaymentTransactionStatus } from '../../../../domain/entities/enums';
 
 @Injectable()
 export class PaymentDatasourceImpl implements PaymentDatasource {
@@ -44,5 +49,31 @@ export class PaymentDatasourceImpl implements PaymentDatasource {
 
   async deletePaymentById(id: string): Promise<void> {
     await this.prisma.payment.delete({ where: { id } });
+  }
+
+  async getPaymentByToken(token: string): Promise<PaymentEntity | null> {
+    const payment = await this.prisma.payment.findUnique({ where: { token } });
+    return payment ? this.toEntity(payment) : null;
+  }
+
+  async getPaymentByIdentifier(
+    paymentIdentifier: string,
+  ): Promise<PaymentEntity | null> {
+    const payment = await this.prisma.payment.findFirst({
+      where: { paymentIdentifier },
+      orderBy: { createdAt: 'desc' },
+    });
+    return payment ? this.toEntity(payment) : null;
+  }
+
+  async closeInitiatedPayment(
+    id: string,
+    result: ClosePaymentDto,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.payment.updateMany({
+      where: { id, status: PaymentTransactionStatus.INITIATED },
+      data: result,
+    });
+    return count > 0;
   }
 }

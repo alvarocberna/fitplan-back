@@ -19,11 +19,13 @@ import { NutritionalConsultationRepository } from '../src/domain/repositories/cl
 import { MeasurementsRepository } from '../src/domain/repositories/clinical-domain/measurements.repository';
 import { ProductRepository } from '../src/domain/repositories/commercial-domain/product.repository';
 import { OrderRepository } from '../src/domain/repositories/commercial-domain/order.repository';
+import { PaymentRepository } from '../src/domain/repositories/commercial-domain/payment.repository';
 import {
   EmailSender,
   FileStorage,
   IdentityProvider,
   LlmProvider,
+  PaymentGateway,
   PlanDocumentRenderer,
 } from '../src/domain/ports';
 
@@ -40,6 +42,8 @@ describe('App (e2e)', () => {
   let nutritionalConsultationRepository: jest.Mocked<NutritionalConsultationRepository>;
   let productRepository: jest.Mocked<ProductRepository>;
   let orderRepository: jest.Mocked<OrderRepository>;
+  let paymentRepository: jest.Mocked<PaymentRepository>;
+  let paymentGateway: jest.Mocked<PaymentGateway>;
   let measurementsRepository: jest.Mocked<MeasurementsRepository>;
   let fileStorage: { getSignedDownloadUrl: jest.Mock };
   let llm: { chatJson: jest.Mock };
@@ -47,8 +51,6 @@ describe('App (e2e)', () => {
 
   const api = (path: string) => `/${API_PREFIX}${path}`;
   const AUTH = { Authorization: 'Bearer token-e2e' };
-  const WEBHOOK_SECRET = 'e2e-webhook-secret';
-  const WEBHOOK = { 'x-webhook-secret': WEBHOOK_SECRET };
   const completeUser = {
     id: 'user-1',
     email: 'ana@example.com',
@@ -65,7 +67,6 @@ describe('App (e2e)', () => {
   };
 
   beforeAll(async () => {
-    process.env.PAYMENT_WEBHOOK_SECRET = WEBHOOK_SECRET;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -136,6 +137,20 @@ describe('App (e2e)', () => {
         updateOrderById: jest.fn(),
         incrementOrderFailedAttempt: jest.fn(),
       })
+      .overrideProvider(PaymentRepository)
+      .useValue({
+        createPayment: jest.fn(),
+        getPaymentById: jest.fn(),
+        getPaymentByToken: jest.fn(),
+        getPaymentByIdentifier: jest.fn(),
+        closeInitiatedPayment: jest.fn(),
+      })
+      .overrideProvider(PaymentGateway)
+      .useValue({
+        createTransaction: jest.fn(),
+        commitTransaction: jest.fn(),
+        getTransactionStatus: jest.fn(),
+      })
       .overrideProvider(IdentityProvider)
       .useValue({ getIdentity: jest.fn() })
       .overrideProvider(LlmProvider)
@@ -159,6 +174,8 @@ describe('App (e2e)', () => {
     nutritionalConsultationRepository = moduleFixture.get(NutritionalConsultationRepository);
     productRepository = moduleFixture.get(ProductRepository);
     orderRepository = moduleFixture.get(OrderRepository);
+    paymentRepository = moduleFixture.get(PaymentRepository);
+    paymentGateway = moduleFixture.get(PaymentGateway);
     measurementsRepository = moduleFixture.get(MeasurementsRepository);
     fileStorage = moduleFixture.get(FileStorage);
     llm = moduleFixture.get(LlmProvider);
@@ -583,99 +600,189 @@ describe('App (e2e)', () => {
     });
   });
 
-  describe('POST /webhooks/payments', () => {
+  describe('Webpay: POST /orders/:id/payments y POST /payments/webpay/commit', () => {
     const orderId = '33333333-3333-4333-8333-333333333333';
+    const token = 'tok-webpay-0001';
+    const buyOrder = 'abcdef0123456789abcdef0123';
+    const initiatedPayment = {
+      id: 'payment-1',
+      orderId,
+      provider: 'TRANSBANK',
+      paymentIdentifier: buyOrder,
+      token,
+      amount: 10000,
+      status: 'INITIATED',
+    };
+    const payableOrder = {
+      id: orderId,
+      userId: 'user-1',
+      amount: 10000,
+      currency: 'CLP',
+      paymentStatus: 'PENDING',
+      expirationDate: new Date(Date.now() + 60 * 60_000),
+      product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
+    };
+    const authorizedTransaction = {
+      approved: true,
+      status: 'AUTHORIZED',
+      responseCode: 0,
+      buyOrder,
+      amount: 10000,
+      authorizationCode: '1213',
+      paymentTypeCode: 'VD',
+      installmentCount: 0,
+      cardLastDigits: '6623',
+      transactionDate: new Date('2026-10-07T12:00:00Z'),
+    };
 
-    it('marca la orden como pagada la primera vez, dispara la generación (order.paid) y es idempotente la segunda', async () => {
-      orderRepository.getOrderWithProductById.mockResolvedValue({
-        id: orderId,
-        userId: 'user-1',
+    it('inicia el pago: crea la transacción con el monto de la orden y registra el intento INITIATED', async () => {
+      orderRepository.getOrderById.mockResolvedValue(payableOrder as any);
+      paymentGateway.createTransaction.mockResolvedValue({
+        token,
+        redirectUrl: 'https://webpay3gint.transbank.cl/webpayserver/initTransaction',
+      });
+
+      const response = await request(app.getHttpServer())
+        .post(api(`/orders/${orderId}/payments`))
+        .set(AUTH)
+        .expect(201);
+
+      expect(response.body).toEqual({
+        url: 'https://webpay3gint.transbank.cl/webpayserver/initTransaction',
+        token,
+      });
+      expect(paymentGateway.createTransaction).toHaveBeenCalledWith({
+        buyOrder: expect.stringMatching(/^[0-9a-f]{26}$/),
+        sessionId: 'user-1',
         amount: 10000,
-        product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
-      } as any);
-      orderRepository.markOrderAsPaidWithPayment.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      });
+      expect(paymentRepository.createPayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderId,
+          provider: 'TRANSBANK',
+          token,
+          amount: 10000,
+          status: 'INITIATED',
+        }),
+      );
+    });
+
+    it('no inicia el pago de una orden ajena (404), ya pagada (409) ni sin sesión (401)', async () => {
+      orderRepository.getOrderById.mockResolvedValue({ ...payableOrder, userId: 'otro-usuario' } as any);
+      await request(app.getHttpServer()).post(api(`/orders/${orderId}/payments`)).set(AUTH).expect(404);
+
+      orderRepository.getOrderById.mockResolvedValue({ ...payableOrder, paymentStatus: 'PAID' } as any);
+      const paid = await request(app.getHttpServer())
+        .post(api(`/orders/${orderId}/payments`))
+        .set(AUTH)
+        .expect(409);
+      expect(paid.body.code).toBe('ORDER_ALREADY_PAID');
+
+      await request(app.getHttpServer()).post(api(`/orders/${orderId}/payments`)).expect(401);
+      expect(paymentGateway.createTransaction).not.toHaveBeenCalled();
+    });
+
+    it('commit aprobado: confirma en Webpay, paga la orden, dispara la generación y es idempotente al recargar', async () => {
+      paymentRepository.getPaymentByToken.mockResolvedValueOnce(initiatedPayment as any);
+      orderRepository.getOrderWithProductById.mockResolvedValue(payableOrder as any);
+      paymentGateway.commitTransaction.mockResolvedValue(authorizedTransaction);
+      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
       orderRepository.tryTransitionOrderToGenerating.mockResolvedValue(false); // corta el pipeline de generación acá
 
       const first = await request(app.getHttpServer())
-        .post(api('/webhooks/payments'))
-        .set(WEBHOOK)
-        .send({ orderId })
-        .expect(201);
-      expect(first.body).toEqual({ status: 'processed' });
+        .post(api('/payments/webpay/commit'))
+        .send({ tokenWs: token })
+        .expect(200);
+
+      expect(first.body).toEqual({ orderId, productType: 'GENERATED', outcome: 'paid' });
+      expect(orderRepository.markOrderAsPaidWithPayment).toHaveBeenCalledWith(
+        orderId,
+        expect.objectContaining({
+          provider: 'TRANSBANK',
+          status: 'AUTHORIZED',
+          authorizationCode: '1213',
+          cardType: 'DEBIT',
+        }),
+        undefined,
+        'payment-1',
+      );
       expect(orderRepository.tryTransitionOrderToGenerating).toHaveBeenCalledWith(orderId);
 
+      // recarga de la URL de retorno: el intento ya está cerrado
+      paymentRepository.getPaymentByToken.mockResolvedValueOnce({
+        ...initiatedPayment,
+        status: 'AUTHORIZED',
+      } as any);
       const second = await request(app.getHttpServer())
-        .post(api('/webhooks/payments'))
-        .set(WEBHOOK)
-        .send({ orderId })
-        .expect(201);
-      expect(second.body).toEqual({ status: 'already_processed' });
+        .post(api('/payments/webpay/commit'))
+        .send({ tokenWs: token })
+        .expect(200);
+
+      expect(second.body.outcome).toBe('paid');
+      expect(paymentGateway.commitTransaction).toHaveBeenCalledTimes(1);
       expect(orderRepository.tryTransitionOrderToGenerating).toHaveBeenCalledTimes(1);
     });
 
-    it('con un orderId que no es UUID v4 devuelve 400', async () => {
-      await request(app.getHttpServer())
-        .post(api('/webhooks/payments'))
-        .set(WEBHOOK)
-        .send({ orderId: 'no-es-un-uuid' })
-        .expect(400);
-    });
-
-    it('con status REJECTED registra el rechazo y no marca la orden como pagada', async () => {
-      orderRepository.getOrderById.mockResolvedValue({
-        id: orderId,
-        userId: 'user-1',
-        amount: 10000,
-        paymentStatus: 'PENDING',
-      } as any);
+    it('commit rechazado: registra el rechazo y no marca la orden como pagada', async () => {
+      paymentRepository.getPaymentByToken.mockResolvedValue(initiatedPayment as any);
+      orderRepository.getOrderWithProductById.mockResolvedValue(payableOrder as any);
+      orderRepository.getOrderById.mockResolvedValue(payableOrder as any);
+      paymentGateway.commitTransaction.mockResolvedValue({
+        ...authorizedTransaction,
+        approved: false,
+        status: 'FAILED',
+        responseCode: -1,
+      });
       orderRepository.markOrderAsRejectedWithPayment.mockResolvedValue(true);
 
       const response = await request(app.getHttpServer())
-        .post(api('/webhooks/payments'))
-        .set(WEBHOOK)
-        .send({ orderId, status: 'REJECTED' })
-        .expect(201);
+        .post(api('/payments/webpay/commit'))
+        .send({ tokenWs: token })
+        .expect(200);
 
-      expect(response.body).toEqual({ status: 'rejected' });
+      expect(response.body.outcome).toBe('rejected');
       expect(orderRepository.markOrderAsRejectedWithPayment).toHaveBeenCalledWith(
         orderId,
-        expect.objectContaining({ status: 'REJECTED', amount: 10000 }),
+        expect.objectContaining({ status: 'REJECTED', responseCode: -1 }),
+        'payment-1',
       );
       expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
     });
 
-    it('con un status desconocido devuelve 400', async () => {
-      await request(app.getHttpServer())
-        .post(api('/webhooks/payments'))
-        .set(WEBHOOK)
-        .send({ orderId, status: 'CANCELLED' })
-        .expect(400);
+    it('pago anulado en el formulario (TBK_TOKEN): cierra el intento sin llamar a Webpay ni tocar la orden', async () => {
+      paymentRepository.getPaymentByToken.mockResolvedValue(initiatedPayment as any);
+      orderRepository.getOrderWithProductById.mockResolvedValue(payableOrder as any);
+
+      const response = await request(app.getHttpServer())
+        .post(api('/payments/webpay/commit'))
+        .send({ tbkToken: token, tbkBuyOrder: buyOrder })
+        .expect(200);
+
+      expect(response.body.outcome).toBe('cancelled');
+      expect(paymentRepository.closeInitiatedPayment).toHaveBeenCalledWith('payment-1', {
+        status: 'CANCELLED',
+      });
+      expect(paymentGateway.commitTransaction).not.toHaveBeenCalled();
+      expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
     });
 
-    it('si el plazo de la orden venció responde 409, la expira y borra su consulta (order.expired)', async () => {
+    it('si la orden expiró mientras el usuario pagaba, no confirma la transacción (no hay cobro)', async () => {
+      paymentRepository.getPaymentByToken.mockResolvedValue(initiatedPayment as any);
       orderRepository.getOrderWithProductById.mockResolvedValue({
-        id: orderId,
-        userId: 'user-1',
-        amount: 10000,
-        paymentStatus: 'PENDING',
+        ...payableOrder,
         expirationDate: new Date(Date.now() - 60_000),
-        product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
       } as any);
-      orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(false);
       orderRepository.expireOrderIfDue.mockResolvedValue(true);
       nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(true);
 
-      await request(app.getHttpServer())
-        .post(api('/webhooks/payments'))
-        .set(WEBHOOK)
-        .send({ orderId })
-        .expect(409);
+      const response = await request(app.getHttpServer())
+        .post(api('/payments/webpay/commit'))
+        .send({ tokenWs: token })
+        .expect(200);
 
+      expect(response.body.outcome).toBe('not_committed');
+      expect(paymentGateway.commitTransaction).not.toHaveBeenCalled();
       expect(orderRepository.expireOrderIfDue).toHaveBeenCalledWith(orderId, expect.any(Date));
-      expect(
-        nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId,
-      ).toHaveBeenCalledWith(orderId);
-      expect(orderRepository.tryTransitionOrderToGenerating).not.toHaveBeenCalled();
     });
   });
 
@@ -779,15 +886,14 @@ describe('App (e2e)', () => {
 
     it('400 de validación: code VALIDATION_ERROR, message string en español y el detalle en errors', async () => {
       const response = await request(app.getHttpServer())
-        .post(api('/webhooks/payments'))
-        .set(WEBHOOK)
-        .send({ orderId: 'no-es-uuid', inventada: true })
+        .post(api('/payments/webpay/commit'))
+        .send({ tokenWs: 'x'.repeat(65), inventada: true })
         .expect(400);
 
       expect(response.body.code).toBe('VALIDATION_ERROR');
       expect(response.body.message).toBe('Los datos enviados no son válidos');
       expect(response.body.errors).toEqual(
-        expect.arrayContaining([expect.stringContaining('inventada'), expect.stringContaining('orderId')]),
+        expect.arrayContaining([expect.stringContaining('inventada'), expect.stringContaining('tokenWs')]),
       );
     });
 
@@ -895,33 +1001,27 @@ describe('App (e2e)', () => {
       else process.env.ENABLE_PAYMENT_SIMULATION = previousSimulation;
     });
 
-    describe('webhook de pagos', () => {
+    describe('retorno de Webpay', () => {
       it.each([
-        ['sin el header', {}],
-        ['con un secreto incorrecto', { 'x-webhook-secret': 'otro-secreto' }],
-      ])('%s responde 401 y no toca la orden', async (_name, headers) => {
-        await request(app.getHttpServer())
-          .post(api('/webhooks/payments'))
-          .set(headers)
-          .send({ orderId })
-          .expect(401);
+        ['sin parámetros', {}],
+        ['con un token que no existe', { tokenWs: 'token-inventado' }],
+      ])('%s responde 404 y no toca ninguna orden', async (_name, body) => {
+        paymentRepository.getPaymentByToken.mockResolvedValue(null);
 
-        expect(orderRepository.getOrderWithProductById).not.toHaveBeenCalled();
+        await request(app.getHttpServer())
+          .post(api('/payments/webpay/commit'))
+          .send(body)
+          .expect(404);
+
+        expect(paymentGateway.commitTransaction).not.toHaveBeenCalled();
         expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
       });
 
-      it('falla cerrado: sin PAYMENT_WEBHOOK_SECRET configurado rechaza incluso el secreto correcto', async () => {
-        delete process.env.PAYMENT_WEBHOOK_SECRET;
-        try {
-          await request(app.getHttpServer())
-            .post(api('/webhooks/payments'))
-            .set(WEBHOOK)
-            .send({ orderId })
-            .expect(401);
-        } finally {
-          process.env.PAYMENT_WEBHOOK_SECRET = WEBHOOK_SECRET;
-        }
-        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+      it('el webhook anterior ya no existe', async () => {
+        await request(app.getHttpServer())
+          .post(api('/webhooks/payments'))
+          .send({ orderId })
+          .expect(404);
       });
     });
 

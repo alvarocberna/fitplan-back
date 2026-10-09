@@ -104,6 +104,7 @@ enum PaymentProvider {
 }
 
 enum PaymentTransactionStatus {
+  INITIATED
   AUTHORIZED
   REJECTED
   CANCELLED
@@ -856,15 +857,24 @@ model Payment {
   orderId String @map("order_id") @db.Uuid
   order   Order  @relation(fields: [orderId], references: [id])
 
+  // Una fila por intento de pago. Con Transbank nace INITIATED al iniciar el pago (solo con
+  // payment_identifier, token y amount) y se completa con el resultado al volver de Webpay; por eso
+  // los campos de detalle son nullable.
   provider          PaymentProvider
-  paymentIdentifier String                   @map("payment_identifier") // identificador transbank
-  authorizationCode String                   @map("authorization_code")
+  paymentIdentifier String                   @map("payment_identifier") // orden de compra (buy_order) de Transbank; 'SIM-<orderId>' en el pago simulado
+  token             String?                  @unique // token de la transacción en Webpay
+  authorizationCode String?                  @map("authorization_code")
   amount            Decimal                  @db.Decimal(12, 2)
-  installmentCount  Int                      @map("installment_count")
+  installmentCount  Int?                     @map("installment_count")
   status            PaymentTransactionStatus
-  transactionDate   DateTime                 @map("transaction_date")
-  movementType      String                   @map("movement_type")
-  cardType          String                   @map("card_type")
+  responseCode      Int?                     @map("response_code") // código de respuesta de Webpay (0 = aprobado)
+  transactionDate   DateTime?                @map("transaction_date")
+  movementType      String?                  @map("movement_type") // tipo de pago de Webpay (VD, VN, VP, ...)
+  cardType          String?                  @map("card_type")
+  cardLastDigits    String?                  @map("card_last_digits")
 
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([paymentIdentifier])
   @@map("payment")
 }

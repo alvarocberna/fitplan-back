@@ -95,7 +95,9 @@ export const PaymentProvider = {
 export type PaymentProvider =
   (typeof PaymentProvider)[keyof typeof PaymentProvider];
 
+// INITIATED: intento de pago creado en la pasarela, todavía sin resultado (el usuario está pagando).
 export const PaymentTransactionStatus = {
+  INITIATED: 'INITIATED',
   AUTHORIZED: 'AUTHORIZED',
   REJECTED: 'REJECTED',
   CANCELLED: 'CANCELLED',

@@ -10,6 +10,7 @@ import { OrderEntity } from '../../../../domain/entities/order.entity';
 import {
   GenerationStatus,
   PaymentStatus,
+  PaymentTransactionStatus,
   ProductType,
 } from '../../../../domain/entities/enums';
 import {
@@ -173,6 +174,7 @@ export class OrderDatasourceImpl implements OrderDatasource {
     id: string,
     payment: Omit<CreatePaymentDto, 'orderId'>,
     extras: OrderPaidExtras = {},
+    paymentId?: string,
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       // guard de idempotencia: solo avanza la primera llamada sobre una orden aún pagable.
@@ -187,14 +189,39 @@ export class OrderDatasourceImpl implements OrderDatasource {
       });
       if (count === 0) return false;
 
-      await tx.payment.create({ data: { ...payment, orderId: id } });
+      await this.writePayment(tx, id, payment, paymentId);
       return true;
     });
+  }
+
+  // Deja registrado el resultado de un intento de pago dentro de la transacción que mueve la orden:
+  // crea la fila (pago simulado) o completa el intento INITIATED de la pasarela. Si ese intento ya no
+  // estaba INITIATED lanza, para deshacer el cambio de la orden.
+  private async writePayment(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    payment: Omit<CreatePaymentDto, 'orderId'>,
+    paymentId?: string,
+  ): Promise<void> {
+    if (!paymentId) {
+      await tx.payment.create({ data: { ...payment, orderId } });
+      return;
+    }
+    const { count } = await tx.payment.updateMany({
+      where: { id: paymentId, orderId, status: PaymentTransactionStatus.INITIATED },
+      data: payment,
+    });
+    if (count === 0) {
+      throw new Error(
+        `Pago ${paymentId} de la orden ${orderId}: ya no estaba INITIATED al registrar su resultado`,
+      );
+    }
   }
 
   async markOrderAsRejectedWithPayment(
     id: string,
     payment: Omit<CreatePaymentDto, 'orderId'>,
+    paymentId?: string,
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.order.updateMany({
@@ -203,7 +230,7 @@ export class OrderDatasourceImpl implements OrderDatasource {
       });
       if (count === 0) return false;
 
-      await tx.payment.create({ data: { ...payment, orderId: id } });
+      await this.writePayment(tx, id, payment, paymentId);
       return true;
     });
   }

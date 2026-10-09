@@ -51,7 +51,7 @@ Toda respuesta de error de la API tiene esta forma, sin excepción:
   "errors": ["property inventada should not exist", "orderId must be a UUID"],
   "requestId": "4cd243ef-dc56-4722-9687-66565f3d1aa0",
   "timestamp": "2026-10-03T23:31:11.496Z",
-  "path": "/api/v1/webhooks/payments"
+  "path": "/api/v1/payments/webpay/commit"
 }
 ```
 
@@ -71,17 +71,19 @@ Toda respuesta de error de la API tiene esta forma, sin excepción:
 | `BAD_REQUEST` | 400 | Otro 400: regla de negocio que cruza campos, id que no es UUID, JSON malformado |
 | `PROFILE_INCOMPLETE` | 400 | `POST /consultations` con el perfil incompleto |
 | `GOAL_NOT_FEASIBLE` | 400 | `POST /consultations` con un objetivo no factible |
-| `UNAUTHENTICATED` | 401 | Falta el token, o es inválido o expiró; firma de webhook inválida |
+| `UNAUTHENTICATED` | 401 | Falta el token, o es inválido o expiró |
 | `IDENTITY_NOT_SYNCED` | 401 | Token válido pero sin identidad registrada (`POST /me/sync` pendiente) |
 | `FORBIDDEN` | 403 | Por defecto de un 403 |
 | `EMAIL_NOT_VERIFIED` | 403 | `POST /me/sync` de una cuenta cuyo correo no está verificado en Cognito |
 | `NOT_FOUND` | 404 | Recurso inexistente o ajeno (R2), catálogo no disponible, ruta inexistente; Prisma `P2025` |
 | `CONFLICT` | 409 | Prisma `P2002` (unicidad) o `P2003` (llave foránea) |
-| `ORDER_EXPIRED` | 409 | Pagar o rechazar una orden cuyo plazo venció |
+| `ORDER_EXPIRED` | 409 | Iniciar un pago, pagar o rechazar una orden cuyo plazo venció |
+| `ORDER_ALREADY_PAID` | 409 | Iniciar un pago (`POST /orders/:id/payments`) de una orden ya pagada |
 | `PAYLOAD_TOO_LARGE` | 413 | Body JSON sobre el tope (300 kB) |
 | `RATE_LIMITED` | 429 | Se superó el límite de frecuencia del endpoint (`common/throttling/`) |
 | `LLM_UNAVAILABLE` | 503 | El proveedor del modelo no respondió o respondió algo inutilizable |
 | `AUTH_UNAVAILABLE` | 503 | No se pudo verificar el token contra Cognito (red, JWKS) ni consultar `userInfo` |
+| `PAYMENT_UNAVAILABLE` | 503 | Transbank no respondió o rechazó la llamada (`PaymentGatewayUnavailableError`) |
 | `DATABASE_UNAVAILABLE` | 503 | No se pudo hablar con la base de datos |
 | `SERVICE_UNAVAILABLE` | 503 | Por defecto de un 503 sin `code` propio |
 | `INTERNAL_ERROR` | 500 | Cualquier error no previsto |
@@ -141,7 +143,9 @@ mensaje en español.
 levanta.
 
 **`PaymentSimulationEnabledGuard`**: `ENABLE_PAYMENT_SIMULATION !== 'true'` → 404, como si la ruta no existiera.
-**Webhook**: firma inválida → 401 (hoy `verifyWebhookSignature()` devuelve siempre `true`).
+**Retorno de Webpay** (`POST /payments/webpay/commit`): no tiene guard; un token desconocido responde 404 y un
+fallo de Transbank 503 `PAYMENT_UNAVAILABLE`. Un pago rechazado o anulado **no** es un error: responde 200 con
+su `outcome`.
 
 ## 5. Convenciones de negocio
 

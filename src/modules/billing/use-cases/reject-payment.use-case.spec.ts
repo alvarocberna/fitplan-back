@@ -52,6 +52,27 @@ describe('RejectPaymentUseCase', () => {
         status: 'REJECTED',
         transactionDate: expect.any(Date),
       }),
+      undefined,
+    );
+  });
+
+  it('con el resultado de la pasarela completa ese intento en vez de crear un rechazo simulado', async () => {
+    const result = {
+      provider: 'TRANSBANK' as const,
+      paymentIdentifier: 'buy-order-1',
+      amount: 19990,
+      status: 'REJECTED' as const,
+      responseCode: -1,
+    };
+
+    await expect(
+      useCase.execute({ orderId: 'order-1', payment: { paymentId: 'payment-1', result } }),
+    ).resolves.toEqual({ status: 'rejected' });
+
+    expect(orderRepository.markOrderAsRejectedWithPayment).toHaveBeenCalledWith(
+      'order-1',
+      result,
+      'payment-1',
     );
   });
 

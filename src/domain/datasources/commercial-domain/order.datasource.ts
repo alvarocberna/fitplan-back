@@ -51,18 +51,22 @@ export abstract class OrderDatasource {
   // orden y aplica `extras` sobre ella, para que order.payment_status y payment.status no queden
   // desalineados. Se puede pagar desde PENDING o REJECTED (reintento) mientras no haya vencido el
   // plazo; si la orden ya estaba pagada, expirada o vencida devuelve false y no crea nada.
+  // Con `paymentId` (pasarela real) no crea la fila: completa el intento INITIATED que ya existía.
   abstract markOrderAsPaidWithPayment(
     id: string,
     payment: Omit<CreatePaymentDto, 'orderId'>,
     extras?: OrderPaidExtras,
+    paymentId?: string,
   ): Promise<boolean>;
 
   // Registra un intento de pago rechazado: en UNA transacción deja la orden REJECTED (solo si estaba
   // PENDING o REJECTED y no venció su plazo) y crea la fila `payment` del intento. Devuelve false, sin
-  // crear nada, si la orden ya no admite pagos (pagada, expirada o vencida).
+  // crear nada, si la orden ya no admite pagos (pagada, expirada o vencida). Con `paymentId` completa
+  // el intento INITIATED que ya existía en vez de crear la fila.
   abstract markOrderAsRejectedWithPayment(
     id: string,
     payment: Omit<CreatePaymentDto, 'orderId'>,
+    paymentId?: string,
   ): Promise<boolean>;
 
   // Pasa a EXPIRED una orden sin pagar (PENDING o REJECTED) cuyo expiration_date ya pasó. Idempotente:

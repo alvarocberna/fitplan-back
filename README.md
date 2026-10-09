@@ -27,7 +27,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
   - [identity: `/me`](#identity-me)
   - [consultation: `/consultations`](#consultation-consultations)
   - [plans: `/plans/standard` y `/me/plans`](#plans-plansstandard-y-meplans)
-  - [billing: `/orders`, `/webhooks/payments` y `/dev/orders`](#billing-orders-webhookspayments-y-devorders)
+  - [billing: `/orders`, `/payments` y `/dev/orders`](#billing-orders-payments-y-devorders)
   - [Generación del plan (background)](#generación-del-plan-background)
 - [Capa de dominio](#capa-de-dominio)
   - [Fórmulas de requerimientos energéticos](#fórmulas-de-requerimientos-energéticos)
@@ -85,7 +85,7 @@ src/
 │   ├── identity/           # /me, /me/sync, /me/summary + CurrentUserResolver (exportado)
 │   ├── consultation/       # chat de anamnesis + crear consulta (con su orden); borra la consulta al expirar su orden (listener de order.expired)
 │   ├── plans/              # catálogo estándar, mis planes, generación del plan (listener de order.paid)
-│   ├── billing/            # ciclo de vida de la orden, pagos (confirmado/rechazado), webhooks, job de expiración; emite order.paid y order.expired
+│   ├── billing/            # ciclo de vida de la orden, pagos con Webpay Plus (inicio, retorno, confirmado/rechazado), job de expiración; emite order.paid y order.expired
 │   └── clinical/           # historial clínico: /me/consultations y /me/measurements
 │
 ├── app.module.ts
@@ -161,7 +161,9 @@ Definidas en `.env.template`:
 |---|---|
 | `PORT` | Puerto HTTP (`main.ts`, default `3001`) |
 | `URL_FRONTEND` | Único origen permitido por CORS. **Obligatoria en producción** (sin ella el proceso no arranca) |
-| `PAYMENT_WEBHOOK_SECRET` | Secreto que debe venir en el header `x-webhook-secret` de `POST /webhooks/payments`. Sin valor, el webhook responde 401 siempre |
+| `TRANSBANK_ENVIRONMENT` | `integration` (ambiente de pruebas de Transbank, por defecto) o `production` |
+| `TRANSBANK_COMMERCE_CODE` / `TRANSBANK_API_KEY` | Credenciales del comercio en Webpay Plus. En `integration`, sin ellas se usan las públicas de prueba del SDK; en `production` son **obligatorias** (sin ellas el proceso no arranca) |
+| `WEBPAY_RETURN_URL` | URL del frontend a la que Webpay devuelve al usuario (`<front>/api/webpay/return`). Por defecto `http://localhost:3000/api/webpay/return`; **obligatoria en producción** |
 | `ENABLE_SWAGGER` | `true` monta Swagger en `/api-docs` (nunca en producción) |
 | `EMAIL` | Correo de contacto/soporte referenciado en la config (no consumido aún por `EmailSender`, que hoy es un stub) |
 | `DATABASE_URL` | Cadena de conexión PostgreSQL para Prisma (ej. `postgresql://user:pass@localhost:5432/db`) |
@@ -171,7 +173,7 @@ Definidas en `.env.template`:
 | `OPENAI_TIMEOUT_MS` | Opcional. Tope de las llamadas al modelo dentro de una request: chat y factibilidad (por defecto 60000) |
 | `OPENAI_PLAN_TIMEOUT_MS` | Opcional. Tope de la llamada que genera el plan, que tarda minutos (por defecto 300000) |
 | `PLAN_GENERATION_TIMING_LOGS` | `true` muestra en el log los tiempos por fase de la generación del plan. Apagado por defecto |
-| `ENABLE_PAYMENT_SIMULATION` | `true` habilita `POST /api/v1/dev/orders/:id/simulate-payment` (con cualquier otro valor responde 404). Mientras no haya pasarela real es el único camino de pago, así que va en `true` también en producción |
+| `ENABLE_PAYMENT_SIMULATION` | `true` habilita `POST /api/v1/dev/orders/:id/simulate-payment[-rejection]` (con cualquier otro valor responden 404). Solo para desarrollo y pruebas: marca la orden sin pasar por Webpay. **En producción va en `false`** |
 | `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | User Pool y App Client con los que se valida el Access Token (ver [doc/auth.md](./doc/auth.md)) |
 | `AWS_REGION` / `AWS_S3_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Bucket S3 de los PDFs (`S3FileStorage`) |
 
@@ -220,7 +222,8 @@ los consume, en [purchase-flow-personalized-plan.md](../doc/flows/purchase-flow-
 | POST | `/me/measurements` | Sí | `RecordMeasurementUseCase` | clinical |
 | PATCH | `/me/measurements/:measurementId` | Sí | `UpdateMyMeasurementUseCase` | clinical |
 | GET | `/orders/:id/status` | Sí | `GetOrderStatusUseCase` | billing |
-| POST | `/webhooks/payments` | No (header `x-webhook-secret`) | `ConfirmPaymentUseCase` / `RejectPaymentUseCase` (`status: 'REJECTED'`) | billing |
+| POST | `/orders/:id/payments` | Sí + dueño de la orden | `StartPaymentUseCase` | billing |
+| POST | `/payments/webpay/commit` | No (token de la transacción de Webpay) | `CommitWebpayPaymentUseCase` | billing |
 | POST | `/dev/orders/:id/simulate-payment` | Sí + dueño de la orden (`ENABLE_PAYMENT_SIMULATION`) | `ConfirmPaymentUseCase` | billing |
 | POST | `/dev/orders/:id/simulate-payment-rejection` | Sí + dueño de la orden (`ENABLE_PAYMENT_SIMULATION`) | `RejectPaymentUseCase` | billing |
 
@@ -416,7 +419,7 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
   projectedStartDate, projectedEndDate, weight, bmi, bfKg, bfPercentage, mmKg, mmPercentage } | null }`
   (fechas `YYYY-MM-DD`). Sin plan con período → **404**. Alimenta el gráfico de evolución del front.
 
-### billing: `/orders`, `/webhooks/payments` y `/dev/orders`
+### billing: `/orders`, `/payments` y `/dev/orders`
 
 - **`GET /orders/:id/status`** (sesión, `id` UUID v4): endpoint de polling de la página de la orden.
   Valida que la orden sea del usuario del token; si no existe o es de otro usuario responde 404 en
@@ -425,20 +428,50 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
   firmadas igual que `GET /me/plans` (`order-files.ts`). `generationStatus` es `'ERROR'` solo cuando el
   fallo es definitivo; con reintentos automáticos pendientes responde `'GENERATING'`. Si el plazo de pago de la orden ya venció y el
   job todavía no la expiró, la expira en el momento y responde `paymentStatus: 'EXPIRED'`.
-- **`POST /webhooks/payments`** (body `{ orderId, status? }`, provisorio hasta integrar Transbank; `status`
-  es `'AUTHORIZED'` por defecto y `'REJECTED'` deriva a `RejectPaymentUseCase`) y
-  **`POST /dev/orders/:id/simulate-payment`** ejecutan el mismo `ConfirmPaymentUseCase`. El webhook
-  se autentica con el header `x-webhook-secret` (`PaymentWebhookVerifier`: comparación en tiempo constante
-  contra `PAYMENT_WEBHOOK_SECRET`, y 401 siempre si la variable no está configurada); es el punto que
-  reemplazará la firma de la pasarela real. El simulador solo responde con `ENABLE_PAYMENT_SIMULATION=true`
-  (`PaymentSimulationEnabledGuard`, 404 si no), exige sesión (`CognitoAuthGuard`) y que la orden sea del usuario
-  del token (404 si no, regla R2).
+- **`POST /orders/:id/payments`** (sesión, `StartPaymentUseCase`): inicia un pago de la orden en
+  **Webpay Plus** (Transbank). Valida que la orden sea del usuario (404 si no, R2), que no esté pagada
+  (**409** `ORDER_ALREADY_PAID`) ni expirada (**409** `ORDER_EXPIRED`); si le quedan menos de 15 minutos
+  de plazo lo extiende a 15 (`CHECKOUT_MIN_WINDOW_MS`), para que un cobro aprobado no encuentre la orden
+  expirada. Crea la transacción en Transbank con el monto de la orden (`PaymentGateway.createTransaction`,
+  `buy_order` aleatorio de 26 caracteres) y registra el intento como una fila `payment` `INITIATED`
+  (`provider = 'TRANSBANK'`, con el `token`). Responde `{ url, token }`: el navegador envía `token` como
+  `token_ws` en un formulario POST a `url`. Cada llamada crea un intento nuevo. Si Transbank no responde:
+  **503** `PAYMENT_UNAVAILABLE`.
+- **`POST /payments/webpay/commit`** (`CommitWebpayPaymentUseCase`, body `{ tokenWs?, tbkToken?, tbkBuyOrder? }`):
+  lo llama el frontend, server a server, cuando Webpay devuelve al usuario (`/api/webpay/return`). **No
+  exige sesión** (el retorno es una redirección entre sitios y la cookie puede no viajar): el pago se
+  identifica por el token de la transacción, y el resultado nunca se toma de los parámetros sino de
+  Transbank. Responde siempre 200 con `{ orderId, productType, outcome }`:
+  - `tokenWs` (el usuario pagó): si la orden sigue pagable hace `commit` en Transbank. Aprobado
+    (`status = AUTHORIZED`, `response_code = 0` y monto igual al del intento) → `ConfirmPaymentUseCase`,
+    `outcome: 'paid'`. Rechazado → `RejectPaymentUseCase`, `outcome: 'rejected'`.
+  - `tbkToken` (anuló en el formulario) o solo `tbkBuyOrder` (el formulario venció): cierra el intento
+    como `CANCELLED` sin tocar la orden, `outcome: 'cancelled'`.
+  - La orden ya no admite el pago (la pagó otro intento o expiró): **no confirma** la transacción, cierra
+    el intento como `CANCELLED`, alerta `payment_not_committed` y responde `outcome: 'not_committed'`.
+  - Cobro confirmado que no se pudo aplicar (la orden dejó de ser pagable entre la verificación y el
+    commit): el intento queda `AUTHORIZED`, alerta crítica `payment_charged_not_applied` (hay que
+    devolver el dinero a mano) y `outcome: 'needs_review'`.
+  - **Idempotente**: un intento ya cerrado responde su resultado sin volver a llamar a Transbank ni emitir
+    `order.paid` (recarga de la URL de retorno). Si el `commit` falla porque ya se había confirmado (dos
+    retornos a la vez) se usa `PaymentGateway.getTransactionStatus`.
+  - Token desconocido o sin parámetros → 404. Límite: 60/min (`PAYMENT_RETURN_THROTTLE`).
+- **`POST /dev/orders/:id/simulate-payment`** y **`.../simulate-payment-rejection`**: pago simulado para
+  desarrollo y pruebas; ejecutan `ConfirmPaymentUseCase` / `RejectPaymentUseCase` directamente, sin
+  pasar por Webpay (`provider = 'SIMULATED'`). Solo responden con `ENABLE_PAYMENT_SIMULATION=true`
+  (`PaymentSimulationEnabledGuard`, 404 si no; **en producción va en `false`**), exigen sesión
+  (`CognitoAuthGuard`) y que la orden sea del usuario del token (404 si no, regla R2).
+- **Puerto `PaymentGateway`** (`domain/ports/payment-gateway.ts`): `createTransaction`, `commitTransaction`,
+  `getTransactionStatus`. Su adaptador es `TransbankPaymentGateway`
+  (`infrastructure/payments/transbank/`, SDK oficial `transbank-sdk`), el único archivo que conoce el
+  SDK; traduce sus errores a `PaymentGatewayUnavailableError`.
 - Lógica de `ConfirmPaymentUseCase`:
   1. Carga la orden con su producto (404 si no existe).
   2. `OrderRepository.markOrderAsPaidWithPayment` ejecuta **en una transacción**:
      `paymentStatus: PENDING | REJECTED → PAID` (solo si seguía pagable: sin pagar y con el plazo
-     vigente) + fila `payment` `AUTHORIZED`
-     (`provider = 'SIMULATED'` y detalle placeholder mientras el pago sea simulado). Para un producto
+     vigente) + fila `payment` `AUTHORIZED`: con Webpay completa el intento `INITIATED` con el
+     resultado de Transbank; en el pago simulado crea la fila (`provider = 'SIMULATED'`, detalle
+     placeholder). Para un producto
      `PREDEFINED` copia además `pdfKey`/`thumbnailKey` del producto y deja la orden `COMPLETED`.
   3. Si esta llamada marcó el pago emite `order.paid { orderId, productType }` y responde
      `{ status: 'processed' }`; si ya estaba pagada responde `{ status: 'already_processed' }` sin crear
@@ -452,7 +485,7 @@ del usuario. Flujo completo: [../doc/flows/purchase-flow-predefined-plan.md](../
 
 - **Plazo de pago**: `CreateOrderUseCase` setea `expirationDate = creationDate + 24 h`
   (`ORDER_PAYMENT_WINDOW_MS`, `order-lifecycle.service.ts`). Un rechazo no reinicia el plazo.
-- **`RejectPaymentUseCase`** (`POST /webhooks/payments` con `status: 'REJECTED'` y
+- **`RejectPaymentUseCase`** (pago rechazado por Webpay, vía `CommitWebpayPaymentUseCase`, y
   `POST /dev/orders/:id/simulate-payment-rejection`): en una transacción deja la orden `REJECTED` y crea
   una fila `payment` `REJECTED` (una por intento). Responde `{ status: 'rejected' }`; `already_processed` si
   la orden ya estaba pagada; 404 si no existe; 409 si expiró.
@@ -792,7 +825,7 @@ Campos relevantes de `Order` (tabla `order`):
 
 La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
 [doc/auth.md](./doc/auth.md)) — ver `doc/technical-debt.md` para
-la deuda pendiente. `Payment` sí está conectado: el webhook de pago crea su fila (`AUTHORIZED`, hoy con datos simulados) en la misma transacción que marca la orden pagada. Buena parte del resto del dominio (la
+la deuda pendiente. `Payment` sí está conectado: es una fila por intento de pago (`INITIATED` al iniciar el pago en Webpay, y `AUTHORIZED` / `REJECTED` / `CANCELLED` al volver; la confirmación ocurre en la misma transacción que marca la orden pagada). Buena parte del resto del dominio (la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
 la fila principal y sus tablas hijas) está conectado: `GeneratePersonalizedPlanUseCase` lo **escribe**
@@ -837,8 +870,7 @@ datasources/repositories que ya no existe en el código actual).
 - Solo `weight` y `height` de `MeasurementsDto` están activos; el resto de mediciones antropométricas (y los
   servicios de fórmulas que las usan: composición corporal, somatocarta, etc.) están definidas pero no
   conectadas al flujo de generación del plan.
-- No hay pasarela de pago real integrada (`ConfirmPaymentUseCase.verifyWebhookSignature` siempre devuelve
-  `true`) ni proveedor de correo real conectado (`LogEmailSender.sendRealEmail` es un stub que solo
+- No hay proveedor de correo real conectado (`LogEmailSender.sendRealEmail` es un stub que solo
   logea). El proveedor decidido es **Amazon SES**, a implementar a futuro como un adaptador nuevo de
   `EmailSender`; al hacerlo hay que sacar el envío del correo del ciclo de intentos de la generación (hoy
   un fallo del correo regeneraría un plan ya `COMPLETED`) y usarlo también para las alertas de
@@ -853,8 +885,11 @@ datasources/repositories que ya no existe en el código actual).
   archivos predefinidos se suben **a mano** (no hay un flujo de subida automatizado): tras subirlos hay
   que correr `npm run seed:predefined`, que activa las versiones cuyo PDF existe. Los precios de las
   112 versiones son placeholders (`predefined-products.seed-data.ts`).
-- El pago sigue siendo simulado: la fila `payment` del webhook usa `provider = 'SIMULATED'` con campos de
-  detalle placeholder hasta integrar una pasarela real.
+- Pagos (Webpay Plus): no hay reembolso automático (`PaymentGateway` no tiene `refund`): un cobro que
+  no se pudo aplicar a la orden (`payment_charged_not_applied`) se devuelve a mano. Tampoco hay un job
+  que cierre los intentos `INITIATED` abandonados (el usuario cerró el navegador sin volver): quedan en
+  ese estado y, al no confirmarse, no se cobran. Falta además el proceso de validación de Transbank
+  para pasar a producción.
 - `notifyGenerationFailure` (cuando una ronda de generación agota sus intentos) solo deja un log
   estructurado; falta integrarlo con un canal de alertas/soporte real. Una orden que agota además sus 4
   rondas (`ERROR` definitivo) no tiene endpoint para relanzarla: requiere intervención manual en la base.
