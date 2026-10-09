@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-NestJS backend for NutriApp: a conversational agent that, backed by OpenAI, collects a patient's
+NestJS backend for Fitplan: a conversational agent that, backed by OpenAI, collects a patient's
 anamnesis via chat, processes payment for the consultation, and asynchronously generates a
 personalized nutrition plan (emailed as PDF, also downloadable from the frontend).
 
@@ -110,7 +110,7 @@ domain service or an internal use case (e.g. `CreateOrderUseCase`).
 (`POST /consultations`, not `/create-consultation`), and everything that belongs to the authenticated
 user lives under `/me` (the user always comes from the token via `CurrentUserResolver.resolve`, never
 from a body/URL id — R1). A route with an id must filter by the user too and answer 404 for both
-"missing" and "not yours" (R2). The frontend (`../nutricionista-virtual-front`) calls these routes
+"missing" and "not yours" (R2). The frontend (`../fitplan-front`) calls these routes
 through `apiFetch`, which adds the `api/v1` prefix — a route change is a coordinated back + front change.
 
 ### Request/response flow

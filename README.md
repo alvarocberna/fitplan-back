@@ -1,6 +1,6 @@
-# NutriApp Back
+# Fitplan Back
 
-Backend en [NestJS](https://nestjs.com/) para NutriApp: un agente conversacional que, apoyado en OpenAI,
+Backend en [NestJS](https://nestjs.com/) para Fitplan: un agente conversacional que, apoyado en OpenAI,
 recopila la anamnesis de un paciente por chat, procesa el pago de la consulta y genera de forma
 asíncrona un plan nutricional personalizado (enviado por correo en PDF y descargable desde el frontend).
 
@@ -724,7 +724,7 @@ tipada lo cumpla. El esquema fija la **estructura**; que el contenido sea correc
   (pantalla `/ordenes/[id]`), sin duplicar el layout.
 - **`FileStorageModule` (`infrastructure/storage/s3/`)**: `S3FileStorage` (puerto `FileStorage`) envuelve `@aws-sdk/client-s3` +
   `@aws-sdk/s3-request-presigner` y expone estos métodos:
-  - `uploadPdf(buffer, key)`: sube el PDF al bucket privado `nutricionista-virtual-planes-pdfs`.
+  - `uploadPdf(buffer, key)`: sube el PDF al bucket privado `fitplan-planes-pdfs`.
   - `uploadImage(buffer, key, contentType = 'image/webp')`: sube la miniatura del plan.
   - `getSignedDownloadUrl(key, ttlSeconds = 600, { downloadFilename }?)`: como el bucket no tiene acceso
     público, esta URL firmada es la única forma de leer el objeto; expira en `ttlSeconds` y nunca se
