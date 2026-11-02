@@ -7,10 +7,7 @@ import {
   AnamnesisDto,
   MeasurementsDto,
 } from '../../../domain/dtos/consultation.dto';
-import {
-  NutritionPlanDto,
-  FoodWithEquivalence,
-} from '../../../domain/dtos/nutrition-plan.dto';
+import { NutritionPlanDto } from '../../../domain/dtos/nutrition-plan.dto';
 import { OrderEntity } from '../../../domain/entities/order.entity';
 import { UserEntity } from '../../../domain/entities/user.entity';
 import { NutritionalConsultationEntity } from '../../../domain/entities/clinical-record.entity';
@@ -26,10 +23,7 @@ import {
   findLatestBodyComposition,
 } from '../../../domain/services/projection/projection.service';
 import { calculateRequirements } from '../../../domain/services/formulas/requirements/requirements.service';
-import {
-  calculateSupplements,
-  SupplementPrescription,
-} from '../../../domain/services/formulas/requirements/supplements.service';
+import { calculateSupplements } from '../../../domain/services/formulas/requirements/supplements.service';
 import { determineMealTimes } from '../../../domain/services/alimentos/meal-times.service';
 import {
   defineFoodGroups,
@@ -150,6 +144,10 @@ export type GenerationTrigger = 'payment' | 'retry';
 // Fases que se miden (ver README, "Tiempos de la generación"). Las que empiezan con `llm_` son
 // llamadas al modelo de lenguaje.
 const isLlmPhase = (phase: string) => phase.startsWith('llm_');
+
+function tokenCount(value: unknown): string {
+  return typeof value === 'number' ? String(value) : '?';
+}
 
 @Injectable()
 export class GeneratePersonalizedPlanUseCase {
@@ -410,8 +408,8 @@ export class GeneratePersonalizedPlanUseCase {
     const details: string[] = [];
     if (typeof data.model === 'string') {
       details.push(
-        `${data.model}, in ${data.promptTokens ?? '?'} / out ${data.completionTokens ?? '?'} / ` +
-          `razonamiento ${data.reasoningTokens ?? '?'} tok`,
+        `${data.model}, in ${tokenCount(data.promptTokens)} / out ${tokenCount(data.completionTokens)} / ` +
+          `razonamiento ${tokenCount(data.reasoningTokens)} tok`,
       );
     }
     if (typeof data.chars === 'number')
@@ -470,10 +468,7 @@ export class GeneratePersonalizedPlanUseCase {
     const sumTokens = (key: string) =>
       work.reduce(
         (sum, entry) =>
-          sum +
-          (typeof entry.data?.[key] === 'number'
-            ? (entry.data[key] as number)
-            : 0),
+          sum + (typeof entry.data?.[key] === 'number' ? entry.data[key] : 0),
         0,
       );
     this.logger.log({
@@ -567,8 +562,8 @@ export class GeneratePersonalizedPlanUseCase {
     const startDate = new Date();
     const { endDate, projected } = calculateProjection({
       goal,
-      weight: payload.measurements?.weight!,
-      height: payload.measurements?.height!,
+      weight: payload.measurements?.weight as number,
+      height: payload.measurements?.height as number,
       gender: payload.personalInfo?.gender ?? null,
       bfPercentage: baseline.bfPercentage,
       mmKg: baseline.mmKg,
@@ -692,13 +687,13 @@ export class GeneratePersonalizedPlanUseCase {
     );
     const calculateStart = performance.now();
     //se extrae informacion del body
-    const weight: number = body.measurements?.weight!;
-    const height: number = body.measurements?.height!;
-    const somatotype: string = body.measurements?.somatotype!;
-    const gender: string = body.personalInfo?.gender?.charAt(0).toUpperCase()!;
-    const dateOfBirth = body.personalInfo?.dateOfBirth!;
+    const weight = body.measurements?.weight as number;
+    const height = body.measurements?.height as number;
+    const somatotype = body.measurements?.somatotype as string;
+    const gender = body.personalInfo?.gender?.charAt(0).toUpperCase() as string;
+    const dateOfBirth = body.personalInfo?.dateOfBirth as Date;
     const age = calculateAge(dateOfBirth);
-    const athlete = body.personalInfo?.athlete!;
+    const athlete = body.personalInfo?.athlete as boolean;
 
     //PASO 1 - cálculo de requerimientos nutricionales (paso 1 doc)
     const requirements = calculateRequirements({
@@ -809,15 +804,17 @@ export class GeneratePersonalizedPlanUseCase {
       );
 
       const foods = Object.fromEntries(
-        Object.entries(calculated.foods).map(([field, portion]) => [
-          field,
-          portion === null
-            ? null
-            : ({
-                portion,
-                equivalence: equivalenceByField.get(field) ?? '',
-              } as FoodWithEquivalence),
-        ]),
+        (Object.entries(calculated.foods) as [string, string | null][]).map(
+          ([field, portion]) => [
+            field,
+            portion === null
+              ? null
+              : {
+                  portion,
+                  equivalence: equivalenceByField.get(field) ?? '',
+                },
+          ],
+        ),
       ) as NutritionPlanDto['mealTimes'][number]['foods'];
 
       return {

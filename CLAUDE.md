@@ -26,6 +26,7 @@ npm run start:dev      # dev server, watch mode
 npm run build           # nest build
 npm run start:prod      # run compiled dist/main
 npm run lint             # eslint --fix over src/apps/libs/test
+npm run lint:check       # same, without --fix: the one for CI
 npm run format            # prettier --write over src/ and test/
 npm run test               # unit tests (jest)
 npm run test:watch
@@ -295,6 +296,13 @@ The test agents are expensive in tokens, so they do **not** run after every chan
 
 Do not invoke them for small changes, internal fixes, refactors, comments or documentation. Tests are never changed just
 to make them pass.
+
+## Dependency gotchas
+
+- `chokidar` is an explicit devDependency on purpose: without it, a lockfile written by npm 11 omits an optional peer
+  of `@angular-devkit/*` and `npm ci` fails with npm 10 (the one in `node:22`, used by the Dockerfile).
+- `overrides` in `package.json` close advisories in pinned transitive packages; see `../doc/security/backend-security.md` §13.
+- TypeScript 6: `tsconfig.json` sets `strict: false` and `types` explicitly to keep the previous compiler behavior.
 
 ## Stubs / not-yet-real integrations
 

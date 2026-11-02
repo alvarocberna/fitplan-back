@@ -21,7 +21,7 @@ interface ContractSchema {
 function optionalPropertiesByClass(): Map<string, Set<string>> {
   const storage = getMetadataStorage() as unknown as {
     validationMetadatas: Map<
-      Function,
+      { name: string },
       { propertyName: string; type: string }[]
     >;
   };

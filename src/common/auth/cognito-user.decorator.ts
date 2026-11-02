@@ -11,6 +11,7 @@ export interface CognitoUserClaims {
 
 export const CognitoUser = createParamDecorator(
   (_: unknown, ctx: ExecutionContext): CognitoUserClaims => {
-    return ctx.switchToHttp().getRequest().cognitoUser;
+    return ctx.switchToHttp().getRequest<{ cognitoUser: CognitoUserClaims }>()
+      .cognitoUser;
   },
 );

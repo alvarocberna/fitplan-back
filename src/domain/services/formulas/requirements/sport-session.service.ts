@@ -188,7 +188,7 @@ export function getSportSessionRecommendation(code: string, duration: number) {
     }
   };
 
-  let indication001 = {
+  const indication001 = {
     session: '',
     strategy:
       'Mantener una hidratación adecuada para favorecer el rendimiento y la función muscular durante el entrenamiento.',
@@ -199,7 +199,7 @@ export function getSportSessionRecommendation(code: string, duration: number) {
     postActivity: null,
   };
 
-  let indication002 = {
+  const indication002 = {
     session: '',
     strategy:
       'Complementar suministro de energía durante el entrenamiento mediante carbohidratos exógenos para disminuir el consumo de reservas internas de glucógeno y mantener rendimiento.',
@@ -209,7 +209,7 @@ export function getSportSessionRecommendation(code: string, duration: number) {
     postActivity: null,
   };
 
-  let indication003 = {
+  const indication003 = {
     session: '',
     strategy:
       'Complementar suministro de energía durante el entrenamiento mediante carbohidratos exógenos para disminuir el consumo de reservas internas de glucógeno y mantener rendimiento.',
@@ -219,7 +219,7 @@ export function getSportSessionRecommendation(code: string, duration: number) {
     postActivity: null,
   };
 
-  let indication005 = {
+  const indication005 = {
     session: '',
     strategy:
       'Complementar suministro de energía durante el entrenamiento mediante carbohidratos exógenos para disminuir el consumo de reservas internas de glucógeno y mantener rendimiento.',
@@ -229,7 +229,7 @@ export function getSportSessionRecommendation(code: string, duration: number) {
       'Acompañar entrenamiento con 20-30gr de carbohidratos, como 1 gel deportivo de 30gr o 1/2 litro de jugo isotónico.',
     postActivity: null,
   };
-  let indication006 = {
+  const indication006 = {
     session: '',
     strategy:
       'Complementar suministro de energía durante el entrenamiento mediante carbohidratos exógenos para disminuir el consumo de reservas internas de glucógeno y mantener rendimiento.',

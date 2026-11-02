@@ -560,11 +560,11 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     llm.chatJson.mockImplementation(
       async (systemPrompt: string, messages: any[]) => {
         if (systemPrompt === EXTRACT_INFO_SYSTEM_PROMPT)
-          return { physicalActivityLevel, goal } as any;
+          return { physicalActivityLevel, goal };
         if (systemPrompt === NUTRITIONIST_SYSTEM_PROMPT)
-          return responses.plan() as any;
+          return responses.plan();
         if (systemPrompt === REPAIR_SYSTEM_PROMPT)
-          return responses.repair?.(messages[0].content) as any;
+          return responses.repair?.(messages[0].content);
         throw new Error('prompt de sistema inesperado');
       },
     );
@@ -983,7 +983,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
           reasoningTokens: index === 1 ? 4000 : 0,
           totalTokens: index === 1 ? 15000 : 520,
         });
-        return responses[index] as any;
+        return responses[index];
       });
       orderLifecycle.findByIdWithUser.mockResolvedValue({
         ...orderEntity,

@@ -4,7 +4,6 @@ import {
 } from './evaluate-goal-feasibility.use-case';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { MeasurementsRepository } from '../../../domain/repositories/clinical-domain/measurements.repository';
-import { LlmProvider } from '../../../domain/ports';
 import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 
 describe('EvaluateGoalFeasibilityUseCase', () => {
@@ -30,7 +29,7 @@ describe('EvaluateGoalFeasibilityUseCase', () => {
     useCase = new EvaluateGoalFeasibilityUseCase(
       currentUser as unknown as CurrentUserResolver,
       measurementsRepository as unknown as MeasurementsRepository,
-      llm as unknown as LlmProvider,
+      llm,
     );
   });
 

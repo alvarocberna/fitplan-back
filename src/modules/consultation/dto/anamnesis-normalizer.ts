@@ -51,7 +51,10 @@ function toStringOrNull(value: unknown): string | null {
     // valor anidado inesperado: intenta rescatar el primer valor útil en vez de fallar
     return toStringOrNull(Object.values(value)[0]);
   }
-  return String(value);
+  // Lo que queda viene de un JSON: número o booleano.
+  return typeof value === 'number' || typeof value === 'boolean'
+    ? String(value)
+    : null;
 }
 
 function toStringArrayOrNull(value: unknown): string[] | null {

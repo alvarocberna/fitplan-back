@@ -4,7 +4,6 @@ import { CurrentUserResolver } from '../current-user.resolver';
 import { AuthIdentityRepository } from '../../../domain/repositories/identity-auth/auth-identity.repository';
 import { UserRepository } from '../../../domain/repositories/identity-auth/user.repository';
 import { AuthProvider } from '../../../domain/entities/user.entity';
-import { IdentityProvider } from '../../../domain/ports';
 import { IdentityProviderUnavailableError } from '../../../domain/errors/identity.errors';
 import { ErrorCode } from '../../../common/errors/error-codes';
 import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
@@ -48,7 +47,7 @@ describe('SyncIdentityUseCase', () => {
       authIdentityRepository as unknown as AuthIdentityRepository,
       userRepository as unknown as UserRepository,
       currentUser as unknown as CurrentUserResolver,
-      identityProvider as unknown as IdentityProvider,
+      identityProvider,
     );
   });
 

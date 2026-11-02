@@ -78,7 +78,7 @@ describe('ChatAnamnesisUseCase', () => {
       },
       isComplete: true,
       ...overrides,
-    } as OutputChatDto;
+    };
   }
 
   beforeEach(async () => {

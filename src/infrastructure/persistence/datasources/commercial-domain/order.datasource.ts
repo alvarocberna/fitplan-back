@@ -147,9 +147,7 @@ export class OrderDatasourceImpl implements OrderDatasource {
       include: PLAN_SUMMARY_INCLUDE,
     });
     // product viene parcial (select), por eso el cast.
-    return orders.map(
-      (order) => this.toEntity(order) as unknown as OrderEntity,
-    );
+    return orders.map((order) => this.toEntity(order));
   }
 
   async getReadyOrderWithPlanDetailByIdAndUserId(
@@ -165,7 +163,7 @@ export class OrderDatasourceImpl implements OrderDatasource {
       },
       include: PLAN_DETAIL_INCLUDE,
     });
-    return order ? (this.toEntity(order) as unknown as OrderEntity) : null;
+    return order ? this.toEntity(order) : null;
   }
 
   async markOrderAsPaidIfPending(id: string): Promise<boolean> {

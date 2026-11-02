@@ -9,7 +9,7 @@ import { CalculatedMealTime } from '../../../../domain/services/alimentos/portio
 // prompt de generación (todos los tiempos) y el de corrección (solo los que tuvieron errores).
 export function buildMealTimesInfo(calculatedMealTimes: CalculatedMealTime[]) {
   return calculatedMealTimes.map((mealTime, index) => {
-    const foods = Object.entries(mealTime.foods)
+    const foods = (Object.entries(mealTime.foods) as [string, string | null][])
       .filter(([, portions]) => portions !== null)
       .map(([field, portions]) => {
         const { group, subcategory } = FOOD_FIELD_TO_GROUP[field];

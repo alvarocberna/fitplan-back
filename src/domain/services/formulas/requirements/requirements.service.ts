@@ -233,7 +233,7 @@ export function calculateRequirements({
         return tee - 1000;
       }
     } else if (goal == 'volumen') {
-      let surplus = (weight * 0.015 * 7000) / 30;
+      const surplus = (weight * 0.015 * 7000) / 30;
       return tee + surplus;
     } else {
       return tee;
@@ -260,10 +260,8 @@ export function calculateRequirements({
 
   const carbohydrate = () => {
     let cho = 0;
-    let choGrPerKg = 0;
     if (goal == 'definicion') {
       cho = (calories() * 0.55) / 4;
-      choGrPerKg = cho / weight;
       if (cho / weight >= 3) {
         return cho;
       } else {
@@ -272,7 +270,6 @@ export function calculateRequirements({
       }
     } else if (goal == 'volumen') {
       cho = (calories() * 0.5) / 4;
-      choGrPerKg = cho / weight;
       if (cho / weight <= 5) {
         return cho;
       } else {

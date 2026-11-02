@@ -64,13 +64,11 @@ describe('CreateConsultationUseCase', () => {
     };
     createOrder = { execute: jest.fn().mockResolvedValue({ id: 'order-1' }) };
     evaluateGoalFeasibility = {
-      execute: jest
-        .fn()
-        .mockResolvedValue({
-          feasible: true,
-          goal: 'mantencion',
-          message: null,
-        }),
+      execute: jest.fn().mockResolvedValue({
+        feasible: true,
+        goal: 'mantencion',
+        message: null,
+      }),
     };
 
     useCase = new CreateConsultationUseCase(

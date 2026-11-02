@@ -1,9 +1,3 @@
-import {
-  correctedArmGirth,
-  correctedCalfGirth,
-  correctedThighGirth,
-} from '../perimeters/corrected-girths.service';
-
 type LeeMuscleMassKgType = {
   gender: string;
   decimalAge: number;

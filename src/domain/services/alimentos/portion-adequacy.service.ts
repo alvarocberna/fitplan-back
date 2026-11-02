@@ -379,7 +379,7 @@ export function calculateFoodsAndIntake(
   // ---------------------------------------------------------------------------------------
   // 3° - Distribución de las porciones calculadas en los tiempos de comida.
   // ---------------------------------------------------------------------------------------
-  const proteinByMealTime = new Array(n).fill(0);
+  const proteinByMealTime = new Array<number>(n).fill(0);
   distributeRoundRobin(
     proteinPortions,
     [
@@ -390,7 +390,7 @@ export function calculateFoodsAndIntake(
     proteinByMealTime,
   );
 
-  const cerealsByMealTime = new Array(n).fill(0);
+  const cerealsByMealTime = new Array<number>(n).fill(0);
   distributeRoundRobin(
     cerealPortions,
     [
@@ -409,7 +409,7 @@ export function calculateFoodsAndIntake(
     onceIdx,
     dinnerIdx,
   ].filter((i) => i >= 0);
-  const fruitByMealTime = new Array(n).fill(0);
+  const fruitByMealTime = new Array<number>(n).fill(0);
   distributeRoundRobin(
     fruitPortions,
     [
@@ -434,7 +434,7 @@ export function calculateFoodsAndIntake(
     onceIdx,
     ...snacksWithoutException,
   ].filter((i) => i >= 0);
-  const dairyByMealTime = new Array(n).fill(0);
+  const dairyByMealTime = new Array<number>(n).fill(0);
   distributeRoundRobin(
     dairyPortions,
     [
@@ -448,7 +448,7 @@ export function calculateFoodsAndIntake(
   const highLipidPriority = [breakfastIdx, ...snackIndices, onceIdx].filter(
     (i) => i >= 0,
   );
-  const highLipidByMealTime = new Array(n).fill(0);
+  const highLipidByMealTime = new Array<number>(n).fill(0);
   distributeRoundRobin(
     highLipidPortions,
     [
@@ -458,7 +458,7 @@ export function calculateFoodsAndIntake(
     highLipidByMealTime,
   );
 
-  const oilByMealTime = new Array(n).fill(0);
+  const oilByMealTime = new Array<number>(n).fill(0);
   if (lunchDinnerSlots.length > 0 && oilPortions > 0) {
     const perSlot = oilPortions / lunchDinnerSlots.length;
     lunchDinnerSlots.forEach((i) => (oilByMealTime[i] = perSlot));

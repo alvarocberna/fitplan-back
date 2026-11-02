@@ -8,7 +8,7 @@ import { Alert, AlertNotifier } from '../../domain/ports';
 export class LogAlertNotifier implements AlertNotifier {
   private readonly logger = new Logger('ALERT');
 
-  async notify(alert: Alert): Promise<void> {
+  notify(alert: Alert): Promise<void> {
     const entry = {
       event: alert.event,
       severity: alert.severity,
@@ -17,5 +17,6 @@ export class LogAlertNotifier implements AlertNotifier {
     };
     if (alert.severity === 'critical') this.logger.error(entry);
     else this.logger.warn(entry);
+    return Promise.resolve();
   }
 }

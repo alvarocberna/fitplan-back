@@ -140,7 +140,7 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
       await datasource.updateMeasurementWithDetails(id, {
         basic: { weight: 69 },
         results: { bmi: 22.53 },
-      } as any);
+      });
 
       expect(await basicOf(id)).toMatchObject({ weight: 69, height: 175 });
       expect(
@@ -158,7 +158,7 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
 
       await datasource.updateMeasurementWithDetails(id, {
         results: { bmi: 22.86 },
-      } as any);
+      });
 
       expect(
         await prisma.measurementResults.count({

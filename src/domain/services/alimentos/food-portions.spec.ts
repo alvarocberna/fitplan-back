@@ -1,8 +1,4 @@
-import {
-  FOOD_GROUP_PORTIONS,
-  FOOD_FIELD_TO_GROUP,
-  findFoodGroup,
-} from './food-portions';
+import { FOOD_FIELD_TO_GROUP, findFoodGroup } from './food-portions';
 
 describe('findFoodGroup', () => {
   it('encuentra un grupo sin subcategoría', () => {

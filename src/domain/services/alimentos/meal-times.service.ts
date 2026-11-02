@@ -82,7 +82,7 @@ function emptyMeal(type: MealTimeType): Meal {
 // colación entre Almuerzo y Once, que es el hueco medio de una estructura de 3 principales).
 function chooseSnackSlots(gaps: number, quantity: number): number[] {
   if (gaps <= 0 || quantity <= 0)
-    return new Array(Math.max(0, quantity)).fill(0);
+    return new Array<number>(Math.max(0, quantity)).fill(0);
   if (quantity === 1) return [Math.floor(gaps / 2)];
   // 2 o más colaciones: se reparten en huecos sucesivos empezando por el primero (regla
   // explícita para 5 tiempos: "una colación entre el 1er y 2do tiempo principal, y otra entre

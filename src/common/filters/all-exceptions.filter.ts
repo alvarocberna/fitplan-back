@@ -24,7 +24,7 @@ import {
 // español); `errors` lleva el detalle técnico de una validación fallida.
 export interface ErrorResponseBody {
   statusCode: number;
-  code: ErrorCode | string;
+  code: string;
   message: string;
   errors?: string[];
   requestId?: string;
@@ -287,10 +287,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
       return;
     }
-    if (
-      resolved.statusCode === HttpStatus.UNAUTHORIZED ||
-      resolved.statusCode === HttpStatus.NOT_FOUND
-    ) {
+    const debugOnlyStatuses: number[] = [
+      HttpStatus.UNAUTHORIZED,
+      HttpStatus.NOT_FOUND,
+    ];
+    if (debugOnlyStatuses.includes(resolved.statusCode)) {
       this.logger.debug(context);
       return;
     }

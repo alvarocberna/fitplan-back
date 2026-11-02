@@ -13,13 +13,19 @@ import {
 } from 'aws-jwt-verify/error';
 import { getCognitoVerifier } from '../../infrastructure/auth/cognito/cognito-verifier';
 import { ErrorCode } from '../errors/error-codes';
+import { CognitoUserClaims } from './cognito-user.decorator';
+
+interface AuthenticatedRequest {
+  headers: Record<string, string | string[] | undefined>;
+  cognitoUser?: CognitoUserClaims;
+}
 
 @Injectable()
 export class CognitoAuthGuard implements CanActivate {
   private readonly logger = new Logger(CognitoAuthGuard.name);
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const authHeader = request.headers['authorization'];
     const token =
       typeof authHeader === 'string' && authHeader.startsWith('Bearer ')

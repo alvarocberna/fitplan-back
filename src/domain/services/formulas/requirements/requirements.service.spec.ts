@@ -158,7 +158,7 @@ describe('calculateRequirements', () => {
     expect(req.calories).toBeCloseTo(1978, 5);
     expect(req.protein).toBeCloseTo(112, 5);
     expect(req.carbohydrate).toBeCloseTo(271.975, 5);
-    expect(req.fat).toBeCloseTo(49.122222222222224, 5);
+    expect(req.fat).toBeCloseTo(49.12222222, 5);
   });
 
   it('goal "volumen" suma un superávit calórico basado en el peso', () => {

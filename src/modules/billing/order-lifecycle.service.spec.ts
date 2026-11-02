@@ -228,7 +228,7 @@ describe('OrderLifecycleService', () => {
   });
 
   it('touchGeneration renueva generationUpdatedAt: marca que la generación sigue avanzando', async () => {
-    orderRepository.updateOrderById.mockResolvedValue({} as never);
+    orderRepository.updateOrderById.mockResolvedValue({});
 
     await service.touchGeneration('order-1');
 

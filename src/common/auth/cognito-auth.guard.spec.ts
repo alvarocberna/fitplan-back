@@ -52,7 +52,7 @@ describe('CognitoAuthGuard', () => {
   it.each([[{}], [{ authorization: 'Basic abc' }]])(
     'sin un Bearer token responde 401 sin llamar al verificador',
     async (headers) => {
-      const { context } = createContext(headers as Record<string, string>);
+      const { context } = createContext(headers);
 
       await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
         UnauthorizedException,

@@ -89,8 +89,6 @@ export class EvaluateGoalFeasibilityUseCase {
       // structured output: el modelo solo puede responder uno de los tres objetivos
       { schema: CLASSIFY_GOAL_SCHEMA },
     );
-    return GOALS.includes(goal as ProjectionGoalDto)
-      ? (goal as ProjectionGoalDto)
-      : 'mantencion';
+    return GOALS.includes(goal) ? goal : 'mantencion';
   }
 }

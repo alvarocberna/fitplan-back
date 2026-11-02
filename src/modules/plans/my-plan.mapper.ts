@@ -1,7 +1,6 @@
 // Mapeos compartidos por GET /me/plans (CU-PLN-04) y GET /me/plans/:orderId (CU-PLN-05): de la orden
 // (con product y plan -> nutritionalPlan principal) a los DTOs de "mis planes".
 
-import { NutritionPlanDto } from '../../domain/dtos/nutrition-plan.dto';
 import { NutritionalPlanTreeDto } from '../../domain/dtos/clinical-domain/plan/upsert-plan-with-main-nutritional-plan.dto';
 import {
   PlanMealTimeNoteType,

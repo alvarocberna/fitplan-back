@@ -29,7 +29,7 @@ describe('CognitoIdentityProvider', () => {
   beforeEach(() => {
     process.env.COGNITO_USER_POOL_ID = 'us-east-1_abc123';
     fetchMock = jest.fn();
-    global.fetch = fetchMock as unknown as typeof fetch;
+    global.fetch = fetchMock;
     provider = new CognitoIdentityProvider();
   });
 
