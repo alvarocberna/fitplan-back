@@ -23,7 +23,10 @@ describe('ConsultationsController', () => {
       providers: [
         { provide: ChatAnamnesisUseCase, useValue: chatAnamnesis },
         { provide: CreateConsultationUseCase, useValue: createConsultation },
-        { provide: EvaluateGoalFeasibilityUseCase, useValue: evaluateGoalFeasibility },
+        {
+          provide: EvaluateGoalFeasibilityUseCase,
+          useValue: evaluateGoalFeasibility,
+        },
       ],
     }).compile();
 
@@ -31,8 +34,16 @@ describe('ConsultationsController', () => {
   });
 
   it('chat() delega en ChatAnamnesisUseCase y devuelve su resultado', async () => {
-    const body = { messages: [{ role: 'user', content: 'hola' }], anamnesis: null } as unknown as InputChatDtoImpl;
-    const output = { reply: 'hola!', titleReply: 'Inicio', anamnesis: null, isComplete: false } as unknown as OutputChatDtoImpl;
+    const body = {
+      messages: [{ role: 'user', content: 'hola' }],
+      anamnesis: null,
+    } as unknown as InputChatDtoImpl;
+    const output = {
+      reply: 'hola!',
+      titleReply: 'Inicio',
+      anamnesis: null,
+      isComplete: false,
+    } as unknown as OutputChatDtoImpl;
     chatAnamnesis.execute.mockResolvedValue(output);
 
     await expect(controller.chat(body)).resolves.toBe(output);
@@ -40,12 +51,19 @@ describe('ConsultationsController', () => {
   });
 
   it('create() delega en CreateConsultationUseCase con los claims y el body', async () => {
-    const body = { personalInfo: { email: 'a@b.com' } } as unknown as CompleteConsultationDtoImpl;
+    const body = {
+      personalInfo: { email: 'a@b.com' },
+    } as unknown as CompleteConsultationDtoImpl;
     const claims: CognitoUserClaims = { sub: 'test-sub' };
     createConsultation.execute.mockResolvedValue({ orderId: 'order-1' });
 
-    await expect(controller.create(body, claims)).resolves.toEqual({ orderId: 'order-1' });
-    expect(createConsultation.execute).toHaveBeenCalledWith({ claims, consultation: body });
+    await expect(controller.create(body, claims)).resolves.toEqual({
+      orderId: 'order-1',
+    });
+    expect(createConsultation.execute).toHaveBeenCalledWith({
+      claims,
+      consultation: body,
+    });
   });
 
   it('goalFeasibility() delega en EvaluateGoalFeasibilityUseCase con los claims, goals y measurements', async () => {
@@ -54,10 +72,16 @@ describe('ConsultationsController', () => {
       measurements: { weight: 55, height: 170 },
     } as unknown as GoalFeasibilityRequestDtoImpl;
     const claims: CognitoUserClaims = { sub: 'test-sub' };
-    const output = { feasible: false, goal: 'definicion', message: 'peso bajo' };
+    const output = {
+      feasible: false,
+      goal: 'definicion',
+      message: 'peso bajo',
+    };
     evaluateGoalFeasibility.execute.mockResolvedValue(output);
 
-    await expect(controller.goalFeasibility(body, claims)).resolves.toBe(output);
+    await expect(controller.goalFeasibility(body, claims)).resolves.toBe(
+      output,
+    );
     expect(evaluateGoalFeasibility.execute).toHaveBeenCalledWith({
       claims,
       goals: body.goals,

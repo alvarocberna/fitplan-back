@@ -112,7 +112,8 @@ const planModel = () => process.env.OPENAI_MODEL_PLAN ?? 'gpt-5-mini';
 
 // true muestra en el log los tiempos de cada fase de la generación (ver logPhase/logAttempt/logRound).
 // Apagado por defecto: es instrumentación para diagnosticar cuellos de botella, no un log de operación.
-const timingLogsEnabled = () => process.env.PLAN_GENERATION_TIMING_LOGS === 'true';
+const timingLogsEnabled = () =>
+  process.env.PLAN_GENERATION_TIMING_LOGS === 'true';
 
 // Límites de las llamadas al modelo durante la generación. El plan completo es una respuesta larga de
 // un modelo con razonamiento: tarda minutos, no segundos, así que NO puede usar el tope por defecto
@@ -127,9 +128,15 @@ const planLlmOptions = (): LlmCallOptions => ({
   maxRetries: 0,
 });
 // La clasificación previa (nivel de actividad y objetivo) es una respuesta corta.
-const CLASSIFY_LLM_OPTIONS: LlmCallOptions = { timeoutMs: 60_000, maxRetries: 0 };
+const CLASSIFY_LLM_OPTIONS: LlmCallOptions = {
+  timeoutMs: 60_000,
+  maxRetries: 0,
+};
 // Una corrección redacta solo los tiempos de comida con error: bastante más corta que el plan.
-const REPAIR_LLM_OPTIONS: LlmCallOptions = { timeoutMs: 2 * 60_000, maxRetries: 0 };
+const REPAIR_LLM_OPTIONS: LlmCallOptions = {
+  timeoutMs: 2 * 60_000,
+  maxRetries: 0,
+};
 
 // Reintento dirigido: cuántas veces se le pide al modelo corregir SOLO los tiempos de comida que la
 // validación rechazó, antes de darse por vencido y regenerar el plan completo (siguiente intento).
@@ -207,12 +214,17 @@ export class GeneratePersonalizedPlanUseCase {
       ({ order, consultation, payload } = await roundTimer.measure(
         'load_data',
         async () => {
-          const loadedOrder = await this.orderLifecycle.findByIdWithUser(orderId);
-          const loadedConsultation = await this.getConsultationForOrder(orderId);
+          const loadedOrder =
+            await this.orderLifecycle.findByIdWithUser(orderId);
+          const loadedConsultation =
+            await this.getConsultationForOrder(orderId);
           return {
             order: loadedOrder,
             consultation: loadedConsultation,
-            payload: this.buildCompleteConsultationDto(loadedOrder, loadedConsultation),
+            payload: this.buildCompleteConsultationDto(
+              loadedOrder,
+              loadedConsultation,
+            ),
           };
         },
         onRoundPhase,
@@ -314,7 +326,12 @@ export class GeneratePersonalizedPlanUseCase {
         await timer.measure(
           'complete_order',
           () =>
-            this.orderLifecycle.completeGeneration(orderId, plan, pdfKey, thumbnailKey),
+            this.orderLifecycle.completeGeneration(
+              orderId,
+              plan,
+              pdfKey,
+              thumbnailKey,
+            ),
           onPhase,
         );
         this.logAttempt(orderId, attempt, true, timer);
@@ -331,7 +348,14 @@ export class GeneratePersonalizedPlanUseCase {
           () => this.sendPlanEmail(order, plan, pdfBuffer),
           onRoundPhase,
         );
-        this.logRound(orderId, input.trigger, 'completed', attempt, roundStart, measured);
+        this.logRound(
+          orderId,
+          input.trigger,
+          'completed',
+          attempt,
+          roundStart,
+          measured,
+        );
         return;
       } catch (error) {
         const isValidationError = error instanceof PlanValidationError;
@@ -352,7 +376,14 @@ export class GeneratePersonalizedPlanUseCase {
             (error as Error).stack,
           );
           await this.failRound(orderId, error as Error, order.attempts ?? 0);
-          this.logRound(orderId, input.trigger, 'failed', attempt, roundStart, measured);
+          this.logRound(
+            orderId,
+            input.trigger,
+            'failed',
+            attempt,
+            roundStart,
+            measured,
+          );
           return;
         }
 
@@ -367,9 +398,14 @@ export class GeneratePersonalizedPlanUseCase {
 
   //instrumentación - una línea por fase, apenas termina. Ej:
   //  Orden <id> [intento 1/4] llm_plan: 142318 ms (gpt-5-mini, in 9120 / out 6540 / razonamiento 4800 tok)
-  private logPhase(orderId: string, attempt: number | null, entry: PhaseEntry): void {
+  private logPhase(
+    orderId: string,
+    attempt: number | null,
+    entry: PhaseEntry,
+  ): void {
     if (!timingLogsEnabled()) return;
-    const scope = attempt === null ? 'ronda' : `intento ${attempt}/${MAX_ATTEMPTS}`;
+    const scope =
+      attempt === null ? 'ronda' : `intento ${attempt}/${MAX_ATTEMPTS}`;
     const data = entry.data ?? {};
     const details: string[] = [];
     if (typeof data.model === 'string') {
@@ -378,7 +414,8 @@ export class GeneratePersonalizedPlanUseCase {
           `razonamiento ${data.reasoningTokens ?? '?'} tok`,
       );
     }
-    if (typeof data.chars === 'number') details.push(`${data.chars} caracteres`);
+    if (typeof data.chars === 'number')
+      details.push(`${data.chars} caracteres`);
     if (typeof data.bytes === 'number') details.push(`${data.bytes} bytes`);
     if (!entry.ok) details.push('FALLÓ');
     this.logger.log(
@@ -388,7 +425,12 @@ export class GeneratePersonalizedPlanUseCase {
   }
 
   //instrumentación - resumen estructurado de un intento: cada fase con su duración y porcentaje.
-  private logAttempt(orderId: string, attempt: number, ok: boolean, timer: PhaseTimer): void {
+  private logAttempt(
+    orderId: string,
+    attempt: number,
+    ok: boolean,
+    timer: PhaseTimer,
+  ): void {
     if (!timingLogsEnabled()) return;
     const summary = timer.summary();
     this.logger.log({
@@ -397,7 +439,8 @@ export class GeneratePersonalizedPlanUseCase {
       attempt,
       ok,
       // correcciones dirigidas que hizo falta pedir en este intento (0 = el plan salió bien a la primera)
-      repairs: timer.entries().filter((entry) => entry.phase === 'llm_repair').length,
+      repairs: timer.entries().filter((entry) => entry.phase === 'llm_repair')
+        .length,
       totalMs: summary.totalMs,
       slowest: summary.slowest,
       phases: summary.phases,
@@ -418,14 +461,19 @@ export class GeneratePersonalizedPlanUseCase {
     // queue_wait es tiempo anterior a la ronda: se informa aparte y no entra en los porcentajes
     const work = measured.filter((entry) => entry.phase !== 'queue_wait');
     const queueWaitMs =
-      measured.find((entry) => entry.phase === 'queue_wait')?.durationMs ?? null;
+      measured.find((entry) => entry.phase === 'queue_wait')?.durationMs ??
+      null;
     const summary = summarizePhases(work);
     const llmMs = work
       .filter((entry) => isLlmPhase(entry.phase))
       .reduce((sum, entry) => sum + entry.durationMs, 0);
     const sumTokens = (key: string) =>
       work.reduce(
-        (sum, entry) => sum + (typeof entry.data?.[key] === 'number' ? (entry.data[key] as number) : 0),
+        (sum, entry) =>
+          sum +
+          (typeof entry.data?.[key] === 'number'
+            ? (entry.data[key] as number)
+            : 0),
         0,
       );
     this.logger.log({
@@ -439,7 +487,10 @@ export class GeneratePersonalizedPlanUseCase {
       measuredMs: summary.totalMs,
       queueWaitMs,
       llmMs,
-      llmPct: summary.totalMs > 0 ? Math.round((llmMs / summary.totalMs) * 1000) / 10 : 0,
+      llmPct:
+        summary.totalMs > 0
+          ? Math.round((llmMs / summary.totalMs) * 1000) / 10
+          : 0,
       tokens: {
         prompt: sumTokens('promptTokens'),
         completion: sumTokens('completionTokens'),
@@ -509,7 +560,10 @@ export class GeneratePersonalizedPlanUseCase {
     goal: string,
     payload: CompleteConsultationDto,
     baseline: BaselineComposition,
-  ): Pick<UpsertPlanWithMainNutritionalPlanDto, 'nutritionalPlan' | 'projection'> {
+  ): Pick<
+    UpsertPlanWithMainNutritionalPlanDto,
+    'nutritionalPlan' | 'projection'
+  > {
     const startDate = new Date();
     const { endDate, projected } = calculateProjection({
       goal,
@@ -606,7 +660,9 @@ export class GeneratePersonalizedPlanUseCase {
         orderId,
       );
     if (!consultation)
-      throw new NotFoundException(`No hay consulta asociada a la orden ${orderId}`);
+      throw new NotFoundException(
+        `No hay consulta asociada a la orden ${orderId}`,
+      );
     return consultation;
   }
 
@@ -796,7 +852,9 @@ export class GeneratePersonalizedPlanUseCase {
     onPhase(timer.record('merge', performance.now() - mergeStart));
     return {
       plan,
-      numericPortions: calculatedMealTimes.map((calculated) => calculated.numericPortions),
+      numericPortions: calculatedMealTimes.map(
+        (calculated) => calculated.numericPortions,
+      ),
       goal,
     };
   }
@@ -983,7 +1041,11 @@ export class GeneratePersonalizedPlanUseCase {
     onPhase: (entry: PhaseEntry) => void,
   ): Promise<GeneratedMealTime[]> {
     const validate = (mealTimes: GeneratedMealTime[]) =>
-      timer.measure('validate', () => collectPlanIssues(calculatedMealTimes, mealTimes), onPhase);
+      timer.measure(
+        'validate',
+        () => collectPlanIssues(calculatedMealTimes, mealTimes),
+        onPhase,
+      );
 
     // Con otra cantidad de tiempos de comida no hay cómo alinear la respuesta con lo calculado: no es
     // algo que se arregle corrigiendo una comida.
@@ -1047,7 +1109,12 @@ export class GeneratePersonalizedPlanUseCase {
           [
             {
               role: 'user',
-              content: buildRepairUserPrompt(calculatedMealTimes, mealTimes, issues, indexes),
+              content: buildRepairUserPrompt(
+                calculatedMealTimes,
+                mealTimes,
+                issues,
+                indexes,
+              ),
             },
           ],
           planModel(),
@@ -1056,7 +1123,10 @@ export class GeneratePersonalizedPlanUseCase {
             ...REPAIR_LLM_OPTIONS,
             schema: REPAIRED_MEAL_TIMES_SCHEMA,
             onMetrics: (metrics: LlmCallMetrics) =>
-              timer.annotate('llm_repair', { ...metrics, mealTimes: indexes.length }),
+              timer.annotate('llm_repair', {
+                ...metrics,
+                mealTimes: indexes.length,
+              }),
           },
         ),
       onPhase,
@@ -1091,8 +1161,10 @@ export class GeneratePersonalizedPlanUseCase {
     error: Error,
     previousAttempts: number | null,
   ): Promise<void> {
-    const failedRounds = previousAttempts === null ? null : previousAttempts + 1;
-    const isFinal = failedRounds !== null && failedRounds >= MAX_GENERATION_ROUNDS;
+    const failedRounds =
+      previousAttempts === null ? null : previousAttempts + 1;
+    const isFinal =
+      failedRounds !== null && failedRounds >= MAX_GENERATION_ROUNDS;
     await this.alertNotifier.notify({
       event: 'plan_generation_failed',
       severity: isFinal ? 'critical' : 'warning',

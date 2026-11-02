@@ -34,11 +34,13 @@ describe('ListStandardPlanPreviewsUseCase', () => {
       type: 'PREDEFINED',
       code: 'plan-gimnasio-volumen',
       name: 'Plan Gimnasio Volumen',
-      description: 'Plan nutricional para entrenamiento de gimnasio en periodo de volumen.',
+      description:
+        'Plan nutricional para entrenamiento de gimnasio en periodo de volumen.',
       price: 5990,
       currency: 'CLP',
       pdfKey: null,
-      thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen.webp',
+      thumbnailKey:
+        'productos-estandarizados/miniaturas/plan-gimnasio-volumen.webp',
       active: true,
     },
     {
@@ -57,7 +59,9 @@ describe('ListStandardPlanPreviewsUseCase', () => {
 
   it('mapea cada fila a su ficha pública, firmando la miniatura y sin exponer pdfKey/thumbnailKey', async () => {
     productRepository.getActivePlanPreviews.mockResolvedValue(previews as any);
-    fileStorage.getSignedDownloadUrl.mockResolvedValue('https://signed.example/preview.webp');
+    fileStorage.getSignedDownloadUrl.mockResolvedValue(
+      'https://signed.example/preview.webp',
+    );
 
     const result = await service.execute();
 
@@ -65,7 +69,8 @@ describe('ListStandardPlanPreviewsUseCase', () => {
       {
         code: 'plan-gimnasio-volumen',
         name: 'Plan Gimnasio Volumen',
-        description: 'Plan nutricional para entrenamiento de gimnasio en periodo de volumen.',
+        description:
+          'Plan nutricional para entrenamiento de gimnasio en periodo de volumen.',
         thumbnailUrl: 'https://signed.example/preview.webp',
       },
       {

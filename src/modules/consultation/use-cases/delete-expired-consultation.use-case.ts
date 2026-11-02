@@ -19,7 +19,9 @@ export class DeleteExpiredConsultationUseCase {
         input.orderId,
       );
     if (deleted) {
-      this.logger.log(`Orden ${input.orderId}: consulta borrada por expiración`);
+      this.logger.log(
+        `Orden ${input.orderId}: consulta borrada por expiración`,
+      );
     }
     return { deleted };
   }

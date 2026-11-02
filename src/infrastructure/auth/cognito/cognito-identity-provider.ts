@@ -24,10 +24,14 @@ export class CognitoIdentityProvider implements IdentityProvider {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (typeof body.sub !== 'string') {
-      throw new IdentityProviderUnavailableError('Cognito userInfo respondió sin "sub"');
+      throw new IdentityProviderUnavailableError(
+        'Cognito userInfo respondió sin "sub"',
+      );
     }
     const email =
-      typeof body.email === 'string' && body.email ? body.email.toLowerCase() : null;
+      typeof body.email === 'string' && body.email
+        ? body.email.toLowerCase()
+        : null;
     return {
       sub: body.sub,
       email,
@@ -39,7 +43,8 @@ export class CognitoIdentityProvider implements IdentityProvider {
   // de Google el atributo no siempre viene mapeado: Google solo entrega correos que ya verificó, así
   // que esa identidad (username "google_<id>") se da por verificada.
   private isEmailVerified(body: UserInfoResponse): boolean {
-    if (body.email_verified === true || body.email_verified === 'true') return true;
+    if (body.email_verified === true || body.email_verified === 'true')
+      return true;
     return typeof body.username === 'string' && /^google_/i.test(body.username);
   }
 
@@ -88,12 +93,16 @@ export class CognitoIdentityProvider implements IdentityProvider {
       );
     }
     if (!response.ok) {
-      throw new IdentityProviderUnavailableError(`Cognito respondió HTTP ${response.status}`);
+      throw new IdentityProviderUnavailableError(
+        `Cognito respondió HTTP ${response.status}`,
+      );
     }
     try {
       return (await response.json()) as T;
     } catch {
-      throw new IdentityProviderUnavailableError('Cognito respondió algo que no es JSON');
+      throw new IdentityProviderUnavailableError(
+        'Cognito respondió algo que no es JSON',
+      );
     }
   }
 }

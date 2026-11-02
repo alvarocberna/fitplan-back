@@ -72,7 +72,10 @@ function rawSection(row: object | undefined): MeasurementRawSection | null {
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
-type ResultsRow = Omit<MeasurementResultsEntity, 'id' | 'measurementsId' | 'measurements'>;
+type ResultsRow = Omit<
+  MeasurementResultsEntity,
+  'id' | 'measurementsId' | 'measurements'
+>;
 
 // Indicadores interpretados de measurement_results, en el orden en que se muestran. Las columnas
 // pha_* (proporcionalidad phantom) se omiten hasta que existan las fórmulas que las calculen.
@@ -83,16 +86,74 @@ const RESULT_INDICATORS: {
   classification?: keyof ResultsRow;
   method?: keyof ResultsRow;
 }[] = [
-  { indicator: 'BMI', value: 'bmi', unit: 'kg/m²', classification: 'bmiClassification' },
-  { indicator: 'BODY_FAT_PERCENTAGE', value: 'bfPercentage', unit: '%', classification: 'bfClassification', method: 'bfMethod' },
-  { indicator: 'BODY_FAT_KG', value: 'bfKg', unit: 'kg', classification: 'bfClassification', method: 'bfMethod' },
-  { indicator: 'VISCERAL_FAT_PERCENTAGE', value: 'vfPercentage', unit: '%', classification: 'vfClassification', method: 'vfMethod' },
-  { indicator: 'VISCERAL_FAT_KG', value: 'vfKg', unit: 'kg', classification: 'vfClassification', method: 'vfMethod' },
-  { indicator: 'MUSCLE_MASS_PERCENTAGE', value: 'mmPercentage', unit: '%', classification: 'mmClassification', method: 'mmMethod' },
-  { indicator: 'MUSCLE_MASS_KG', value: 'mmKg', unit: 'kg', classification: 'mmClassification', method: 'mmMethod' },
-  { indicator: 'BONE_MASS_PERCENTAGE', value: 'bmPercentage', unit: '%', classification: 'bmClassification', method: 'bmMethod' },
-  { indicator: 'BONE_MASS_KG', value: 'bmKg', unit: 'kg', classification: 'bmClassification', method: 'bmMethod' },
-  { indicator: 'LBMI', value: 'lbmi', unit: 'kg/m²', classification: 'lbmiClassification' },
+  {
+    indicator: 'BMI',
+    value: 'bmi',
+    unit: 'kg/m²',
+    classification: 'bmiClassification',
+  },
+  {
+    indicator: 'BODY_FAT_PERCENTAGE',
+    value: 'bfPercentage',
+    unit: '%',
+    classification: 'bfClassification',
+    method: 'bfMethod',
+  },
+  {
+    indicator: 'BODY_FAT_KG',
+    value: 'bfKg',
+    unit: 'kg',
+    classification: 'bfClassification',
+    method: 'bfMethod',
+  },
+  {
+    indicator: 'VISCERAL_FAT_PERCENTAGE',
+    value: 'vfPercentage',
+    unit: '%',
+    classification: 'vfClassification',
+    method: 'vfMethod',
+  },
+  {
+    indicator: 'VISCERAL_FAT_KG',
+    value: 'vfKg',
+    unit: 'kg',
+    classification: 'vfClassification',
+    method: 'vfMethod',
+  },
+  {
+    indicator: 'MUSCLE_MASS_PERCENTAGE',
+    value: 'mmPercentage',
+    unit: '%',
+    classification: 'mmClassification',
+    method: 'mmMethod',
+  },
+  {
+    indicator: 'MUSCLE_MASS_KG',
+    value: 'mmKg',
+    unit: 'kg',
+    classification: 'mmClassification',
+    method: 'mmMethod',
+  },
+  {
+    indicator: 'BONE_MASS_PERCENTAGE',
+    value: 'bmPercentage',
+    unit: '%',
+    classification: 'bmClassification',
+    method: 'bmMethod',
+  },
+  {
+    indicator: 'BONE_MASS_KG',
+    value: 'bmKg',
+    unit: 'kg',
+    classification: 'bmClassification',
+    method: 'bmMethod',
+  },
+  {
+    indicator: 'LBMI',
+    value: 'lbmi',
+    unit: 'kg/m²',
+    classification: 'lbmiClassification',
+  },
   { indicator: 'ENDOMORPHY', value: 'endo', unit: null },
   { indicator: 'MESOMORPHY', value: 'meso', unit: null },
   { indicator: 'ECTOMORPHY', value: 'ecto', unit: null },
@@ -100,13 +161,15 @@ const RESULT_INDICATORS: {
 
 function resultsOf(row: ResultsRow | undefined): MeasurementResultDto[] {
   if (!row) return [];
-  return RESULT_INDICATORS.filter(({ value }) => typeof row[value] === 'number').map(
-    ({ indicator, value, unit, classification, method }) => ({
-      indicator,
-      value: row[value] as number,
-      unit,
-      classification: classification ? ((row[classification] as string | null) ?? null) : null,
-      method: method ? ((row[method] as string | null) ?? null) : null,
-    }),
-  );
+  return RESULT_INDICATORS.filter(
+    ({ value }) => typeof row[value] === 'number',
+  ).map(({ indicator, value, unit, classification, method }) => ({
+    indicator,
+    value: row[value] as number,
+    unit,
+    classification: classification
+      ? ((row[classification] as string | null) ?? null)
+      : null,
+    method: method ? ((row[method] as string | null) ?? null) : null,
+  }));
 }

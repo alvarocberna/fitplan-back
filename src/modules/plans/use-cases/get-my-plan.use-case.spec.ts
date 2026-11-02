@@ -46,10 +46,14 @@ describe('GetMyPlanUseCase', () => {
   };
 
   beforeEach(() => {
-    const currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
+    const currentUser = {
+      resolve: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
     orderRepository = { getReadyOrderWithPlanDetailByIdAndUserId: jest.fn() };
     fileStorage = {
-      getSignedDownloadUrl: jest.fn(async (key: string) => `https://signed-url.example/${key}`),
+      getSignedDownloadUrl: jest.fn(
+        async (key: string) => `https://signed-url.example/${key}`,
+      ),
     };
     useCase = new GetMyPlanUseCase(
       currentUser as unknown as CurrentUserResolver,
@@ -117,17 +121,17 @@ describe('GetMyPlanUseCase', () => {
 
     const detail = await useCase.execute({ claims, orderId: 'order-1' });
 
-    expect(orderRepository.getReadyOrderWithPlanDetailByIdAndUserId).toHaveBeenCalledWith(
-      'order-1',
-      'user-1',
-    );
+    expect(
+      orderRepository.getReadyOrderWithPlanDetailByIdAndUserId,
+    ).toHaveBeenCalledWith('order-1', 'user-1');
     expect(detail).toEqual({
       orderId: 'order-1',
       type: 'GENERATED',
       name: 'Plan personalizado',
       purchasedAt: '2026-01-02T10:00:00.000Z',
       pdfUrl: 'https://signed-url.example/productos-personalizados/order-1.pdf',
-      thumbnailUrl: 'https://signed-url.example/productos-personalizados/miniaturas/order-1.webp',
+      thumbnailUrl:
+        'https://signed-url.example/productos-personalizados/miniaturas/order-1.webp',
       predefined: null,
       generated: {
         consultationId: 'c-1',
@@ -137,7 +141,12 @@ describe('GetMyPlanUseCase', () => {
         endDate: null,
         goal: 'definicion',
         dietRegimen: 'Hipocalórico',
-        requirements: { calories: 2100, protein: 160, carbohydrate: 210, fat: 65 },
+        requirements: {
+          calories: 2100,
+          protein: 160,
+          carbohydrate: 210,
+          fat: 65,
+        },
         intake: { calories: 2000, protein: 150, carbohydrate: 200, fat: 60 },
         mealTimes: [
           {
@@ -177,10 +186,22 @@ describe('GetMyPlanUseCase', () => {
 
   it('cae a order.planJson cuando el NutritionalPlan no tiene tablas hijas (planes anteriores)', async () => {
     const planJson = {
-      prescription: { regimen: 'Hipocalórico', goal: 'definicion', calories: 2100, protein: 160, carbohydrate: 210, fat: 65 },
+      prescription: {
+        regimen: 'Hipocalórico',
+        goal: 'definicion',
+        calories: 2100,
+        protein: 160,
+        carbohydrate: 210,
+        fat: 65,
+      },
       planIntake: {
         adequacy: { calories: 95, protein: 94, carbohydrate: 95, fat: 92 },
-        totalIntake: { calories: 2000, protein: 150, carbohydrate: 200, fat: 60 },
+        totalIntake: {
+          calories: 2000,
+          protein: 150,
+          carbohydrate: 200,
+          fat: 60,
+        },
       },
       mealTimes: [
         {
@@ -199,7 +220,14 @@ describe('GetMyPlanUseCase', () => {
       planJson: JSON.stringify(planJson),
       plan: {
         consultationId: 'c-1',
-        nutritionalPlans: [{ ...nutritionalPlanRow, mealTimes: [], supplements: [], sportsRecommendations: [] }],
+        nutritionalPlans: [
+          {
+            ...nutritionalPlanRow,
+            mealTimes: [],
+            supplements: [],
+            sportsRecommendations: [],
+          },
+        ],
       },
     });
 
@@ -226,12 +254,19 @@ describe('GetMyPlanUseCase', () => {
     orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue({
       ...baseOrder,
       planJson: '{"formato":"antiguo"}',
-      plan: { consultationId: 'c-1', nutritionalPlans: [{ ...nutritionalPlanRow }] },
+      plan: {
+        consultationId: 'c-1',
+        nutritionalPlans: [{ ...nutritionalPlanRow }],
+      },
     });
 
     const { generated } = await useCase.execute({ claims, orderId: 'order-1' });
 
-    expect(generated).toMatchObject({ planName: 'Plan personalizado', mealTimes: [], supplements: [] });
+    expect(generated).toMatchObject({
+      planName: 'Plan personalizado',
+      mealTimes: [],
+      supplements: [],
+    });
   });
 
   it('arma el detalle del plan estándar desde el producto', async () => {
@@ -274,11 +309,13 @@ describe('GetMyPlanUseCase', () => {
   });
 
   it('lanza 404 si la orden no existe, no es del usuario o no está lista', async () => {
-    orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(null);
-
-    await expect(useCase.execute({ claims, orderId: 'order-x' })).rejects.toBeInstanceOf(
-      NotFoundException,
+    orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(
+      null,
     );
+
+    await expect(
+      useCase.execute({ claims, orderId: 'order-x' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
     expect(fileStorage.getSignedDownloadUrl).not.toHaveBeenCalled();
   });
 });

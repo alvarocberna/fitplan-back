@@ -48,7 +48,9 @@ describe('defineFoodGroups', () => {
   });
 
   it('el alcohol siempre se elimina, sin importar el tiempo de comida', () => {
-    const [breakfast] = defineFoodGroups([makeMeal('desayuno', { alcohol: 'cerveza' })]);
+    const [breakfast] = defineFoodGroups([
+      makeMeal('desayuno', { alcohol: 'cerveza' }),
+    ]);
     expect(breakfast.alcohol).toBeNull();
   });
 
@@ -70,7 +72,12 @@ describe('calculateFoodsAndIntake + calculateTotalPlanIntake + calculateTotalAde
     { mealTime: 'once' } as MealGroups,
     { mealTime: 'cena' } as MealGroups,
   ];
-  const requirements: Requirements = { calories: 2000, protein: 100, carbohydrate: 250, fat: 60 };
+  const requirements: Requirements = {
+    calories: 2000,
+    protein: 100,
+    carbohydrate: 250,
+    fat: 60,
+  };
 
   it('distribuye las porciones y corrige el exceso calórico (recorta 1 porción de cereal)', () => {
     const result = calculateFoodsAndIntake(mealTimes, requirements);
@@ -82,7 +89,12 @@ describe('calculateFoodsAndIntake + calculateTotalPlanIntake + calculateTotalAde
       'cena',
     ]);
     expect(result.supplementIntakeNote).toBeNull();
-    expect(result.supplementIntake).toEqual({ calories: 0, protein: 0, carbohydrate: 0, fat: 0 });
+    expect(result.supplementIntake).toEqual({
+      calories: 0,
+      protein: 0,
+      carbohydrate: 0,
+      fat: 0,
+    });
 
     const [breakfast, lunch, once, dinner] = result.calculatedMealTimes;
 
@@ -102,7 +114,12 @@ describe('calculateFoodsAndIntake + calculateTotalPlanIntake + calculateTotalAde
       oils: 0,
       sugars: 0,
     });
-    expect(breakfast.intake).toEqual({ calories: 595, protein: 36, carbohydrate: 61, fat: 23 });
+    expect(breakfast.intake).toEqual({
+      calories: 595,
+      protein: 36,
+      carbohydrate: 61,
+      fat: 23,
+    });
     expect(breakfast.foods.cereals).toBe('1 porción');
     expect(breakfast.foods.lowFatProteins).toBe('2 porciones');
 
@@ -114,7 +131,12 @@ describe('calculateFoodsAndIntake + calculateTotalPlanIntake + calculateTotalAde
       mediumFatDairy: 0,
       oils: 0.25,
     });
-    expect(lunch.intake).toEqual({ calories: 540, protein: 29, carbohydrate: 82, fat: 11 });
+    expect(lunch.intake).toEqual({
+      calories: 540,
+      protein: 29,
+      carbohydrate: 82,
+      fat: 11,
+    });
 
     expect(once.numericPortions).toMatchObject({
       cereals: 2,
@@ -124,7 +146,12 @@ describe('calculateFoodsAndIntake + calculateTotalPlanIntake + calculateTotalAde
       mediumFatDairy: 1,
       highLipidFoods: 1,
     });
-    expect(once.intake).toEqual({ calories: 670, protein: 38, carbohydrate: 76, fat: 24 });
+    expect(once.intake).toEqual({
+      calories: 670,
+      protein: 38,
+      carbohydrate: 76,
+      fat: 24,
+    });
 
     expect(dinner.numericPortions).toMatchObject({
       cereals: 1,
@@ -133,13 +160,28 @@ describe('calculateFoodsAndIntake + calculateTotalPlanIntake + calculateTotalAde
       lowFatProteins: 1,
       oils: 0.25,
     });
-    expect(dinner.intake).toEqual({ calories: 270, protein: 14, carbohydrate: 36, fat: 8 });
+    expect(dinner.intake).toEqual({
+      calories: 270,
+      protein: 14,
+      carbohydrate: 36,
+      fat: 8,
+    });
 
     const totalIntake = calculateTotalPlanIntake(result);
-    expect(totalIntake).toEqual({ calories: 2075, protein: 117, carbohydrate: 255, fat: 66 });
+    expect(totalIntake).toEqual({
+      calories: 2075,
+      protein: 117,
+      carbohydrate: 255,
+      fat: 66,
+    });
 
     const adequacy = calculateTotalAdequacy(totalIntake, requirements);
-    expect(adequacy).toEqual({ calories: 103.8, protein: 117, carbohydrate: 102, fat: 110 });
+    expect(adequacy).toEqual({
+      calories: 103.8,
+      protein: 117,
+      carbohydrate: 102,
+      fat: 110,
+    });
 
     // el resultado corregido queda dentro/cerca del rango objetivo de calorías (95%-105%,
     // con la excepción documentada de que la corrección solo actúa en pasos de 1 porción)
@@ -186,7 +228,9 @@ describe('calculateFoodsAndIntake + calculateTotalPlanIntake + calculateTotalAde
 
     const totalIntake = calculateTotalPlanIntake(result);
     const recomposedCalories =
-      totalIntake.protein * 4 + totalIntake.carbohydrate * 4 + totalIntake.fat * 9;
+      totalIntake.protein * 4 +
+      totalIntake.carbohydrate * 4 +
+      totalIntake.fat * 9;
     // "intake" no reconstituye 1:1 las calorías declaradas por macro (los grupos de alimentos
     // tienen valores de energía/macros propios, no necesariamente 4/4/9 exactos); solo se
     // verifica que estén en el mismo orden de magnitud.
@@ -198,8 +242,12 @@ describe('calculateTotalPlanIntake', () => {
   it('suma el intake de todos los tiempos de comida más el suplemento de whey', () => {
     const result: PortionAdequacyResult = {
       calculatedMealTimes: [
-        { intake: { calories: 100, protein: 10, carbohydrate: 20, fat: 5 } } as any,
-        { intake: { calories: 200, protein: 20, carbohydrate: 40, fat: 10 } } as any,
+        {
+          intake: { calories: 100, protein: 10, carbohydrate: 20, fat: 5 },
+        } as any,
+        {
+          intake: { calories: 200, protein: 20, carbohydrate: 40, fat: 10 },
+        } as any,
       ],
       supplementIntakeNote: 'whey protein 1 scoop',
       supplementIntake: { calories: 50, protein: 5, carbohydrate: 2, fat: 1 },
@@ -216,8 +264,18 @@ describe('calculateTotalPlanIntake', () => {
 
 describe('calculateTotalAdequacy', () => {
   it('calcula el porcentaje de adecuación por macronutriente, redondeado a un decimal', () => {
-    const totalIntake: CalculatedIntake = { calories: 350, protein: 35, carbohydrate: 62, fat: 16 };
-    const requirements: Requirements = { calories: 350, protein: 35, carbohydrate: 62, fat: 16 };
+    const totalIntake: CalculatedIntake = {
+      calories: 350,
+      protein: 35,
+      carbohydrate: 62,
+      fat: 16,
+    };
+    const requirements: Requirements = {
+      calories: 350,
+      protein: 35,
+      carbohydrate: 62,
+      fat: 16,
+    };
 
     expect(calculateTotalAdequacy(totalIntake, requirements)).toEqual({
       calories: 100,
@@ -228,8 +286,18 @@ describe('calculateTotalAdequacy', () => {
   });
 
   it('redondea correctamente valores intermedios', () => {
-    const totalIntake: CalculatedIntake = { calories: 33, protein: 0, carbohydrate: 0, fat: 0 };
-    const requirements: Requirements = { calories: 100, protein: 1, carbohydrate: 1, fat: 1 };
+    const totalIntake: CalculatedIntake = {
+      calories: 33,
+      protein: 0,
+      carbohydrate: 0,
+      fat: 0,
+    };
+    const requirements: Requirements = {
+      calories: 100,
+      protein: 1,
+      carbohydrate: 1,
+      fat: 1,
+    };
 
     expect(calculateTotalAdequacy(totalIntake, requirements).calories).toBe(33);
   });

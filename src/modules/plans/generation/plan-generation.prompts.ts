@@ -1,7 +1,10 @@
 //domain
 import { CompleteConsultationDto } from '../../../domain/dtos/consultation.dto';
 import { Requirements } from '../../../domain/services/formulas/requirements/requirements.service';
-import { CalculatedMealTime, CalculatedIntake } from '../../../domain/services/alimentos/portion-adequacy.service';
+import {
+  CalculatedMealTime,
+  CalculatedIntake,
+} from '../../../domain/services/alimentos/portion-adequacy.service';
 import { SupplementsPrescription } from '../../../domain/services/formulas/requirements/supplements.service';
 //prompts
 import { buildPrescriptionPrompt } from './prompts/prescription.prompt';
@@ -11,7 +14,10 @@ import { buildSportsRecommendationsPrompt } from './prompts/sports-recommendatio
 
 //barrel
 export { NUTRITIONIST_SYSTEM_PROMPT } from './prompts/nutritionist-system.prompt';
-export { EXTRACT_INFO_SYSTEM_PROMPT, buildExtractInfoPromptUserMessage } from './prompts/extract-info.prompt';
+export {
+  EXTRACT_INFO_SYSTEM_PROMPT,
+  buildExtractInfoPromptUserMessage,
+} from './prompts/extract-info.prompt';
 
 /*
 Este archivo solo orquesta: arma buildUserPrompt() concatenando las secciones de arriba,

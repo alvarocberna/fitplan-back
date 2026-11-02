@@ -13,7 +13,10 @@ import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 const JSON_BODY_LIMIT = '300kb';
 
 // Aplana los errores de class-validator (incluidos los de objetos anidados) a una lista de textos.
-function flattenValidationErrors(errors: ValidationError[], parent = ''): string[] {
+function flattenValidationErrors(
+  errors: ValidationError[],
+  parent = '',
+): string[] {
   return errors.flatMap((error) => {
     const path = parent ? `${parent}.${error.property}` : error.property;
     const own = Object.values(error.constraints ?? {}).map((text) =>
@@ -31,7 +34,9 @@ export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix(API_PREFIX);
   // Tope explícito del body JSON. Holgado para el turno más grande posible del chat de anamnesis
   // (CHAT_MAX_MESSAGES x CHAT_MESSAGE_MAX_LENGTH + la ficha), y nada más.
-  (app as NestExpressApplication).useBodyParser('json', { limit: JSON_BODY_LIMIT });
+  (app as NestExpressApplication).useBodyParser('json', {
+    limit: JSON_BODY_LIMIT,
+  });
   app.use(requestIdMiddleware);
   // Formato único de error para toda excepción (HttpException, Prisma, proveedores, inesperadas).
   app.useGlobalFilters(new AllExceptionsFilter());

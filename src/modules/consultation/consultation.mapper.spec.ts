@@ -4,7 +4,11 @@ import {
   mapAnamnesisDtoToDetails,
   mapMeasurementsDtoToDetails,
 } from './consultation.mapper';
-import { Meal, AnamnesisDto, MeasurementsDto } from '../../domain/dtos/consultation.dto';
+import {
+  Meal,
+  AnamnesisDto,
+  MeasurementsDto,
+} from '../../domain/dtos/consultation.dto';
 
 describe('mapMealDtoToEntity', () => {
   it('mapea cada campo de Meal a su equivalente en la entidad, conservando los null', () => {
@@ -42,7 +46,9 @@ describe('mapMealDtoToEntity', () => {
 
 describe('normalizeEventType', () => {
   it('detecta "competencia" por substring, ignorando mayúsculas', () => {
-    expect(normalizeEventType('Competencia de fin de semana')).toBe('COMPETITION');
+    expect(normalizeEventType('Competencia de fin de semana')).toBe(
+      'COMPETITION',
+    );
   });
 
   it('detecta "entrenamiento" (o "train") por substring', () => {
@@ -132,7 +138,10 @@ describe('mapAnamnesisDtoToDetails', () => {
 
     const result = mapAnamnesisDtoToDetails(anamnesis)!;
 
-    expect(result.goals).toEqual({ mainGoal: 'bajar de peso', secondaryGoal: ['tonificar'] });
+    expect(result.goals).toEqual({
+      mainGoal: 'bajar de peso',
+      secondaryGoal: ['tonificar'],
+    });
     expect(result.clinical).toMatchObject({
       pathology: ['hipotiroidismo'],
       allergy: ['ninguna'],
@@ -182,7 +191,11 @@ describe('mapMeasurementsDtoToDetails', () => {
   });
 
   it('mapea weight/height a basicMeasurements, somatotype a description, y calcula el IMC de una medición BASIC', () => {
-    const measurements: MeasurementsDto = { weight: 70, height: 175, somatotype: 'MESO' };
+    const measurements: MeasurementsDto = {
+      weight: 70,
+      height: 175,
+      somatotype: 'MESO',
+    };
     const result = mapMeasurementsDtoToDetails(measurements, measuredAt)!;
 
     expect(result.measuredAt).toBe(measuredAt);

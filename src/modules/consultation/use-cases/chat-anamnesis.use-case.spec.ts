@@ -119,7 +119,9 @@ describe('ChatAnamnesisUseCase', () => {
 
     const result = await service.execute(body);
 
-    expect(result.reply).toBe('Disculpa, ¿podrías contarme un poco más sobre eso?');
+    expect(result.reply).toBe(
+      'Disculpa, ¿podrías contarme un poco más sobre eso?',
+    );
     expect(llm.chatJson).toHaveBeenCalledTimes(2);
   });
 

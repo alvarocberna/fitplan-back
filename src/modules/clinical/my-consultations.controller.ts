@@ -1,4 +1,10 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { CognitoAuthGuard } from '../../common/auth/cognito-auth.guard';
 import { CognitoUser } from '../../common/auth/cognito-user.decorator';
 import type { CognitoUserClaims } from '../../common/auth/cognito-user.decorator';

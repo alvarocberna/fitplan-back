@@ -1,5 +1,8 @@
 import { HealthyLifestyleDto } from '../../../../domain/dtos/consultation.dto';
-import { SPORT_SESSIONS, getSportSessionRecommendation } from '../../../../domain/services/formulas/requirements/sport-session.service';
+import {
+  SPORT_SESSIONS,
+  getSportSessionRecommendation,
+} from '../../../../domain/services/formulas/requirements/sport-session.service';
 
 //recomendaciones deportivas (paso 6 doc)
 
@@ -11,7 +14,9 @@ const SPORT_SESSIONS_CATALOG = [
 
 // El chat de anamnesis (ver consultation.service.ts) usa este objeto sentinela para dejar constancia de
 // que el paciente no practica ningún deporte, en vez de dejar sportSession en null.
-function isNoSportSentinelSession(session: NonNullable<HealthyLifestyleDto['sportSession']>[number]): boolean {
+function isNoSportSentinelSession(
+  session: NonNullable<HealthyLifestyleDto['sportSession']>[number],
+): boolean {
   return session.eventType === 'no aplica';
 }
 
@@ -21,8 +26,12 @@ function isNoSportSentinelSession(session: NonNullable<HealthyLifestyleDto['spor
 // cálculo de gramos de carbohidrato por hora); el modelo no puede "ejecutarla" a través de un prompt
 // de JSON mode plano (sin function/tool calling), así que el cálculo se hace acá y solo se le entrega
 // el resultado ya resuelto, igual que se hace con "Suplementos disponibles" más arriba.
-function buildSportSessionsInfo(sportSessions: HealthyLifestyleDto['sportSession']) {
-  const actualSessions = (sportSessions ?? []).filter((s) => !isNoSportSentinelSession(s));
+function buildSportSessionsInfo(
+  sportSessions: HealthyLifestyleDto['sportSession'],
+) {
+  const actualSessions = (sportSessions ?? []).filter(
+    (s) => !isNoSportSentinelSession(s),
+  );
   if (actualSessions.length === 0) return [];
 
   return actualSessions.map((session) => ({
@@ -34,13 +43,20 @@ function buildSportSessionsInfo(sportSessions: HealthyLifestyleDto['sportSession
       discipline: catalog.discipline,
       duration: catalog.duration,
       intensity: catalog.intensity,
-      recommendationForThisSession: getSportSessionRecommendation(catalog.code, session.duration ?? 0),
+      recommendationForThisSession: getSportSessionRecommendation(
+        catalog.code,
+        session.duration ?? 0,
+      ),
     })),
   }));
 }
 
-export function buildSportsRecommendationsPrompt(sportSessions: HealthyLifestyleDto['sportSession']): string {
-  const actualSessions = (sportSessions ?? []).filter((s) => !isNoSportSentinelSession(s));
+export function buildSportsRecommendationsPrompt(
+  sportSessions: HealthyLifestyleDto['sportSession'],
+): string {
+  const actualSessions = (sportSessions ?? []).filter(
+    (s) => !isNoSportSentinelSession(s),
+  );
   if (actualSessions.length === 0) {
     return `
 ### Recomendaciones deportivas

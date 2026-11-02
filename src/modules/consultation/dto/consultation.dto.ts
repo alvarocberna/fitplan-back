@@ -1,4 +1,17 @@
-import { IsString, IsNumber, IsInt, IsOptional, IsEmail, IsNotEmpty, IsDateString, ValidateNested, IsArray, IsBoolean, MaxLength, ArrayMaxSize } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsInt,
+  IsOptional,
+  IsEmail,
+  IsNotEmpty,
+  IsDateString,
+  ValidateNested,
+  IsArray,
+  IsBoolean,
+  MaxLength,
+  ArrayMaxSize,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   CompleteConsultationDto,
@@ -21,7 +34,6 @@ const LIST_ITEM_MAX = 300;
 const LIST_MAX_ITEMS = 50;
 
 export class PersonalInfoDtoImpl implements PersonalInfoDto {
-
   @Type(() => Number)
   @IsNumber()
   @IsOptional()
@@ -51,7 +63,6 @@ export class PersonalInfoDtoImpl implements PersonalInfoDto {
   @MaxLength(FREE_TEXT_MAX)
   @IsOptional()
   maternalLastName!: string | null;
-
 
   @IsString()
   @MaxLength(FREE_TEXT_MAX)
@@ -86,7 +97,6 @@ export class GoalsDtoImpl implements GoalsDto {
   @IsOptional()
   secondaryGoal!: string[] | null;
 }
-
 
 export class ClinicalAnamnesisDtoImpl implements ClinicalAnamnesisDto {
   @IsString()

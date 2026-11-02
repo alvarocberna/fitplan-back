@@ -7,10 +7,17 @@ import {
   PaymentTransactionStatus,
   ProductType,
 } from '../../src/domain/entities/enums';
-import { createOrder, createProduct, createUser, hoursFromNow } from './support/fixtures';
+import {
+  createOrder,
+  createProduct,
+  createUser,
+  hoursFromNow,
+} from './support/fixtures';
 import { createTestPrisma, resetDatabase } from './support/test-database';
 
-const paymentResult = (status: PaymentTransactionStatus = PaymentTransactionStatus.AUTHORIZED) => ({
+const paymentResult = (
+  status: PaymentTransactionStatus = PaymentTransactionStatus.AUTHORIZED,
+) => ({
   provider: PaymentProvider.TRANSBANK,
   paymentIdentifier: 'buy-order-1',
   amount: 4990,
@@ -30,7 +37,10 @@ describe('OrderDatasourceImpl (Postgres)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    const [user, product] = [await createUser(prisma), await createProduct(prisma)];
+    const [user, product] = [
+      await createUser(prisma),
+      await createProduct(prisma),
+    ];
     refs = { userId: user.id, productId: product.id };
   });
 
@@ -58,19 +68,26 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       const marked = await datasource.markOrderAsPaidWithPayment(
         order.id,
         { ...paymentResult(), authorizationCode: '1213' },
-        { pdfKey: 'productos/plan.pdf', generationStatus: GenerationStatus.COMPLETED },
+        {
+          pdfKey: 'productos/plan.pdf',
+          generationStatus: GenerationStatus.COMPLETED,
+        },
         payment.id,
       );
 
       expect(marked).toBe(true);
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       expect(stored).toMatchObject({
         paymentStatus: PaymentStatus.PAID,
         pdfKey: 'productos/plan.pdf',
         generationStatus: GenerationStatus.COMPLETED,
       });
       expect(stored.paymentDate).toBeInstanceOf(Date);
-      expect(await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).toMatchObject({
+      expect(
+        await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } }),
+      ).toMatchObject({
         status: PaymentTransactionStatus.AUTHORIZED,
         authorizationCode: '1213',
       });
@@ -81,7 +98,9 @@ describe('OrderDatasourceImpl (Postgres)', () => {
 
       await datasource.markOrderAsPaidWithPayment(order.id, paymentResult());
 
-      expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(1);
+      expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(
+        1,
+      );
     });
 
     it('con confirmaciones concurrentes solo una marca la orden y se registra un solo pago', async () => {
@@ -94,7 +113,9 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       );
 
       expect(results.filter(Boolean)).toHaveLength(1);
-      expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(1);
+      expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(
+        1,
+      );
     });
 
     it('pago y rechazo concurrentes dejan un único resultado coherente', async () => {
@@ -110,7 +131,9 @@ describe('OrderDatasourceImpl (Postgres)', () => {
 
       // Un rechazo previo deja la orden pagable, así que el pago siempre gana y nunca retrocede.
       expect(paid).toBe(true);
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       expect(stored.paymentStatus).toBe(PaymentStatus.PAID);
     });
 
@@ -123,10 +146,17 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       });
 
       await expect(
-        datasource.markOrderAsPaidWithPayment(order.id, paymentResult(), {}, payment.id),
+        datasource.markOrderAsPaidWithPayment(
+          order.id,
+          paymentResult(),
+          {},
+          payment.id,
+        ),
       ).rejects.toThrow('ya no estaba INITIATED');
 
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       expect(stored.paymentStatus).toBe(PaymentStatus.PENDING);
       expect(stored.paymentDate).toBeNull();
     });
@@ -137,13 +167,24 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       const foreignPayment = await initiatedPayment(other.id);
 
       await expect(
-        datasource.markOrderAsPaidWithPayment(order.id, paymentResult(), {}, foreignPayment.id),
+        datasource.markOrderAsPaidWithPayment(
+          order.id,
+          paymentResult(),
+          {},
+          foreignPayment.id,
+        ),
       ).rejects.toThrow();
 
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       expect(stored.paymentStatus).toBe(PaymentStatus.PENDING);
       expect(
-        (await prisma.payment.findUniqueOrThrow({ where: { id: foreignPayment.id } })).status,
+        (
+          await prisma.payment.findUniqueOrThrow({
+            where: { id: foreignPayment.id },
+          })
+        ).status,
       ).toBe(PaymentTransactionStatus.INITIATED);
     });
 
@@ -151,20 +192,35 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       ['ya pagada', { paymentStatus: PaymentStatus.PAID }],
       ['expirada por estado', { paymentStatus: PaymentStatus.EXPIRED }],
       ['con el plazo vencido', { expirationDate: hoursFromNow(-1) }],
-    ])('devuelve false y no registra pago si la orden está %s', async (_name, data) => {
-      const order = await createOrder(prisma, refs, data);
+    ])(
+      'devuelve false y no registra pago si la orden está %s',
+      async (_name, data) => {
+        const order = await createOrder(prisma, refs, data);
 
-      expect(await datasource.markOrderAsPaidWithPayment(order.id, paymentResult())).toBe(false);
-      expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(0);
-    });
+        expect(
+          await datasource.markOrderAsPaidWithPayment(
+            order.id,
+            paymentResult(),
+          ),
+        ).toBe(false);
+        expect(
+          await prisma.payment.count({ where: { orderId: order.id } }),
+        ).toBe(0);
+      },
+    );
 
     it.each([
       ['sin plazo', { expirationDate: null }],
-      ['rechazada antes (reintento)', { paymentStatus: PaymentStatus.REJECTED }],
+      [
+        'rechazada antes (reintento)',
+        { paymentStatus: PaymentStatus.REJECTED },
+      ],
     ])('acepta una orden %s', async (_name, data) => {
       const order = await createOrder(prisma, refs, data);
 
-      expect(await datasource.markOrderAsPaidWithPayment(order.id, paymentResult())).toBe(true);
+      expect(
+        await datasource.markOrderAsPaidWithPayment(order.id, paymentResult()),
+      ).toBe(true);
     });
   });
 
@@ -180,16 +236,21 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       );
 
       expect(rejected).toBe(true);
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       expect(stored.paymentStatus).toBe(PaymentStatus.REJECTED);
       expect(stored.paymentDate).toBeNull();
-      expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe(
-        PaymentTransactionStatus.REJECTED,
-      );
+      expect(
+        (await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } }))
+          .status,
+      ).toBe(PaymentTransactionStatus.REJECTED);
     });
 
     it('no pisa una orden ya pagada', async () => {
-      const order = await createOrder(prisma, refs, { paymentStatus: PaymentStatus.PAID });
+      const order = await createOrder(prisma, refs, {
+        paymentStatus: PaymentStatus.PAID,
+      });
 
       const rejected = await datasource.markOrderAsRejectedWithPayment(
         order.id,
@@ -197,7 +258,9 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       );
 
       expect(rejected).toBe(false);
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       expect(stored.paymentStatus).toBe(PaymentStatus.PAID);
     });
   });
@@ -214,16 +277,23 @@ describe('OrderDatasourceImpl (Postgres)', () => {
     it.each([
       ['con plazo vigente', { expirationDate: hoursFromNow(1) }],
       ['sin plazo', { expirationDate: null }],
-      ['pagada', { expirationDate: hoursFromNow(-1), paymentStatus: PaymentStatus.PAID }],
+      [
+        'pagada',
+        { expirationDate: hoursFromNow(-1), paymentStatus: PaymentStatus.PAID },
+      ],
     ])('expireOrderIfDue no toca una orden %s', async (_name, data) => {
       const order = await createOrder(prisma, refs, data);
 
-      expect(await datasource.expireOrderIfDue(order.id, new Date())).toBe(false);
+      expect(await datasource.expireOrderIfDue(order.id, new Date())).toBe(
+        false,
+      );
     });
 
     it('un pago y una expiración concurrentes nunca dejan dos resultados', async () => {
       // El plazo sigue vigente para el pago y vencido para el job: lo decide el bloqueo de la fila.
-      const order = await createOrder(prisma, refs, { expirationDate: hoursFromNow(1) });
+      const order = await createOrder(prisma, refs, {
+        expirationDate: hoursFromNow(1),
+      });
 
       const [paid, expired] = await Promise.all([
         datasource.markOrderAsPaidWithPayment(order.id, paymentResult()),
@@ -231,13 +301,21 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       ]);
 
       expect([paid, expired].filter(Boolean)).toHaveLength(1);
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
-      expect(stored.paymentStatus).toBe(paid ? PaymentStatus.PAID : PaymentStatus.EXPIRED);
-      expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(paid ? 1 : 0);
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      expect(stored.paymentStatus).toBe(
+        paid ? PaymentStatus.PAID : PaymentStatus.EXPIRED,
+      );
+      expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(
+        paid ? 1 : 0,
+      );
     });
 
     it('getDueUnpaidOrderIds devuelve las vencidas sin pagar, las más antiguas primero y con tope', async () => {
-      const oldest = await createOrder(prisma, refs, { expirationDate: hoursFromNow(-3) });
+      const oldest = await createOrder(prisma, refs, {
+        expirationDate: hoursFromNow(-3),
+      });
       const rejected = await createOrder(prisma, refs, {
         expirationDate: hoursFromNow(-2),
         paymentStatus: PaymentStatus.REJECTED,
@@ -249,37 +327,56 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       });
       await createOrder(prisma, refs, { expirationDate: hoursFromNow(1) });
 
-      expect(await datasource.getDueUnpaidOrderIds(new Date(), 2)).toEqual([oldest.id, rejected.id]);
+      expect(await datasource.getDueUnpaidOrderIds(new Date(), 2)).toEqual([
+        oldest.id,
+        rejected.id,
+      ]);
     });
   });
 
   describe('generación del plan', () => {
     it('con transiciones concurrentes solo una pasa a GENERATING', async () => {
-      const order = await createOrder(prisma, refs, { paymentStatus: PaymentStatus.PAID });
+      const order = await createOrder(prisma, refs, {
+        paymentStatus: PaymentStatus.PAID,
+      });
 
       const results = await Promise.all(
-        Array.from({ length: 8 }, () => datasource.tryTransitionOrderToGenerating(order.id)),
+        Array.from({ length: 8 }, () =>
+          datasource.tryTransitionOrderToGenerating(order.id),
+        ),
       );
 
       expect(results.filter(Boolean)).toHaveLength(1);
     });
 
     it('tryTransitionOrderToGenerating admite un reintento desde ERROR pero no desde COMPLETED', async () => {
-      const failed = await createOrder(prisma, refs, { generationStatus: GenerationStatus.ERROR });
-      const done = await createOrder(prisma, refs, { generationStatus: GenerationStatus.COMPLETED });
+      const failed = await createOrder(prisma, refs, {
+        generationStatus: GenerationStatus.ERROR,
+      });
+      const done = await createOrder(prisma, refs, {
+        generationStatus: GenerationStatus.COMPLETED,
+      });
 
-      expect(await datasource.tryTransitionOrderToGenerating(failed.id)).toBe(true);
-      expect(await datasource.tryTransitionOrderToGenerating(done.id)).toBe(false);
+      expect(await datasource.tryTransitionOrderToGenerating(failed.id)).toBe(
+        true,
+      );
+      expect(await datasource.tryTransitionOrderToGenerating(done.id)).toBe(
+        false,
+      );
     });
 
     it('incrementOrderFailedAttempt suma correctamente con fallos concurrentes', async () => {
       const order = await createOrder(prisma, refs);
 
       await Promise.all(
-        Array.from({ length: 5 }, () => datasource.incrementOrderFailedAttempt(order.id)),
+        Array.from({ length: 5 }, () =>
+          datasource.incrementOrderFailedAttempt(order.id),
+        ),
       );
 
-      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      const stored = await prisma.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       expect(stored.attempts).toBe(5);
       expect(stored.generationStatus).toBe(GenerationStatus.ERROR);
     });
@@ -302,14 +399,17 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       expect(await datasource.releaseStalledGenerations(staleBefore)).toBe(2);
 
       for (const { id } of [stalled, withoutDate]) {
-        expect(await prisma.order.findUniqueOrThrow({ where: { id } })).toMatchObject({
+        expect(
+          await prisma.order.findUniqueOrThrow({ where: { id } }),
+        ).toMatchObject({
           generationStatus: GenerationStatus.ERROR,
           attempts: 1,
           generationUpdatedAt: null,
         });
       }
       expect(
-        (await prisma.order.findUniqueOrThrow({ where: { id: running.id } })).generationStatus,
+        (await prisma.order.findUniqueOrThrow({ where: { id: running.id } }))
+          .generationStatus,
       ).toBe(GenerationStatus.GENERATING);
     });
 
@@ -352,7 +452,9 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       await createOrder(prisma, refs, { ...paid, paymentDate: new Date() });
       await createOrder(prisma, refs, { paymentDate: hoursFromNow(-3) });
       // Un plan predefinido nunca se genera.
-      const predefined = await createProduct(prisma, { type: ProductType.PREDEFINED });
+      const predefined = await createProduct(prisma, {
+        type: ProductType.PREDEFINED,
+      });
       await createOrder(
         prisma,
         { userId: refs.userId, productId: predefined.id },
@@ -361,7 +463,11 @@ describe('OrderDatasourceImpl (Postgres)', () => {
 
       const ids = await datasource.getOrderIdsPendingGeneration({
         notStartedPaidBefore: hoursFromNow(-1),
-        errorRetryDueBefore: [hoursFromNow(-1), hoursFromNow(-4), hoursFromNow(-8)],
+        errorRetryDueBefore: [
+          hoursFromNow(-1),
+          hoursFromNow(-4),
+          hoursFromNow(-8),
+        ],
         limit: 10,
       });
 
@@ -381,30 +487,59 @@ describe('OrderDatasourceImpl (Postgres)', () => {
       const other = await createUser(prisma);
 
       expect(
-        await datasource.getReadyOrderWithPlanDetailByIdAndUserId(order.id, other.id),
+        await datasource.getReadyOrderWithPlanDetailByIdAndUserId(
+          order.id,
+          other.id,
+        ),
       ).toBeNull();
       expect(
-        await datasource.getReadyOrderWithPlanDetailByIdAndUserId(order.id, refs.userId),
-      ).toMatchObject({ id: order.id, amount: 4990, product: { type: ProductType.GENERATED } });
+        await datasource.getReadyOrderWithPlanDetailByIdAndUserId(
+          order.id,
+          refs.userId,
+        ),
+      ).toMatchObject({
+        id: order.id,
+        amount: 4990,
+        product: { type: ProductType.GENERATED },
+      });
     });
 
     it.each([
-      ['sin completar', { ...ready, generationStatus: GenerationStatus.GENERATING }],
+      [
+        'sin completar',
+        { ...ready, generationStatus: GenerationStatus.GENERATING },
+      ],
       ['sin PDF', { ...ready, pdfKey: null }],
-    ])('getReadyOrderWithPlanDetailByIdAndUserId no expone una orden %s', async (_name, data) => {
-      const order = await createOrder(prisma, refs, data);
+    ])(
+      'getReadyOrderWithPlanDetailByIdAndUserId no expone una orden %s',
+      async (_name, data) => {
+        const order = await createOrder(prisma, refs, data);
 
-      expect(
-        await datasource.getReadyOrderWithPlanDetailByIdAndUserId(order.id, refs.userId),
-      ).toBeNull();
-    });
+        expect(
+          await datasource.getReadyOrderWithPlanDetailByIdAndUserId(
+            order.id,
+            refs.userId,
+          ),
+        ).toBeNull();
+      },
+    );
 
     it('getPaidOrdersWithPdfByUserId lista solo los planes listos del usuario, el más nuevo primero', async () => {
-      const older = await createOrder(prisma, refs, { ...ready, creationDate: hoursFromNow(-2) });
-      const newer = await createOrder(prisma, refs, { ...ready, creationDate: hoursFromNow(-1) });
+      const older = await createOrder(prisma, refs, {
+        ...ready,
+        creationDate: hoursFromNow(-2),
+      });
+      const newer = await createOrder(prisma, refs, {
+        ...ready,
+        creationDate: hoursFromNow(-1),
+      });
       await createOrder(prisma, refs, { ...ready, pdfKey: null });
       const other = await createUser(prisma);
-      await createOrder(prisma, { userId: other.id, productId: refs.productId }, ready);
+      await createOrder(
+        prisma,
+        { userId: other.id, productId: refs.productId },
+        ready,
+      );
 
       const orders = await datasource.getPaidOrdersWithPdfByUserId(refs.userId);
 

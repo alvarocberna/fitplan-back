@@ -9,7 +9,9 @@ export class PaymentSimulationEnabledGuard implements CanActivate {
   constructor(private readonly configService: ConfigService) {}
 
   canActivate(): boolean {
-    if (this.configService.get<string>('ENABLE_PAYMENT_SIMULATION') !== 'true') {
+    if (
+      this.configService.get<string>('ENABLE_PAYMENT_SIMULATION') !== 'true'
+    ) {
       throw new NotFoundException();
     }
     return true;

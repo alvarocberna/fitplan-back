@@ -20,7 +20,9 @@ import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decora
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { OrderLifecycleService } from '../order-lifecycle.service';
 
-export type ConfirmPaymentResult = { status: 'processed' | 'already_processed' };
+export type ConfirmPaymentResult = {
+  status: 'processed' | 'already_processed';
+};
 
 // Intento de pago de la pasarela (fila payment INITIATED) y el resultado con que se cierra.
 export interface SettledPayment {
@@ -55,7 +57,8 @@ export class ConfirmPaymentUseCase {
   }): Promise<ConfirmPaymentResult> {
     const { orderId } = input;
     const order = await this.orderRepository.getOrderWithProductById(orderId);
-    if (!order?.product) throw new NotFoundException(`Orden ${orderId} no encontrada`);
+    if (!order?.product)
+      throw new NotFoundException(`Orden ${orderId} no encontrada`);
     if (input.claims) {
       const user = await this.currentUser.resolve(input.claims);
       if (order.userId !== user.id) {
@@ -104,19 +107,25 @@ export class ConfirmPaymentUseCase {
     if (!markedNow) {
       // La orden no era pagable: o venció su plazo, o ya estaba pagada.
       if (await this.orderLifecycle.isExpired(order)) {
-        this.logger.warn(`Orden ${orderId}: pago recibido pero la orden expiró`);
+        this.logger.warn(
+          `Orden ${orderId}: pago recibido pero la orden expiró`,
+        );
         throw new ConflictException({
           code: ErrorCode.ORDER_EXPIRED,
           message: 'La orden expiró sin pagarse',
         });
       }
-      this.logger.log(`Orden ${orderId}: pago recibido pero ya estaba pagada (ignorado)`);
+      this.logger.log(
+        `Orden ${orderId}: pago recibido pero ya estaba pagada (ignorado)`,
+      );
       return { status: 'already_processed' };
     }
 
     const event: OrderPaidEvent = { orderId, productType: product.type };
     this.eventEmitter.emit(ORDER_PAID, event);
-    this.logger.log(`Orden ${orderId}: pago confirmado (producto ${product.type})`);
+    this.logger.log(
+      `Orden ${orderId}: pago confirmado (producto ${product.type})`,
+    );
     return { status: 'processed' };
   }
 }

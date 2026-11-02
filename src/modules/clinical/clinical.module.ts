@@ -16,7 +16,11 @@ import { UpdateMyMeasurementUseCase } from './use-cases/update-my-measurement.us
 // repositorio de consultas, y la descarga se firma con el helper signPlanFiles
 // (billing/order-files.ts, el mismo que usan /orders/:id/status y /me/plans).
 @Module({
-  imports: [ClinicalDomainRepositoriesModule, FileStorageModule, IdentityModule],
+  imports: [
+    ClinicalDomainRepositoriesModule,
+    FileStorageModule,
+    IdentityModule,
+  ],
   controllers: [MyConsultationsController, MyMeasurementsController],
   providers: [
     ListMyConsultationsUseCase,

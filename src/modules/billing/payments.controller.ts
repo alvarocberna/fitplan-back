@@ -34,7 +34,9 @@ import { PaymentSimulationEnabledGuard } from './payment-simulation-enabled.guar
 // usuario; no hay sesión: se identifica por el token de la transacción (ver CommitWebpayPaymentUseCase).
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly commitWebpayPayment: CommitWebpayPaymentUseCase) {}
+  constructor(
+    private readonly commitWebpayPayment: CommitWebpayPaymentUseCase,
+  ) {}
 
   @Throttle(PAYMENT_RETURN_THROTTLE)
   @HttpCode(200)

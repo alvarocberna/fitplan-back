@@ -7,7 +7,12 @@
 //  - un campo "opcional" se expresa como unión con null (type: ['string', 'null']);
 //  - enum para valores cerrados.
 
-export type JsonSchemaPrimitiveType = 'string' | 'number' | 'integer' | 'boolean' | 'null';
+export type JsonSchemaPrimitiveType =
+  | 'string'
+  | 'number'
+  | 'integer'
+  | 'boolean'
+  | 'null';
 export type JsonSchemaType = JsonSchemaPrimitiveType | 'object' | 'array';
 
 export interface JsonSchema {
@@ -57,15 +62,23 @@ function matchesType(value: unknown, type: JsonSchemaType): boolean {
 // Valida `value` contra `schema` y devuelve la lista de errores, cada uno con la ruta del dato
 // (ej. "mealTimes[2].examples[0].components[1].weight: se esperaba number, llegó string").
 // Lista vacía = cumple.
-export function validateJsonSchema(value: unknown, schema: JsonSchema, path = '$'): string[] {
+export function validateJsonSchema(
+  value: unknown,
+  schema: JsonSchema,
+  path = '$',
+): string[] {
   const types = Array.isArray(schema.type) ? schema.type : [schema.type];
   const matched = types.find((type) => matchesType(value, type));
   if (!matched) {
-    return [`${path}: se esperaba ${types.join(' | ')}, llegó ${typeOf(value)}`];
+    return [
+      `${path}: se esperaba ${types.join(' | ')}, llegó ${typeOf(value)}`,
+    ];
   }
 
   if (schema.enum && !schema.enum.includes(value as string | number | null)) {
-    return [`${path}: valor ${JSON.stringify(value)} fuera de los permitidos (${schema.enum.join(', ')})`];
+    return [
+      `${path}: valor ${JSON.stringify(value)} fuera de los permitidos (${schema.enum.join(', ')})`,
+    ];
   }
 
   if (matched === 'object') {
@@ -101,7 +114,10 @@ export function validateJsonSchema(value: unknown, schema: JsonSchema, path = '$
 // Reglas del modo estricto de los proveedores: todo objeto declara TODAS sus propiedades como
 // obligatorias y prohíbe las adicionales, y todo arreglo declara el tipo de sus elementos. Devuelve
 // los incumplimientos (vacío = el esquema es estricto). Se usa en los tests de cada esquema.
-export function strictSchemaViolations(schema: JsonSchema, path = '$'): string[] {
+export function strictSchemaViolations(
+  schema: JsonSchema,
+  path = '$',
+): string[] {
   const types = Array.isArray(schema.type) ? schema.type : [schema.type];
   const errors: string[] = [];
 
@@ -112,11 +128,15 @@ export function strictSchemaViolations(schema: JsonSchema, path = '$'): string[]
       errors.push(`${path}: falta additionalProperties: false`);
     }
     for (const key of Object.keys(properties)) {
-      if (!required.has(key)) errors.push(`${path}.${key}: no está en "required"`);
+      if (!required.has(key))
+        errors.push(`${path}.${key}: no está en "required"`);
       errors.push(...strictSchemaViolations(properties[key], `${path}.${key}`));
     }
     for (const key of required) {
-      if (!(key in properties)) errors.push(`${path}.${key}: está en "required" pero no en "properties"`);
+      if (!(key in properties))
+        errors.push(
+          `${path}.${key}: está en "required" pero no en "properties"`,
+        );
     }
   }
 

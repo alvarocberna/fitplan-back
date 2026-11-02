@@ -1,4 +1,7 @@
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
 import { runPrismaCli } from './prisma-cli';
 
 // Misma versión mayor que fitplan-db/Dockerfile.
@@ -22,6 +25,8 @@ export default async function globalSetup(): Promise<void> {
   const migrate = runPrismaCli(['migrate', 'deploy'], url);
   if (migrate.status !== 0) {
     await container.stop();
-    throw new Error(`prisma migrate deploy falló:\n${migrate.stdout}\n${migrate.stderr}`);
+    throw new Error(
+      `prisma migrate deploy falló:\n${migrate.stdout}\n${migrate.stderr}`,
+    );
   }
 }

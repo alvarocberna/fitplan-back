@@ -18,13 +18,20 @@ export class ListMyPlansUseCase {
     private readonly fileStorage: FileStorage,
   ) {}
 
-  async execute(input: { claims: CognitoUserClaims }): Promise<MyPlanSummaryDto[]> {
+  async execute(input: {
+    claims: CognitoUserClaims;
+  }): Promise<MyPlanSummaryDto[]> {
     const user = await this.currentUser.resolve(input.claims);
-    const orders = await this.orderRepository.getPaidOrdersWithPdfByUserId(user.id);
+    const orders = await this.orderRepository.getPaidOrdersWithPdfByUserId(
+      user.id,
+    );
 
     return Promise.all(
       orders.map(async (order) => {
-        const { pdfUrl, thumbnailUrl } = await signPlanFiles(this.fileStorage, order);
+        const { pdfUrl, thumbnailUrl } = await signPlanFiles(
+          this.fileStorage,
+          order,
+        );
         return {
           orderId: order.id,
           type: order.product!.type,

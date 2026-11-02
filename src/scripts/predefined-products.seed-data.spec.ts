@@ -19,8 +19,10 @@ describe('predefined-products.seed-data', () => {
       code: 'plan-gimnasio-volumen-50-60-m-joven',
       name: 'Plan Gimnasio Volumen · 50–59.9 kg · Hombre · menor de 30 años',
       currency: 'CLP',
-      pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
-      thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
+      pdfKey:
+        'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
+      thumbnailKey:
+        'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
       // resumen nutricional ficticio (no las fórmulas reales de domain/services/formulas/), pero
       // coherente con el peso (55 kg, punto medio de 50-60) y el sexo de la versión
       goal: 'Aumento de masa muscular',
@@ -89,11 +91,13 @@ describe('buildPlanPreviewSeedRow / buildAllPlanPreviewSeedRows', () => {
     expect(row).toEqual({
       code: 'plan-gimnasio-definicion',
       name: 'Plan Gimnasio Definición',
-      description: 'Plan nutricional para entrenamiento de gimnasio en periodo de definición.',
+      description:
+        'Plan nutricional para entrenamiento de gimnasio en periodo de definición.',
       price: 5990,
       currency: 'CLP',
       pdfKey: null,
-      thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-definicion.webp',
+      thumbnailKey:
+        'productos-estandarizados/miniaturas/plan-gimnasio-definicion.webp',
       goal: 'Reducción de grasa corporal',
       dietRegimen: 'Hipocalórico hiperproteico',
       calorieIntake: 1750,

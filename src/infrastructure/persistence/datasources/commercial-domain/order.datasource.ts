@@ -138,12 +138,18 @@ export class OrderDatasourceImpl implements OrderDatasource {
 
   async getPaidOrdersWithPdfByUserId(userId: string): Promise<OrderEntity[]> {
     const orders = await this.prisma.order.findMany({
-      where: { userId, generationStatus: GenerationStatus.COMPLETED, pdfKey: { not: null } },
+      where: {
+        userId,
+        generationStatus: GenerationStatus.COMPLETED,
+        pdfKey: { not: null },
+      },
       orderBy: { creationDate: 'desc' },
       include: PLAN_SUMMARY_INCLUDE,
     });
     // product viene parcial (select), por eso el cast.
-    return orders.map((order) => this.toEntity(order) as unknown as OrderEntity);
+    return orders.map(
+      (order) => this.toEntity(order) as unknown as OrderEntity,
+    );
   }
 
   async getReadyOrderWithPlanDetailByIdAndUserId(
@@ -208,7 +214,11 @@ export class OrderDatasourceImpl implements OrderDatasource {
       return;
     }
     const { count } = await tx.payment.updateMany({
-      where: { id: paymentId, orderId, status: PaymentTransactionStatus.INITIATED },
+      where: {
+        id: paymentId,
+        orderId,
+        status: PaymentTransactionStatus.INITIATED,
+      },
       data: payment,
     });
     if (count === 0) {

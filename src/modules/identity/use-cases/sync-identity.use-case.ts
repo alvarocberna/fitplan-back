@@ -28,11 +28,14 @@ export class SyncIdentityUseCase {
     return toProfileDto(user, this.currentUser.isProfileComplete(user));
   }
 
-  private async findOrCreateUser(claims: CognitoUserClaims): Promise<UserEntity> {
-    const existing = await this.authIdentityRepository.findAuthIdentityByProvider(
-      AuthProvider.COGNITO,
-      claims.sub,
-    );
+  private async findOrCreateUser(
+    claims: CognitoUserClaims,
+  ): Promise<UserEntity> {
+    const existing =
+      await this.authIdentityRepository.findAuthIdentityByProvider(
+        AuthProvider.COGNITO,
+        claims.sub,
+      );
 
     if (existing) {
       const user = await this.userRepository.getUserById(existing.userId);
@@ -67,12 +70,18 @@ export class SyncIdentityUseCase {
 
   private async getVerifiedEmail(claims: CognitoUserClaims): Promise<string> {
     if (!claims.accessToken) {
-      throw new Error('SyncIdentityUseCase: el guard no dejó el access_token en los claims');
+      throw new Error(
+        'SyncIdentityUseCase: el guard no dejó el access_token en los claims',
+      );
     }
-    const identity = await this.identityProvider.getIdentity(claims.accessToken);
+    const identity = await this.identityProvider.getIdentity(
+      claims.accessToken,
+    );
     if (identity.sub !== claims.sub) {
       // el token validado y la respuesta de Cognito deben hablar de la misma cuenta
-      throw new Error('El sub de Cognito userInfo no coincide con el del token');
+      throw new Error(
+        'El sub de Cognito userInfo no coincide con el del token',
+      );
     }
     if (!identity.email || !identity.emailVerified) {
       throw new ForbiddenException({

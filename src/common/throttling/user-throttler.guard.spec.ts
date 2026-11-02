@@ -1,13 +1,16 @@
 import { subjectFromAuthorization } from './user-throttler.guard';
 
 function jwtWith(payload: unknown): string {
-  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const encode = (value: unknown) =>
+    Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${encode({ alg: 'RS256' })}.${encode(payload)}.firma`;
 }
 
 describe('subjectFromAuthorization', () => {
   it('devuelve el sub del access token', () => {
-    expect(subjectFromAuthorization(`Bearer ${jwtWith({ sub: 'sub-1' })}`)).toBe('sub-1');
+    expect(
+      subjectFromAuthorization(`Bearer ${jwtWith({ sub: 'sub-1' })}`),
+    ).toBe('sub-1');
   });
 
   it.each([

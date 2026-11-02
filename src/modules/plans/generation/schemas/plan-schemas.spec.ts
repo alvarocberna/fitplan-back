@@ -4,8 +4,14 @@ import {
   validateJsonSchema,
 } from '../../../../domain/services/llm/json-schema';
 import { EXTRACT_INFO_SCHEMA, ExtractedInfo } from './extract-info.schema';
-import { GENERATED_PLAN_SCHEMA, GeneratedNutritionPlan } from './generated-plan.schema';
-import { REPAIRED_MEAL_TIMES_SCHEMA, RepairedMealTimes } from './repaired-meal-times.schema';
+import {
+  GENERATED_PLAN_SCHEMA,
+  GeneratedNutritionPlan,
+} from './generated-plan.schema';
+import {
+  REPAIRED_MEAL_TIMES_SCHEMA,
+  RepairedMealTimes,
+} from './repaired-meal-times.schema';
 
 // Los tipos y los esquemas describen lo mismo y se mantienen a mano: estos tests fallan si se
 // desalinean (una respuesta tipada debe cumplir su esquema) o si un esquema deja de ser válido para
@@ -20,7 +26,10 @@ const mealTime: GeneratedNutritionPlan['mealTimes'][number] = {
     },
   ],
   equivalences: [
-    { field: 'cereals', options: [{ text: '1/2 taza de avena', food: 'Avena', weight: 40 }] },
+    {
+      field: 'cereals',
+      options: [{ text: '1/2 taza de avena', food: 'Avena', weight: 40 }],
+    },
   ],
   comments: ['Tomar agua'],
 };
@@ -51,22 +60,32 @@ const plan: GeneratedNutritionPlan = {
 };
 
 const repaired: RepairedMealTimes = { mealTimes: [{ index: 2, ...mealTime }] };
-const extracted: ExtractedInfo = { physicalActivityLevel: 1.5, goal: 'volumen' };
+const extracted: ExtractedInfo = {
+  physicalActivityLevel: 1.5,
+  goal: 'volumen',
+};
 
 describe('esquemas de structured output', () => {
   it.each([
     ['plan', GENERATED_PLAN_SCHEMA],
     ['corrección de tiempos de comida', REPAIRED_MEAL_TIMES_SCHEMA],
     ['clasificación previa', EXTRACT_INFO_SCHEMA],
-  ])('el esquema de %s cumple las reglas del modo estricto y tiene un nombre válido', (_name, named) => {
-    expect(strictSchemaViolations(named.schema)).toEqual([]);
-    expect(named.name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
-  });
+  ])(
+    'el esquema de %s cumple las reglas del modo estricto y tiene un nombre válido',
+    (_name, named) => {
+      expect(strictSchemaViolations(named.schema)).toEqual([]);
+      expect(named.name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    },
+  );
 
   it('una respuesta tipada de cada tipo cumple su esquema', () => {
     expect(validateJsonSchema(plan, GENERATED_PLAN_SCHEMA.schema)).toEqual([]);
-    expect(validateJsonSchema(repaired, REPAIRED_MEAL_TIMES_SCHEMA.schema)).toEqual([]);
-    expect(validateJsonSchema(extracted, EXTRACT_INFO_SCHEMA.schema)).toEqual([]);
+    expect(
+      validateJsonSchema(repaired, REPAIRED_MEAL_TIMES_SCHEMA.schema),
+    ).toEqual([]);
+    expect(validateJsonSchema(extracted, EXTRACT_INFO_SCHEMA.schema)).toEqual(
+      [],
+    );
   });
 
   it('el plan acepta todos los grupos de alimentos del catálogo y rechaza uno inventado', () => {
@@ -75,12 +94,16 @@ describe('esquemas de structured output', () => {
         ...plan,
         mealTimes: [{ ...mealTime, equivalences: [{ field, options: [] }] }],
       };
-      expect(validateJsonSchema(withField, GENERATED_PLAN_SCHEMA.schema)).toEqual([]);
+      expect(
+        validateJsonSchema(withField, GENERATED_PLAN_SCHEMA.schema),
+      ).toEqual([]);
     }
 
     const invented = {
       ...plan,
-      mealTimes: [{ ...mealTime, equivalences: [{ field: 'legumbres', options: [] }] }],
+      mealTimes: [
+        { ...mealTime, equivalences: [{ field: 'legumbres', options: [] }] },
+      ],
     };
     const errors = validateJsonSchema(invented, GENERATED_PLAN_SCHEMA.schema);
     expect(errors).toHaveLength(1);
@@ -95,7 +118,12 @@ describe('esquemas de structured output', () => {
         withoutExamples,
         {
           ...mealTime,
-          examples: [{ text: 'x', components: [{ field: 'cereals', food: 'Avena', weight: '40g' }] }],
+          examples: [
+            {
+              text: 'x',
+              components: [{ field: 'cereals', food: 'Avena', weight: '40g' }],
+            },
+          ],
         },
       ],
     };
@@ -108,19 +136,31 @@ describe('esquemas de structured output', () => {
 
   it('la corrección exige el "index" entero de cada tiempo de comida', () => {
     expect(
-      validateJsonSchema({ mealTimes: [mealTime] }, REPAIRED_MEAL_TIMES_SCHEMA.schema),
+      validateJsonSchema(
+        { mealTimes: [mealTime] },
+        REPAIRED_MEAL_TIMES_SCHEMA.schema,
+      ),
     ).toEqual(['$.mealTimes[0].index: falta el campo']);
     expect(
-      validateJsonSchema({ mealTimes: [{ index: '2', ...mealTime }] }, REPAIRED_MEAL_TIMES_SCHEMA.schema),
+      validateJsonSchema(
+        { mealTimes: [{ index: '2', ...mealTime }] },
+        REPAIRED_MEAL_TIMES_SCHEMA.schema,
+      ),
     ).toEqual(['$.mealTimes[0].index: se esperaba integer, llegó string']);
   });
 
   it('la clasificación previa solo admite los niveles de actividad y objetivos que usan las fórmulas', () => {
     expect(
-      validateJsonSchema({ physicalActivityLevel: 1.2, goal: 'volumen' }, EXTRACT_INFO_SCHEMA.schema),
+      validateJsonSchema(
+        { physicalActivityLevel: 1.2, goal: 'volumen' },
+        EXTRACT_INFO_SCHEMA.schema,
+      ),
     ).toHaveLength(1);
     expect(
-      validateJsonSchema({ physicalActivityLevel: 1.4, goal: 'bajar' }, EXTRACT_INFO_SCHEMA.schema),
+      validateJsonSchema(
+        { physicalActivityLevel: 1.4, goal: 'bajar' },
+        EXTRACT_INFO_SCHEMA.schema,
+      ),
     ).toHaveLength(1);
   });
 });

@@ -20,7 +20,11 @@ export class GetMySummaryUseCase {
   // tiene un plan generado (con patient, anamneses.goals y plans activos -> nutritionalPlan
   // principal anidados) en vez de consultar User/Goals/NutritionalPlan por separado, más la
   // última medición del historial clínico (cualquier origen).
-  async execute({ claims }: { claims: CognitoUserClaims }): Promise<SummaryDto> {
+  async execute({
+    claims,
+  }: {
+    claims: CognitoUserClaims;
+  }): Promise<SummaryDto> {
     const user = await this.currentUser.resolve(claims);
 
     const [consultation, measurement] = await Promise.all([

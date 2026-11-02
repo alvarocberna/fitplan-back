@@ -11,11 +11,22 @@ describe('CLASSIFY_GOAL_SCHEMA', () => {
   });
 
   it('admite solo los tres objetivos (los mismos de plans/generation/schemas/extract-info.schema.ts)', () => {
-    const goals: ClassifiedGoal['goal'][] = ['definicion', 'mantencion', 'volumen'];
+    const goals: ClassifiedGoal['goal'][] = [
+      'definicion',
+      'mantencion',
+      'volumen',
+    ];
     for (const goal of goals) {
-      expect(validateJsonSchema({ goal }, CLASSIFY_GOAL_SCHEMA.schema)).toEqual([]);
+      expect(validateJsonSchema({ goal }, CLASSIFY_GOAL_SCHEMA.schema)).toEqual(
+        [],
+      );
     }
     expect(CLASSIFY_GOAL_SCHEMA.schema.properties?.goal.enum).toEqual(goals);
-    expect(validateJsonSchema({ goal: 'bajar de peso' }, CLASSIFY_GOAL_SCHEMA.schema)).toHaveLength(1);
+    expect(
+      validateJsonSchema(
+        { goal: 'bajar de peso' },
+        CLASSIFY_GOAL_SCHEMA.schema,
+      ),
+    ).toHaveLength(1);
   });
 });

@@ -28,13 +28,17 @@ export class GetMyPlanUseCase {
     orderId: string;
   }): Promise<MyPlanDetailDto> {
     const user = await this.currentUser.resolve(input.claims);
-    const order = await this.orderRepository.getReadyOrderWithPlanDetailByIdAndUserId(
-      input.orderId,
-      user.id,
-    );
+    const order =
+      await this.orderRepository.getReadyOrderWithPlanDetailByIdAndUserId(
+        input.orderId,
+        user.id,
+      );
     if (!order) throw new NotFoundException('Plan no encontrado');
 
-    const { pdfUrl, thumbnailUrl } = await signPlanFiles(this.fileStorage, order);
+    const { pdfUrl, thumbnailUrl } = await signPlanFiles(
+      this.fileStorage,
+      order,
+    );
     const product = order.product!;
     const isPredefined = product.type === ProductType.PREDEFINED;
 
@@ -48,7 +52,10 @@ export class GetMyPlanUseCase {
       thumbnailUrl,
       generated: isPredefined ? null : generatedDetailOf(order),
       predefined: isPredefined
-        ? { description: product.description, summary: productSummaryOf(product) }
+        ? {
+            description: product.description,
+            summary: productSummaryOf(product),
+          }
         : null,
     };
   }

@@ -19,7 +19,12 @@ describe('ConfirmPaymentUseCase', () => {
   const generatedOrder = {
     id: 'order-1',
     amount: 19990,
-    product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
+    product: {
+      id: 'product-1',
+      type: 'GENERATED',
+      pdfKey: null,
+      thumbnailKey: null,
+    },
   };
   const predefinedOrder = {
     id: 'order-2',
@@ -27,8 +32,10 @@ describe('ConfirmPaymentUseCase', () => {
     product: {
       id: 'product-2',
       type: 'PREDEFINED',
-      pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
-      thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
+      pdfKey:
+        'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
+      thumbnailKey:
+        'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
     },
   };
 
@@ -52,10 +59,15 @@ describe('ConfirmPaymentUseCase', () => {
     const claims = { sub: 'sub-1' };
 
     it('paga la orden si es del usuario del token', async () => {
-      orderRepository.getOrderWithProductById.mockResolvedValue({ ...generatedOrder, userId: 'user-1' });
+      orderRepository.getOrderWithProductById.mockResolvedValue({
+        ...generatedOrder,
+        userId: 'user-1',
+      });
       orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
 
-      await expect(useCase.execute({ orderId: 'order-1', claims })).resolves.toEqual({
+      await expect(
+        useCase.execute({ orderId: 'order-1', claims }),
+      ).resolves.toEqual({
         status: 'processed',
       });
       expect(currentUser.resolve).toHaveBeenCalledWith(claims);
@@ -67,9 +79,9 @@ describe('ConfirmPaymentUseCase', () => {
         userId: 'otro-usuario',
       });
 
-      await expect(useCase.execute({ orderId: 'order-1', claims })).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        useCase.execute({ orderId: 'order-1', claims }),
+      ).rejects.toBeInstanceOf(NotFoundException);
       expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
       expect(eventEmitter.emit).not.toHaveBeenCalled();
     });
@@ -86,7 +98,10 @@ describe('ConfirmPaymentUseCase', () => {
       };
 
       await expect(
-        useCase.execute({ orderId: 'order-1', payment: { paymentId: 'payment-1', result } }),
+        useCase.execute({
+          orderId: 'order-1',
+          payment: { paymentId: 'payment-1', result },
+        }),
       ).resolves.toEqual({ status: 'processed' });
 
       expect(orderRepository.markOrderAsPaidWithPayment).toHaveBeenCalledWith(
@@ -114,9 +129,9 @@ describe('ConfirmPaymentUseCase', () => {
   it('lanza NotFoundException si la orden no existe, sin marcar el pago ni emitir el evento', async () => {
     orderRepository.getOrderWithProductById.mockResolvedValue(null);
 
-    await expect(useCase.execute({ orderId: 'missing' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      useCase.execute({ orderId: 'missing' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
     expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
     expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
@@ -159,8 +174,10 @@ describe('ConfirmPaymentUseCase', () => {
       'order-2',
       expect.objectContaining({ amount: 14990, status: 'AUTHORIZED' }),
       {
-        pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
-        thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
+        pdfKey:
+          'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
+        thumbnailKey:
+          'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
         generationStatus: 'COMPLETED',
       },
       undefined,
@@ -177,7 +194,9 @@ describe('ConfirmPaymentUseCase', () => {
       product: { ...predefinedOrder.product, pdfKey: null },
     });
 
-    await expect(useCase.execute({ orderId: 'order-2' })).rejects.toThrow(/sin pdfKey/);
+    await expect(useCase.execute({ orderId: 'order-2' })).rejects.toThrow(
+      /sin pdfKey/,
+    );
     expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
     expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
@@ -197,9 +216,9 @@ describe('ConfirmPaymentUseCase', () => {
     orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(false);
     orderLifecycle.isExpired.mockResolvedValue(true);
 
-    await expect(useCase.execute({ orderId: 'order-1' })).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      useCase.execute({ orderId: 'order-1' }),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(orderLifecycle.isExpired).toHaveBeenCalledWith(generatedOrder);
     expect(eventEmitter.emit).not.toHaveBeenCalled();
   });

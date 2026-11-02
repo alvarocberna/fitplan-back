@@ -20,7 +20,10 @@ interface ContractSchema {
 // Propiedades con @IsOptional() de cada DTO, leídas de los metadatos de class-validator.
 function optionalPropertiesByClass(): Map<string, Set<string>> {
   const storage = getMetadataStorage() as unknown as {
-    validationMetadatas: Map<Function, { propertyName: string; type: string }[]>;
+    validationMetadatas: Map<
+      Function,
+      { propertyName: string; type: string }[]
+    >;
   };
   const result = new Map<string, Set<string>>();
   for (const [target, metadatas] of storage.validationMetadatas) {
@@ -52,11 +55,19 @@ function alignWithValidators(schemas: Record<string, ContractSchema>): void {
 }
 
 async function exportOpenApi(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { preview: true, logger: false });
+  const app = await NestFactory.create(AppModule, {
+    preview: true,
+    logger: false,
+  });
   app.setGlobalPrefix(API_PREFIX);
-  const config = new DocumentBuilder().setTitle('Fitplan API').setVersion('1.0').build();
+  const config = new DocumentBuilder()
+    .setTitle('Fitplan API')
+    .setVersion('1.0')
+    .build();
   const document = SwaggerModule.createDocument(app, config);
-  alignWithValidators((document.components?.schemas ?? {}) as Record<string, ContractSchema>);
+  alignWithValidators(
+    (document.components?.schemas ?? {}) as Record<string, ContractSchema>,
+  );
 
   const output = resolve(process.argv[2] ?? DEFAULT_OUTPUT);
   mkdirSync(dirname(output), { recursive: true });

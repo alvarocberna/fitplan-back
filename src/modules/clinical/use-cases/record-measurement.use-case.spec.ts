@@ -8,7 +8,9 @@ import type { RecordMeasurementDtoImpl } from '../dto/measurement.dto';
 
 describe('RecordMeasurementUseCase', () => {
   let useCase: RecordMeasurementUseCase;
-  let clinicalRecordRepository: { findOrCreateClinicalRecordByPatientId: jest.Mock };
+  let clinicalRecordRepository: {
+    findOrCreateClinicalRecordByPatientId: jest.Mock;
+  };
   let measurementsRepository: {
     getMaxMeasurementNumberByClinicalRecordId: jest.Mock;
     createMeasurementWithDetails: jest.Mock;
@@ -18,13 +20,19 @@ describe('RecordMeasurementUseCase', () => {
   const claims: CognitoUserClaims = { sub: 'test-sub' };
 
   beforeEach(() => {
-    const currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
+    const currentUser = {
+      resolve: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
     clinicalRecordRepository = {
-      findOrCreateClinicalRecordByPatientId: jest.fn().mockResolvedValue({ id: 'cr-1' }),
+      findOrCreateClinicalRecordByPatientId: jest
+        .fn()
+        .mockResolvedValue({ id: 'cr-1' }),
     };
     measurementsRepository = {
       getMaxMeasurementNumberByClinicalRecordId: jest.fn().mockResolvedValue(2),
-      createMeasurementWithDetails: jest.fn().mockResolvedValue({ id: 'm-new' }),
+      createMeasurementWithDetails: jest
+        .fn()
+        .mockResolvedValue({ id: 'm-new' }),
       getMeasurementDetailByIdAndPatientId: jest.fn().mockResolvedValue({
         id: 'm-new',
         measurementNumber: 3,
@@ -52,9 +60,15 @@ describe('RecordMeasurementUseCase', () => {
   it('registra una medición básica en el historial del usuario (lo crea si no existe) con el siguiente número y su IMC', async () => {
     const detail = await useCase.execute({ claims, data: basic });
 
-    expect(clinicalRecordRepository.findOrCreateClinicalRecordByPatientId).toHaveBeenCalledWith('user-1');
-    expect(measurementsRepository.getMaxMeasurementNumberByClinicalRecordId).toHaveBeenCalledWith('cr-1');
-    expect(measurementsRepository.createMeasurementWithDetails).toHaveBeenCalledWith({
+    expect(
+      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId,
+    ).toHaveBeenCalledWith('user-1');
+    expect(
+      measurementsRepository.getMaxMeasurementNumberByClinicalRecordId,
+    ).toHaveBeenCalledWith('cr-1');
+    expect(
+      measurementsRepository.createMeasurementWithDetails,
+    ).toHaveBeenCalledWith({
       clinicalRecordId: 'cr-1',
       measuredAt: new Date('2026-05-10T12:00:00.000Z'),
       level: 'BASIC',
@@ -63,16 +77,26 @@ describe('RecordMeasurementUseCase', () => {
       results: { bmi: 23.66, bmiClassification: 'NORMAL_WEIGHT' },
     });
     // R6: devuelve lo creado, releído con sus hijas
-    expect(measurementsRepository.getMeasurementDetailByIdAndPatientId).toHaveBeenCalledWith('m-new', 'user-1');
-    expect(detail).toMatchObject({ measurementId: 'm-new', origin: 'SELF_REPORTED', editable: true });
+    expect(
+      measurementsRepository.getMeasurementDetailByIdAndPatientId,
+    ).toHaveBeenCalledWith('m-new', 'user-1');
+    expect(detail).toMatchObject({
+      measurementId: 'm-new',
+      origin: 'SELF_REPORTED',
+      editable: true,
+    });
   });
 
   it('usa la fecha actual si no se envía measuredAt', async () => {
     const before = Date.now();
 
-    await useCase.execute({ claims, data: { ...basic, measuredAt: undefined } });
+    await useCase.execute({
+      claims,
+      data: { ...basic, measuredAt: undefined },
+    });
 
-    const { measuredAt } = measurementsRepository.createMeasurementWithDetails.mock.calls[0][0];
+    const { measuredAt } =
+      measurementsRepository.createMeasurementWithDetails.mock.calls[0][0];
     expect(measuredAt.getTime()).toBeGreaterThanOrEqual(before);
   });
 
@@ -88,7 +112,10 @@ describe('RecordMeasurementUseCase', () => {
       },
     });
 
-    expect(measurementsRepository.createMeasurementWithDetails.mock.calls[0][0].results).toEqual({
+    expect(
+      measurementsRepository.createMeasurementWithDetails.mock.calls[0][0]
+        .results,
+    ).toEqual({
       bmi: 23.66,
       bmiClassification: 'NORMAL_WEIGHT',
       bfPercentage: 18,
@@ -108,9 +135,22 @@ describe('RecordMeasurementUseCase', () => {
 
   it.each([
     ['una fecha futura', { ...basic, measuredAt: '2999-01-01T00:00:00.000Z' }],
-    ['bioimpedancia sin masa muscular', { ...basic, level: 'BIOIMPEDANCE', bodyFat: { value: 18, unit: 'PERCENTAGE' } }],
-    ['grasa corporal en una medición básica', { ...basic, bodyFat: { value: 18, unit: 'PERCENTAGE' } }],
-    ['masa ósea en una medición básica', { ...basic, boneMass: { value: 3, unit: 'KG' } }],
+    [
+      'bioimpedancia sin masa muscular',
+      {
+        ...basic,
+        level: 'BIOIMPEDANCE',
+        bodyFat: { value: 18, unit: 'PERCENTAGE' },
+      },
+    ],
+    [
+      'grasa corporal en una medición básica',
+      { ...basic, bodyFat: { value: 18, unit: 'PERCENTAGE' } },
+    ],
+    [
+      'masa ósea en una medición básica',
+      { ...basic, boneMass: { value: 3, unit: 'KG' } },
+    ],
     [
       'grasa visceral en kg mayores que el peso',
       {
@@ -123,16 +163,28 @@ describe('RecordMeasurementUseCase', () => {
     ],
     [
       'un % fuera de rango',
-      { ...basic, level: 'BIOIMPEDANCE', bodyFat: { value: 90, unit: 'PERCENTAGE' }, muscleMass: { value: 30, unit: 'KG' } },
+      {
+        ...basic,
+        level: 'BIOIMPEDANCE',
+        bodyFat: { value: 90, unit: 'PERCENTAGE' },
+        muscleMass: { value: 30, unit: 'KG' },
+      },
     ],
     [
       'kg mayores que el peso',
-      { ...basic, level: 'BIOIMPEDANCE', bodyFat: { value: 18, unit: 'PERCENTAGE' }, muscleMass: { value: 80, unit: 'KG' } },
+      {
+        ...basic,
+        level: 'BIOIMPEDANCE',
+        bodyFat: { value: 18, unit: 'PERCENTAGE' },
+        muscleMass: { value: 80, unit: 'KG' },
+      },
     ],
   ])('rechaza con 400 %s, sin escribir nada', async (_, data) => {
     await expect(
       useCase.execute({ claims, data: data as RecordMeasurementDtoImpl }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(measurementsRepository.createMeasurementWithDetails).not.toHaveBeenCalled();
+    expect(
+      measurementsRepository.createMeasurementWithDetails,
+    ).not.toHaveBeenCalled();
   });
 });

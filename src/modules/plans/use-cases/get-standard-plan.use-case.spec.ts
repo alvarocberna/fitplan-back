@@ -19,7 +19,8 @@ describe('GetStandardPlanUseCase', () => {
     price: 14990,
     currency: 'CLP',
     pdfKey: 'productos-estandarizados/plan-gimnasio-volumen-50-60-m-joven.pdf',
-    thumbnailKey: 'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
+    thumbnailKey:
+      'productos-estandarizados/miniaturas/plan-gimnasio-volumen-50-60-m-joven.webp',
     active: true,
   };
 
@@ -44,8 +45,12 @@ describe('GetStandardPlanUseCase', () => {
   });
 
   it('devuelve la ficha pública con la URL firmada de la miniatura, sin exponer pdfKey ni thumbnailKey', async () => {
-    productRepository.getActivePredefinedProductByCode.mockResolvedValue(product as any);
-    fileStorage.getSignedDownloadUrl.mockResolvedValue('https://signed.example/thumb');
+    productRepository.getActivePredefinedProductByCode.mockResolvedValue(
+      product as any,
+    );
+    fileStorage.getSignedDownloadUrl.mockResolvedValue(
+      'https://signed.example/thumb',
+    );
 
     const result = await service.execute({ code });
 
@@ -57,7 +62,9 @@ describe('GetStandardPlanUseCase', () => {
       currency: 'CLP',
       thumbnailUrl: 'https://signed.example/thumb',
     });
-    expect(fileStorage.getSignedDownloadUrl).toHaveBeenCalledWith(product.thumbnailKey);
+    expect(fileStorage.getSignedDownloadUrl).toHaveBeenCalledWith(
+      product.thumbnailKey,
+    );
     expect(result).not.toHaveProperty('pdfKey');
     expect(result).not.toHaveProperty('thumbnailKey');
   });
@@ -77,13 +84,17 @@ describe('GetStandardPlanUseCase', () => {
   it('lanza NotFoundException si la versión no existe o está inactiva', async () => {
     productRepository.getActivePredefinedProductByCode.mockResolvedValue(null);
 
-    await expect(service.execute({ code })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.execute({ code })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('lanza NotFoundException con un código de formato inválido, sin consultar la base de datos', async () => {
-    await expect(service.execute({ code: '../../etc/passwd' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-    expect(productRepository.getActivePredefinedProductByCode).not.toHaveBeenCalled();
+    await expect(
+      service.execute({ code: '../../etc/passwd' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(
+      productRepository.getActivePredefinedProductByCode,
+    ).not.toHaveBeenCalled();
   });
 });

@@ -17,17 +17,25 @@ describe('DeleteExpiredConsultationUseCase', () => {
   });
 
   it('borra la consulta de la orden expirada', async () => {
-    nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(true);
+    nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(
+      true,
+    );
 
-    await expect(useCase.execute({ orderId: 'order-1' })).resolves.toEqual({ deleted: true });
+    await expect(useCase.execute({ orderId: 'order-1' })).resolves.toEqual({
+      deleted: true,
+    });
     expect(
       nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId,
     ).toHaveBeenCalledWith('order-1');
   });
 
   it('orden sin consulta (plan estándar): no hay nada que borrar', async () => {
-    nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(false);
+    nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(
+      false,
+    );
 
-    await expect(useCase.execute({ orderId: 'order-2' })).resolves.toEqual({ deleted: false });
+    await expect(useCase.execute({ orderId: 'order-2' })).resolves.toEqual({
+      deleted: false,
+    });
   });
 });

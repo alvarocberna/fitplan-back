@@ -20,10 +20,11 @@ export class ListMyMeasurementsUseCase {
     to?: Date;
   }): Promise<MeasurementSummaryDto[]> {
     const user = await this.currentUser.resolve(input.claims);
-    const measurements = await this.measurementsRepository.listMeasurementsByPatientId(
-      user.id,
-      { from: input.from, to: input.to },
-    );
+    const measurements =
+      await this.measurementsRepository.listMeasurementsByPatientId(user.id, {
+        from: input.from,
+        to: input.to,
+      });
     return measurements.map(toMeasurementSummary);
   }
 }

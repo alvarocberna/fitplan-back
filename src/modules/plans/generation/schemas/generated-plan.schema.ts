@@ -104,7 +104,8 @@ export const GENERATED_PLAN_SCHEMA: NamedJsonSchema = {
     prescription: strictObject({ regimen: string, goal: string }),
     mealTimes: {
       type: 'array',
-      description: 'Mismo orden y cantidad que los tiempos de comida entregados',
+      description:
+        'Mismo orden y cantidad que los tiempos de comida entregados',
       items: strictObject(GENERATED_MEAL_TIME_PROPERTIES),
     },
     supplements: {

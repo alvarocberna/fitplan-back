@@ -16,11 +16,15 @@ import {
   buildClassifyGoalUserMessage,
   CLASSIFY_GOAL_SYSTEM_PROMPT,
 } from '../prompts/classify-goal.prompt';
-import { ClassifiedGoal, CLASSIFY_GOAL_SCHEMA } from '../prompts/classify-goal.schema';
+import {
+  ClassifiedGoal,
+  CLASSIFY_GOAL_SCHEMA,
+} from '../prompts/classify-goal.schema';
 
 // Mismo modelo económico que el chat de anamnesis (ver chat-anamnesis.use-case.ts).
 // Se lee en cada uso (función): al importar este archivo el .env todavía no está cargado.
-const consultationModel = () => process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
+const consultationModel = () =>
+  process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
 
 const GOALS: ProjectionGoalDto[] = ['definicion', 'mantencion', 'volumen'];
 
@@ -72,8 +76,11 @@ export class EvaluateGoalFeasibilityUseCase {
 
   // Sin objetivo declarado no hace falta llamar al LLM: es "mantencion". Una respuesta fuera de los
   // valores esperados también se trata como "mantencion" (mismo default que el prompt).
-  private async classifyGoal(goals: GoalsDto | null): Promise<ProjectionGoalDto> {
-    if (!goals?.primaryGoal && !goals?.secondaryGoal?.length) return 'mantencion';
+  private async classifyGoal(
+    goals: GoalsDto | null,
+  ): Promise<ProjectionGoalDto> {
+    if (!goals?.primaryGoal && !goals?.secondaryGoal?.length)
+      return 'mantencion';
     const { goal } = await this.llm.chatJson<ClassifiedGoal>(
       CLASSIFY_GOAL_SYSTEM_PROMPT,
       [{ role: 'user', content: buildClassifyGoalUserMessage(goals) }],

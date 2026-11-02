@@ -76,7 +76,9 @@ export class RejectPaymentUseCase {
           message: 'La orden expiró sin pagarse',
         });
       }
-      this.logger.log(`Orden ${orderId}: rechazo recibido pero ya estaba pagada (ignorado)`);
+      this.logger.log(
+        `Orden ${orderId}: rechazo recibido pero ya estaba pagada (ignorado)`,
+      );
       return { status: 'already_processed' };
     }
 

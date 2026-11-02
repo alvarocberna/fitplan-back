@@ -21,7 +21,9 @@ describe('GetOrderStatusUseCase', () => {
     orderLifecycle = { isExpired: jest.fn().mockResolvedValue(false) };
     // firma distinto según la key para poder contrastar qué URL corresponde a qué objeto
     fileStorage = {
-      getSignedDownloadUrl: jest.fn(async (key: string) => `https://signed-url.example/${key}`),
+      getSignedDownloadUrl: jest.fn(
+        async (key: string) => `https://signed-url.example/${key}`,
+      ),
     };
     useCase = new GetOrderStatusUseCase(
       currentUser as unknown as CurrentUserResolver,
@@ -48,7 +50,9 @@ describe('GetOrderStatusUseCase', () => {
     expect(status.paymentStatus).toBe('PAID');
     expect(status.generationStatus).toBe('COMPLETED');
     expect((status.planJson as any).prescription.goal).toBe('volumen');
-    expect(status.pdfUrl).toBe('https://signed-url.example/productos-personalizados/order-1.pdf');
+    expect(status.pdfUrl).toBe(
+      'https://signed-url.example/productos-personalizados/order-1.pdf',
+    );
     expect(status.thumbnailUrl).toBe(
       'https://signed-url.example/productos-personalizados/miniaturas/order-1.webp',
     );
@@ -162,17 +166,17 @@ describe('GetOrderStatusUseCase', () => {
   it('lanza NotFoundException si la orden pertenece a otro usuario (BOLA)', async () => {
     orderRepository.getOrderById.mockResolvedValue({ userId: 'otro-usuario' });
 
-    await expect(useCase.execute({ claims, orderId: 'order-1' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      useCase.execute({ claims, orderId: 'order-1' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('lanza NotFoundException si la orden no existe', async () => {
     orderRepository.getOrderById.mockResolvedValue(null);
 
-    await expect(useCase.execute({ claims, orderId: 'missing' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      useCase.execute({ claims, orderId: 'missing' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('un planJson corrupto no rompe el polling: se informa sin detalle del plan', async () => {
@@ -189,6 +193,8 @@ describe('GetOrderStatusUseCase', () => {
     const status = await useCase.execute({ claims, orderId: 'order-1' });
 
     expect(status.planJson).toBeNull();
-    expect(status.pdfUrl).toBe('https://signed-url.example/productos-personalizados/order-1.pdf');
+    expect(status.pdfUrl).toBe(
+      'https://signed-url.example/productos-personalizados/order-1.pdf',
+    );
   });
 });

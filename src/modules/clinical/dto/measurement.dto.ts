@@ -17,7 +17,10 @@ import type { MeasurementValueUnit } from '../../../domain/dtos/clinical-domain/
 // ---------------------------------------------------------------------------------------------
 
 export type { MeasurementValueUnit };
-export const MEASUREMENT_VALUE_UNITS: readonly MeasurementValueUnit[] = ['PERCENTAGE', 'KG'];
+export const MEASUREMENT_VALUE_UNITS: readonly MeasurementValueUnit[] = [
+  'PERCENTAGE',
+  'KG',
+];
 
 // Tipos que el usuario puede registrar por su cuenta (ISAK 1 requiere un antropometrista).
 export const RECORDABLE_LEVELS = ['BASIC', 'BIOIMPEDANCE'] as const;
@@ -170,10 +173,18 @@ export interface MeasurementResultDto {
 
 // Respuesta de GET/POST/PATCH /me/measurements[/:id]. Los rangos de referencia por indicador
 // (para el gráfico de interpretación) quedan para cuando existan las fórmulas.
-export interface MeasurementDetailDto extends Omit<
-  MeasurementSummaryDto,
-  'weight' | 'height' | 'bmi' | 'bmiClassification' | 'bfKg' | 'bfPercentage' | 'mmKg' | 'mmPercentage'
-> {
+export interface MeasurementDetailDto
+  extends Omit<
+    MeasurementSummaryDto,
+    | 'weight'
+    | 'height'
+    | 'bmi'
+    | 'bmiClassification'
+    | 'bfKg'
+    | 'bfPercentage'
+    | 'mmKg'
+    | 'mmPercentage'
+  > {
   // Hoy toda medición es editable (también las de consulta).
   editable: boolean;
   raw: {

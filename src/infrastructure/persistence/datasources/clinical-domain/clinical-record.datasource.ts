@@ -51,7 +51,9 @@ export class ClinicalRecordDatasourceImpl implements ClinicalRecordDatasource {
       });
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;
-      return this.prisma.clinicalRecord.findUniqueOrThrow({ where: { patientId } });
+      return this.prisma.clinicalRecord.findUniqueOrThrow({
+        where: { patientId },
+      });
     }
   }
 }

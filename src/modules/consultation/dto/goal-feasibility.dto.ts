@@ -1,4 +1,10 @@
-import { IsNumber, IsOptional, IsPositive, Max, ValidateNested } from 'class-validator';
+import {
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  Max,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { GoalsDtoImpl } from './consultation.dto';
 

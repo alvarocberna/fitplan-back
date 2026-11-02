@@ -28,7 +28,9 @@ export class PurgeExpiredConsultationsUseCase {
     for (const orderId of orderIds) {
       // una consulta que falla no debe frenar al resto: se reintenta en la corrida siguiente.
       try {
-        const result = await this.deleteExpiredConsultation.execute({ orderId });
+        const result = await this.deleteExpiredConsultation.execute({
+          orderId,
+        });
         if (result.deleted) deleted++;
       } catch (error) {
         this.logger.error(
@@ -39,7 +41,9 @@ export class PurgeExpiredConsultationsUseCase {
     }
 
     if (deleted > 0) {
-      this.logger.warn(`${deleted} consulta(s) de órdenes expiradas borradas por el barrido`);
+      this.logger.warn(
+        `${deleted} consulta(s) de órdenes expiradas borradas por el barrido`,
+      );
     }
     return { deleted };
   }

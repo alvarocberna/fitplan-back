@@ -54,7 +54,11 @@ export class PhaseTimer {
   }
 
   // Registra una duración que no corresponde a ejecutar una función (p. ej. el tiempo en cola).
-  record(phase: string, durationMs: number, data?: Record<string, unknown>): PhaseEntry {
+  record(
+    phase: string,
+    durationMs: number,
+    data?: Record<string, unknown>,
+  ): PhaseEntry {
     const entry = this.push(phase, durationMs, true);
     if (data) entry.data = { ...data };
     return entry;
@@ -68,7 +72,9 @@ export class PhaseTimer {
       this.pendingData.set(phase, { ...this.pendingData.get(phase), ...data });
       return;
     }
-    const last = [...this.records].reverse().find((entry) => entry.phase === phase);
+    const last = [...this.records]
+      .reverse()
+      .find((entry) => entry.phase === phase);
     if (last) last.data = { ...last.data, ...data };
   }
 
@@ -77,7 +83,9 @@ export class PhaseTimer {
   }
 
   totalMs(): number {
-    return round(this.records.reduce((sum, entry) => sum + entry.durationMs, 0));
+    return round(
+      this.records.reduce((sum, entry) => sum + entry.durationMs, 0),
+    );
   }
 
   // Suma de las fases cuyo nombre cumple el predicado (p. ej. las llamadas al modelo).
@@ -97,7 +105,11 @@ export class PhaseTimer {
   private readonly pendingData = new Map<string, Record<string, unknown>>();
 
   private push(phase: string, durationMs: number, ok: boolean): PhaseEntry {
-    const entry: PhaseEntry = { phase, durationMs: round(Math.max(0, durationMs)), ok };
+    const entry: PhaseEntry = {
+      phase,
+      durationMs: round(Math.max(0, durationMs)),
+      ok,
+    };
     const pending = this.pendingData.get(phase);
     if (pending) {
       entry.data = { ...pending };
@@ -111,10 +123,15 @@ export class PhaseTimer {
 // Resume una lista de mediciones (de uno o varios cronómetros): total, porcentaje de cada fase y la
 // más lenta. Las fases repetidas (varios intentos) se muestran una por una, en orden.
 export function summarizePhases(entries: PhaseEntry[]): PhaseSummary {
-  const totalMs = round(entries.reduce((sum, entry) => sum + entry.durationMs, 0));
+  const totalMs = round(
+    entries.reduce((sum, entry) => sum + entry.durationMs, 0),
+  );
   const byPhase = new Map<string, number>();
   for (const entry of entries) {
-    byPhase.set(entry.phase, (byPhase.get(entry.phase) ?? 0) + entry.durationMs);
+    byPhase.set(
+      entry.phase,
+      (byPhase.get(entry.phase) ?? 0) + entry.durationMs,
+    );
   }
   let slowest: string | null = null;
   let slowestMs = -1;
@@ -128,7 +145,8 @@ export function summarizePhases(entries: PhaseEntry[]): PhaseSummary {
     totalMs,
     phases: entries.map((entry) => ({
       ...entry,
-      pct: totalMs > 0 ? Math.round((entry.durationMs / totalMs) * 1000) / 10 : 0,
+      pct:
+        totalMs > 0 ? Math.round((entry.durationMs / totalMs) * 1000) / 10 : 0,
     })),
     slowest,
   };

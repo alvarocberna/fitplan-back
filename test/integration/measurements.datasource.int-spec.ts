@@ -45,7 +45,10 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
       results: { bmi: 22.86 },
     });
 
-    const detail: any = await datasource.getMeasurementDetailByIdAndPatientId(id, patient.user.id);
+    const detail: any = await datasource.getMeasurementDetailByIdAndPatientId(
+      id,
+      patient.user.id,
+    );
 
     expect(detail).toMatchObject({
       consultationId: null,
@@ -58,7 +61,9 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
     const { id } = await measurementOf(patient, '2026-05-10T12:00:00Z');
     const other = await createPatient(prisma);
 
-    expect(await datasource.getMeasurementDetailByIdAndPatientId(id, other.user.id)).toBeNull();
+    expect(
+      await datasource.getMeasurementDetailByIdAndPatientId(id, other.user.id),
+    ).toBeNull();
   });
 
   it('el listado es solo del paciente, de la más nueva a la más antigua', async () => {
@@ -76,20 +81,36 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
     const may10 = await measurementOf(patient, '2026-05-10T12:00:00Z', 2);
     const may20 = await measurementOf(patient, '2026-05-20T12:00:00Z', 3);
     const ids = async (range: { from?: Date; to?: Date }) =>
-      (await datasource.listMeasurementsByPatientId(patient.user.id, range)).map(({ id }) => id);
+      (
+        await datasource.listMeasurementsByPatientId(patient.user.id, range)
+      ).map(({ id }) => id);
 
     expect(
-      await ids({ from: new Date('2026-05-01T12:00:00Z'), to: new Date('2026-05-10T12:00:00Z') }),
+      await ids({
+        from: new Date('2026-05-01T12:00:00Z'),
+        to: new Date('2026-05-10T12:00:00Z'),
+      }),
     ).toEqual([may10.id, may1.id]);
-    expect(await ids({ from: new Date('2026-05-10T00:00:00Z') })).toEqual([may20.id, may10.id]);
-    expect(await ids({ to: new Date('2026-05-02T00:00:00Z') })).toEqual([may1.id]);
+    expect(await ids({ from: new Date('2026-05-10T00:00:00Z') })).toEqual([
+      may20.id,
+      may10.id,
+    ]);
+    expect(await ids({ to: new Date('2026-05-02T00:00:00Z') })).toEqual([
+      may1.id,
+    ]);
   });
 
   it('getLatestMeasurementsWithResultsByPatientId usa la fecha de medición, no la de creación', async () => {
-    const latestByDate = await measurementOf(patient, '2026-05-20T12:00:00Z', 1);
+    const latestByDate = await measurementOf(
+      patient,
+      '2026-05-20T12:00:00Z',
+      1,
+    );
     await measurementOf(patient, '2026-05-01T12:00:00Z', 2);
 
-    const latest = await datasource.getLatestMeasurementsWithResultsByPatientId(patient.user.id);
+    const latest = await datasource.getLatestMeasurementsWithResultsByPatientId(
+      patient.user.id,
+    );
 
     expect(latest?.id).toBe(latestByDate.id);
   });
@@ -99,10 +120,14 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
     const other = await createPatient(prisma);
 
     expect(
-      await datasource.getMaxMeasurementNumberByClinicalRecordId(patient.clinicalRecord.id),
+      await datasource.getMaxMeasurementNumberByClinicalRecordId(
+        patient.clinicalRecord.id,
+      ),
     ).toBe(7);
     expect(
-      await datasource.getMaxMeasurementNumberByClinicalRecordId(other.clinicalRecord.id),
+      await datasource.getMaxMeasurementNumberByClinicalRecordId(
+        other.clinicalRecord.id,
+      ),
     ).toBe(0);
   });
 
@@ -118,18 +143,28 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
       } as any);
 
       expect(await basicOf(id)).toMatchObject({ weight: 69, height: 175 });
-      expect(await prisma.basicMeasurements.count({ where: { measurementsId: id } })).toBe(1);
-      expect(await prisma.measurementResults.findMany({ where: { measurementsId: id } })).toEqual([
-        expect.objectContaining({ bmi: 22.53 }),
-      ]);
+      expect(
+        await prisma.basicMeasurements.count({ where: { measurementsId: id } }),
+      ).toBe(1);
+      expect(
+        await prisma.measurementResults.findMany({
+          where: { measurementsId: id },
+        }),
+      ).toEqual([expect.objectContaining({ bmi: 22.53 })]);
     });
 
     it('crea los resultados si la medición aún no tenía', async () => {
       const { id } = await measurementOf(patient, '2026-05-10T12:00:00Z');
 
-      await datasource.updateMeasurementWithDetails(id, { results: { bmi: 22.86 } } as any);
+      await datasource.updateMeasurementWithDetails(id, {
+        results: { bmi: 22.86 },
+      } as any);
 
-      expect(await prisma.measurementResults.count({ where: { measurementsId: id } })).toBe(1);
+      expect(
+        await prisma.measurementResults.count({
+          where: { measurementsId: id },
+        }),
+      ).toBe(1);
     });
 
     it('si falla una parte, deshace toda la edición', async () => {
@@ -144,7 +179,9 @@ describe('MeasurementsDatasourceImpl (Postgres)', () => {
         } as any),
       ).rejects.toBeDefined();
 
-      const stored = await prisma.measurements.findUniqueOrThrow({ where: { id } });
+      const stored = await prisma.measurements.findUniqueOrThrow({
+        where: { id },
+      });
       expect(stored.measuredAt.toISOString()).toBe(original);
       expect((await basicOf(id)).weight).toBe(70);
     });

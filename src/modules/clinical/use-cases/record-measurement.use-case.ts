@@ -4,7 +4,10 @@ import { ClinicalRecordRepository } from '../../../domain/repositories/clinical-
 import { MeasurementsRepository } from '../../../domain/repositories/clinical-domain/measurements.repository';
 import { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
-import { MeasurementDetailDto, RecordMeasurementDtoImpl } from '../dto/measurement.dto';
+import {
+  MeasurementDetailDto,
+  RecordMeasurementDtoImpl,
+} from '../dto/measurement.dto';
 import { toMeasurementDetail } from '../measurement.mapper';
 import { assertValidMeasurementInput } from '../measurement-input';
 
@@ -42,31 +45,35 @@ export class RecordMeasurementUseCase {
 
     const user = await this.currentUser.resolve(input.claims);
     const clinicalRecord =
-      await this.clinicalRecordRepository.findOrCreateClinicalRecordByPatientId(user.id);
+      await this.clinicalRecordRepository.findOrCreateClinicalRecordByPatientId(
+        user.id,
+      );
     const lastNumber =
       await this.measurementsRepository.getMaxMeasurementNumberByClinicalRecordId(
         clinicalRecord.id,
       );
 
-    const created = await this.measurementsRepository.createMeasurementWithDetails({
-      clinicalRecordId: clinicalRecord.id,
-      measuredAt,
-      level: data.level,
-      measurementNumber: lastNumber + 1,
-      basic: { weight: data.weight, height: data.height },
-      results: calculateMeasurementResults({
+    const created =
+      await this.measurementsRepository.createMeasurementWithDetails({
+        clinicalRecordId: clinicalRecord.id,
+        measuredAt,
         level: data.level,
-        weight: data.weight,
-        height: data.height,
-        ...components,
-      }),
-    });
+        measurementNumber: lastNumber + 1,
+        basic: { weight: data.weight, height: data.height },
+        results: calculateMeasurementResults({
+          level: data.level,
+          weight: data.weight,
+          height: data.height,
+          ...components,
+        }),
+      });
 
     // R6: devuelve lo creado, releído con todas sus hijas.
-    const measurement = await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
-      created.id,
-      user.id,
-    );
+    const measurement =
+      await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
+        created.id,
+        user.id,
+      );
     return toMeasurementDetail(measurement!);
   }
 }

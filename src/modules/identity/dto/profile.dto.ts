@@ -87,7 +87,10 @@ export interface ProfileDto {
   profileComplete: boolean;
 }
 
-export function toProfileDto(user: UserEntity, profileComplete: boolean): ProfileDto {
+export function toProfileDto(
+  user: UserEntity,
+  profileComplete: boolean,
+): ProfileDto {
   return {
     email: user.email,
     rut: user.rut,

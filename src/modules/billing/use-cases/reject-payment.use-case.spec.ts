@@ -32,10 +32,12 @@ describe('RejectPaymentUseCase', () => {
   it('lanza NotFoundException si la orden no existe, sin registrar el rechazo', async () => {
     orderRepository.getOrderById.mockResolvedValue(null);
 
-    await expect(useCase.execute({ orderId: 'missing' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-    expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
+    await expect(
+      useCase.execute({ orderId: 'missing' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(
+      orderRepository.markOrderAsRejectedWithPayment,
+    ).not.toHaveBeenCalled();
   });
 
   it('registra el payment REJECTED con el monto de la orden y responde rejected', async () => {
@@ -66,7 +68,10 @@ describe('RejectPaymentUseCase', () => {
     };
 
     await expect(
-      useCase.execute({ orderId: 'order-1', payment: { paymentId: 'payment-1', result } }),
+      useCase.execute({
+        orderId: 'order-1',
+        payment: { paymentId: 'payment-1', result },
+      }),
     ).resolves.toEqual({ status: 'rejected' });
 
     expect(orderRepository.markOrderAsRejectedWithPayment).toHaveBeenCalledWith(
@@ -88,23 +93,31 @@ describe('RejectPaymentUseCase', () => {
     orderRepository.markOrderAsRejectedWithPayment.mockResolvedValue(false);
     orderLifecycle.isExpired.mockResolvedValue(true);
 
-    await expect(useCase.execute({ orderId: 'order-1' })).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      useCase.execute({ orderId: 'order-1' }),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(orderLifecycle.isExpired).toHaveBeenCalledWith(order);
   });
 
   it('con claims: responde 404 (R2) y no registra el rechazo si la orden es de otro usuario', async () => {
-    orderRepository.getOrderById.mockResolvedValue({ ...order, userId: 'otro-usuario' });
+    orderRepository.getOrderById.mockResolvedValue({
+      ...order,
+      userId: 'otro-usuario',
+    });
 
     await expect(
       useCase.execute({ orderId: 'order-1', claims: { sub: 'sub-1' } }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
+    expect(
+      orderRepository.markOrderAsRejectedWithPayment,
+    ).not.toHaveBeenCalled();
   });
 
   it('con claims: rechaza el pago si la orden es del usuario del token', async () => {
-    orderRepository.getOrderById.mockResolvedValue({ ...order, userId: 'user-1' });
+    orderRepository.getOrderById.mockResolvedValue({
+      ...order,
+      userId: 'user-1',
+    });
 
     await expect(
       useCase.execute({ orderId: 'order-1', claims: { sub: 'sub-1' } }),

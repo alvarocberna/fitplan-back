@@ -48,7 +48,8 @@ export class OrderLifecycleService {
   ): Promise<boolean> {
     if (order.paymentStatus === PaymentStatus.EXPIRED) return true;
     if (order.paymentStatus === PaymentStatus.PAID) return false;
-    if (!order.expirationDate || order.expirationDate > new Date()) return false;
+    if (!order.expirationDate || order.expirationDate > new Date())
+      return false;
 
     await this.expireIfDue(order.id);
     return true;
@@ -72,7 +73,9 @@ export class OrderLifecycleService {
   // que una generación que sigue avanzando (varios intentos, correcciones) no se confunde con una
   // que quedó pegada.
   async touchGeneration(id: string): Promise<void> {
-    await this.orderRepository.updateOrderById(id, { generationUpdatedAt: new Date() });
+    await this.orderRepository.updateOrderById(id, {
+      generationUpdatedAt: new Date(),
+    });
   }
 
   async completeGeneration(

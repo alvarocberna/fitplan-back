@@ -2,7 +2,10 @@ import { UNTRUSTED_INPUT_RULES } from '../../../../domain/services/llm/prompt-gu
 import { CalculatedMealTime } from '../../../../domain/services/alimentos/portion-adequacy.service';
 import { PlanIssue } from '../plan-validation';
 import { GeneratedMealTime } from '../schemas/generated-plan.schema';
-import { buildMealTimesInfo, MEAL_TIMES_INSTRUCTIONS } from './meal-times.prompt';
+import {
+  buildMealTimesInfo,
+  MEAL_TIMES_INSTRUCTIONS,
+} from './meal-times.prompt';
 
 // Reintento dirigido: cuando la validación en código rechaza algunos tiempos de comida del plan que
 // redactó el modelo, en vez de pedir el plan completo de nuevo se le pide corregir SOLO esos tiempos,
@@ -30,8 +33,13 @@ export function buildRepairUserPrompt(
 ): string {
   const indexes = new Set(mealTimeIndexes);
   // mismos datos calculados que recibió al generar el plan, solo para los tiempos a corregir
-  const info = buildMealTimesInfo(calculatedMealTimes).filter((mealTime) => indexes.has(mealTime.index));
-  const previous = mealTimeIndexes.map((index) => ({ index, ...generatedMealTimes[index] }));
+  const info = buildMealTimesInfo(calculatedMealTimes).filter((mealTime) =>
+    indexes.has(mealTime.index),
+  );
+  const previous = mealTimeIndexes.map((index) => ({
+    index,
+    ...generatedMealTimes[index],
+  }));
   const errors = mealTimeIndexes.map((index) => ({
     index,
     errors: issues

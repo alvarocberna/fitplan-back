@@ -15,18 +15,27 @@ describe('SyncIdentityUseCase', () => {
     findAuthIdentityByProvider: jest.Mock;
     findOrCreateAuthIdentity: jest.Mock;
   };
-  let userRepository: { getUserById: jest.Mock; findOrCreateUserByEmail: jest.Mock };
+  let userRepository: {
+    getUserById: jest.Mock;
+    findOrCreateUserByEmail: jest.Mock;
+  };
   let currentUser: { isProfileComplete: jest.Mock };
   let identityProvider: { getIdentity: jest.Mock };
 
-  const claims: CognitoUserClaims = { sub: 'sub-1', accessToken: 'access-token-1' };
+  const claims: CognitoUserClaims = {
+    sub: 'sub-1',
+    accessToken: 'access-token-1',
+  };
 
   beforeEach(() => {
     authIdentityRepository = {
       findAuthIdentityByProvider: jest.fn(),
       findOrCreateAuthIdentity: jest.fn(),
     };
-    userRepository = { getUserById: jest.fn(), findOrCreateUserByEmail: jest.fn() };
+    userRepository = {
+      getUserById: jest.fn(),
+      findOrCreateUserByEmail: jest.fn(),
+    };
     currentUser = { isProfileComplete: jest.fn().mockReturnValue(false) };
     identityProvider = {
       getIdentity: jest.fn().mockResolvedValue({
@@ -48,14 +57,22 @@ describe('SyncIdentityUseCase', () => {
       id: 'identity-1',
       userId: 'user-1',
     });
-    userRepository.getUserById.mockResolvedValue({ id: 'user-1', email: 'ana@example.com' });
+    userRepository.getUserById.mockResolvedValue({
+      id: 'user-1',
+      email: 'ana@example.com',
+    });
 
     const result = await useCase.execute({ claims });
 
-    expect(result).toMatchObject({ email: 'ana@example.com', profileComplete: false });
+    expect(result).toMatchObject({
+      email: 'ana@example.com',
+      profileComplete: false,
+    });
     expect(identityProvider.getIdentity).not.toHaveBeenCalled();
     expect(userRepository.findOrCreateUserByEmail).not.toHaveBeenCalled();
-    expect(authIdentityRepository.findOrCreateAuthIdentity).not.toHaveBeenCalled();
+    expect(
+      authIdentityRepository.findOrCreateAuthIdentity,
+    ).not.toHaveBeenCalled();
   });
 
   it('la primera vez pide el email a Cognito con el access token y crea el User y su AuthIdentity', async () => {
@@ -71,7 +88,9 @@ describe('SyncIdentityUseCase', () => {
     expect(userRepository.findOrCreateUserByEmail).toHaveBeenCalledWith({
       email: 'ana@example.com',
     });
-    expect(authIdentityRepository.findOrCreateAuthIdentity).toHaveBeenCalledWith({
+    expect(
+      authIdentityRepository.findOrCreateAuthIdentity,
+    ).toHaveBeenCalledWith({
       userId: 'user-1',
       provider: AuthProvider.COGNITO,
       providerUserId: 'sub-1',
@@ -82,22 +101,32 @@ describe('SyncIdentityUseCase', () => {
   });
 
   it.each([
-    ['no verificado', { sub: 'sub-1', email: 'ana@example.com', emailVerified: false }],
+    [
+      'no verificado',
+      { sub: 'sub-1', email: 'ana@example.com', emailVerified: false },
+    ],
     ['ausente', { sub: 'sub-1', email: null, emailVerified: true }],
-  ])('con un email %s responde 403 EMAIL_NOT_VERIFIED y no liga la identidad a ningún User', async (_n, identity) => {
-    authIdentityRepository.findAuthIdentityByProvider.mockResolvedValue(null);
-    identityProvider.getIdentity.mockResolvedValue(identity);
+  ])(
+    'con un email %s responde 403 EMAIL_NOT_VERIFIED y no liga la identidad a ningún User',
+    async (_n, identity) => {
+      authIdentityRepository.findAuthIdentityByProvider.mockResolvedValue(null);
+      identityProvider.getIdentity.mockResolvedValue(identity);
 
-    const error = await useCase.execute({ claims }).then(
-      () => undefined,
-      (e: ForbiddenException) => e,
-    );
+      const error = await useCase.execute({ claims }).then(
+        () => undefined,
+        (e: ForbiddenException) => e,
+      );
 
-    expect(error).toBeInstanceOf(ForbiddenException);
-    expect(error!.getResponse()).toMatchObject({ code: ErrorCode.EMAIL_NOT_VERIFIED });
-    expect(userRepository.findOrCreateUserByEmail).not.toHaveBeenCalled();
-    expect(authIdentityRepository.findOrCreateAuthIdentity).not.toHaveBeenCalled();
-  });
+      expect(error).toBeInstanceOf(ForbiddenException);
+      expect(error!.getResponse()).toMatchObject({
+        code: ErrorCode.EMAIL_NOT_VERIFIED,
+      });
+      expect(userRepository.findOrCreateUserByEmail).not.toHaveBeenCalled();
+      expect(
+        authIdentityRepository.findOrCreateAuthIdentity,
+      ).not.toHaveBeenCalled();
+    },
+  );
 
   it('si Cognito responde por otra cuenta (sub distinto) no liga nada', async () => {
     authIdentityRepository.findAuthIdentityByProvider.mockResolvedValue(null);
@@ -130,6 +159,8 @@ describe('SyncIdentityUseCase', () => {
     });
     userRepository.getUserById.mockResolvedValue(null);
 
-    await expect(useCase.execute({ claims })).rejects.toThrow('User inexistente');
+    await expect(useCase.execute({ claims })).rejects.toThrow(
+      'User inexistente',
+    );
   });
 });

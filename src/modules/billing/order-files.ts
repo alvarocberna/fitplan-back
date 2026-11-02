@@ -28,7 +28,9 @@ export async function signPlanFiles(
           downloadFilename: buildPlanDownloadFilename(order.creationDate),
         })
       : null,
-    order.thumbnailKey ? storage.getSignedDownloadUrl(order.thumbnailKey) : null,
+    order.thumbnailKey
+      ? storage.getSignedDownloadUrl(order.thumbnailKey)
+      : null,
   ]);
   return { pdfUrl, thumbnailUrl };
 }

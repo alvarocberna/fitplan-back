@@ -45,7 +45,9 @@ export class UserDatasourceImpl implements UserDatasource {
       });
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;
-      return this.prisma.user.findUniqueOrThrow({ where: { email: dto.email } });
+      return this.prisma.user.findUniqueOrThrow({
+        where: { email: dto.email },
+      });
     }
   }
 }

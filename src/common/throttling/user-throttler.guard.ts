@@ -20,9 +20,13 @@ export function subjectFromAuthorization(header: unknown): string | null {
   const payload = header.slice('Bearer '.length).split('.')[1];
   if (!payload) return null;
   try {
-    const claims: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    const claims: unknown = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    );
     const sub = (claims as { sub?: unknown })?.sub;
-    return typeof sub === 'string' && sub.length > 0 && sub.length <= 128 ? sub : null;
+    return typeof sub === 'string' && sub.length > 0 && sub.length <= 128
+      ? sub
+      : null;
   } catch {
     return null;
   }

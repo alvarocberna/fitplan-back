@@ -26,7 +26,11 @@ describe('ExpireUnpaidOrdersUseCase', () => {
   });
 
   it('expira cada orden vencida y cuenta solo las que esta corrida expiró', async () => {
-    orderRepository.getDueUnpaidOrderIds.mockResolvedValue(['order-1', 'order-2', 'order-3']);
+    orderRepository.getDueUnpaidOrderIds.mockResolvedValue([
+      'order-1',
+      'order-2',
+      'order-3',
+    ]);
     // order-2 la expiró otro proceso entre la lectura y la escritura
     orderLifecycle.expireIfDue
       .mockResolvedValueOnce(true)
@@ -38,7 +42,10 @@ describe('ExpireUnpaidOrdersUseCase', () => {
   });
 
   it('una orden que falla no frena al resto', async () => {
-    orderRepository.getDueUnpaidOrderIds.mockResolvedValue(['order-1', 'order-2']);
+    orderRepository.getDueUnpaidOrderIds.mockResolvedValue([
+      'order-1',
+      'order-2',
+    ]);
     orderLifecycle.expireIfDue
       .mockRejectedValueOnce(new Error('db caída'))
       .mockResolvedValueOnce(true);
@@ -47,6 +54,9 @@ describe('ExpireUnpaidOrdersUseCase', () => {
       .mockImplementation(() => undefined);
 
     await expect(useCase.execute()).resolves.toEqual({ expired: 1 });
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('db caída'), expect.any(String));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('db caída'),
+      expect.any(String),
+    );
   });
 });

@@ -45,21 +45,29 @@ describe('validateJsonSchema', () => {
   });
 
   it('NaN e Infinity no son números válidos', () => {
-    expect(validateJsonSchema({ ...valid, weight: NaN }, schema)).toHaveLength(1);
-    expect(validateJsonSchema({ ...valid, weight: Infinity }, schema)).toHaveLength(1);
+    expect(validateJsonSchema({ ...valid, weight: NaN }, schema)).toHaveLength(
+      1,
+    );
+    expect(
+      validateJsonSchema({ ...valid, weight: Infinity }, schema),
+    ).toHaveLength(1);
   });
 
   it('una unión con null acepta el valor y null, pero no otro tipo', () => {
-    expect(validateJsonSchema({ ...valid, nickname: 'Anita' }, schema)).toEqual([]);
+    expect(validateJsonSchema({ ...valid, nickname: 'Anita' }, schema)).toEqual(
+      [],
+    );
     expect(validateJsonSchema({ ...valid, nickname: 5 }, schema)).toEqual([
       '$.nickname: se esperaba string | null, llegó number',
     ]);
   });
 
   it('rechaza un valor fuera del enum', () => {
-    expect(validateJsonSchema({ ...valid, goal: 'otra cosa' }, schema)).toEqual([
-      '$.goal: valor "otra cosa" fuera de los permitidos (definicion, mantencion, volumen)',
-    ]);
+    expect(validateJsonSchema({ ...valid, goal: 'otra cosa' }, schema)).toEqual(
+      [
+        '$.goal: valor "otra cosa" fuera de los permitidos (definicion, mantencion, volumen)',
+      ],
+    );
   });
 
   it('un enum numérico compara por valor', () => {
@@ -78,7 +86,10 @@ describe('validateJsonSchema', () => {
 
   it('valida cada elemento de un arreglo y los objetos anidados, con su ruta', () => {
     expect(
-      validateJsonSchema({ ...valid, tags: ['a', 2], address: { city: null } }, schema),
+      validateJsonSchema(
+        { ...valid, tags: ['a', 2], address: { city: null } },
+        schema,
+      ),
     ).toEqual([
       '$.tags[1]: se esperaba string, llegó number',
       '$.address.city: se esperaba string, llegó null',
@@ -90,8 +101,12 @@ describe('validateJsonSchema', () => {
   });
 
   it('un arreglo no es un objeto, ni null', () => {
-    expect(validateJsonSchema([], schema)).toEqual(['$: se esperaba object, llegó array']);
-    expect(validateJsonSchema(null, schema)).toEqual(['$: se esperaba object, llegó null']);
+    expect(validateJsonSchema([], schema)).toEqual([
+      '$: se esperaba object, llegó array',
+    ]);
+    expect(validateJsonSchema(null, schema)).toEqual([
+      '$: se esperaba object, llegó null',
+    ]);
   });
 });
 
@@ -109,7 +124,11 @@ describe('strictSchemaViolations', () => {
       properties: {
         a: { type: 'string' },
         list: { type: 'array' },
-        nested: { type: ['object', 'null'], properties: { b: { type: 'string' } }, required: ['b'] },
+        nested: {
+          type: ['object', 'null'],
+          properties: { b: { type: 'string' } },
+          required: ['b'],
+        },
       },
       required: ['a', 'list', 'ghost'],
     };

@@ -41,7 +41,10 @@ function toStringOrNull(value: unknown): string | null {
   if (value == null) return null;
   if (typeof value === 'string') return value || null;
   if (Array.isArray(value)) {
-    const joined = value.map(toStringOrNull).filter((v): v is string => !!v).join(', ');
+    const joined = value
+      .map(toStringOrNull)
+      .filter((v): v is string => !!v)
+      .join(', ');
     return joined || null;
   }
   if (isPlainObject(value)) {
@@ -79,7 +82,9 @@ function normalizeMeal(raw: unknown): MealDtoImpl {
   let inferredMealTime: string | null = null;
 
   const wrapperKey = Object.keys(raw).find(
-    (key) => !(MEAL_KEYS as readonly string[]).includes(key) && isPlainObject(raw[key]),
+    (key) =>
+      !(MEAL_KEYS as readonly string[]).includes(key) &&
+      isPlainObject(raw[key]),
   );
   if (wrapperKey) {
     inferredMealTime = wrapperKey;
@@ -122,7 +127,9 @@ function normalizeClinical(raw: unknown): ClinicalAnamnesisDtoImpl | null {
   });
 }
 
-function normalizeFoodPreferenceGroup(raw: unknown): FoodPreferenceGroupDtoImpl | null {
+function normalizeFoodPreferenceGroup(
+  raw: unknown,
+): FoodPreferenceGroupDtoImpl | null {
   if (!isPlainObject(raw)) return null;
   return plainToInstance(FoodPreferenceGroupDtoImpl, {
     group: toStringOrNull(raw.group) ?? '',
@@ -133,7 +140,9 @@ function normalizeFoodPreferenceGroup(raw: unknown): FoodPreferenceGroupDtoImpl 
   });
 }
 
-function normalizeFoodPreferenceGroups(raw: unknown): FoodPreferenceGroupDtoImpl[] | null {
+function normalizeFoodPreferenceGroups(
+  raw: unknown,
+): FoodPreferenceGroupDtoImpl[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const result = raw
     .map(normalizeFoodPreferenceGroup)
@@ -156,7 +165,9 @@ function normalizeDietary(raw: unknown): DietaryAnamnesisDtoImpl | null {
   if (!isPlainObject(raw)) return null;
   return plainToInstance(DietaryAnamnesisDtoImpl, {
     r24h: normalizeR24h(raw.r24h),
-    foodPreferenceGroups: normalizeFoodPreferenceGroups(raw.foodPreferenceGroups),
+    foodPreferenceGroups: normalizeFoodPreferenceGroups(
+      raw.foodPreferenceGroups,
+    ),
     sportsStrategy: normalizeSportsStrategy(raw.sportsStrategy),
   });
 }
@@ -198,7 +209,9 @@ function normalizeLifestyle(raw: unknown): HealthyLifestyleDtoImpl | null {
 // Punto de entrada: reconstruye el objeto anamnesis quedándose solo con las claves
 // conocidas del esquema (protege contra "property X should not exist") y corrigiendo
 // tipos comunes que el LLM suele desviar (texto envuelto en objeto/array, etc.).
-export function normalizeAnamnesisPayload(raw: unknown): AnamnesisDtoImpl | null {
+export function normalizeAnamnesisPayload(
+  raw: unknown,
+): AnamnesisDtoImpl | null {
   if (!isPlainObject(raw)) return null;
 
   return plainToInstance(AnamnesisDtoImpl, {

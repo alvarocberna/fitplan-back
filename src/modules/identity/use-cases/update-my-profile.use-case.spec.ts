@@ -52,7 +52,10 @@ describe('UpdateMyProfileUseCase', () => {
   });
 
   it('devuelve el perfil actualizado con profileComplete', async () => {
-    const result = await useCase.execute({ claims, data: { firstName: 'Ana' } });
+    const result = await useCase.execute({
+      claims,
+      data: { firstName: 'Ana' },
+    });
 
     expect(result).toMatchObject({
       firstName: 'Ana',

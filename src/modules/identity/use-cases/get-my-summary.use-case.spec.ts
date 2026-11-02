@@ -28,7 +28,9 @@ describe('GetMySummaryUseCase', () => {
         {
           provide: MeasurementsRepository,
           useValue: {
-            getLatestMeasurementsWithResultsByPatientId: jest.fn().mockResolvedValue(null),
+            getLatestMeasurementsWithResultsByPatientId: jest
+              .fn()
+              .mockResolvedValue(null),
           },
         },
       ],
@@ -165,7 +167,10 @@ describe('GetMySummaryUseCase', () => {
     });
 
     it('incluye la última medición del historial con peso, talla y los resultados guardados', async () => {
-      currentUser.resolve.mockResolvedValue({ id: 'user-1', dateOfBirth: null } as any);
+      currentUser.resolve.mockResolvedValue({
+        id: 'user-1',
+        dateOfBirth: null,
+      } as any);
       nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
         null,
       );
@@ -174,7 +179,11 @@ describe('GetMySummaryUseCase', () => {
           measuredAt: new Date('2026-04-01T10:00:00.000Z'),
           basicMeasurements: [{ weight: 70.5, height: 172 }],
           measurementResults: [
-            { bmi: 23.8, bmiClassification: 'NORMAL_WEIGHT', bfPercentage: 18.2 },
+            {
+              bmi: 23.8,
+              bmiClassification: 'NORMAL_WEIGHT',
+              bfPercentage: 18.2,
+            },
           ],
         } as any,
       );
@@ -195,7 +204,10 @@ describe('GetMySummaryUseCase', () => {
     });
 
     it('deja bmi, clasificación y % grasa en null si la medición no tiene measurement_results (no los calcula)', async () => {
-      currentUser.resolve.mockResolvedValue({ id: 'user-1', dateOfBirth: null } as any);
+      currentUser.resolve.mockResolvedValue({
+        id: 'user-1',
+        dateOfBirth: null,
+      } as any);
       nutritionalConsultationRepository.getLatestNutritionalConsultationWithDetailsByPatientId.mockResolvedValue(
         null,
       );

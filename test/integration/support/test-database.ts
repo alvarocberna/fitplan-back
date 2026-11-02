@@ -5,7 +5,9 @@ import { PrismaService } from '../../../src/infrastructure/persistence/orm/prism
 export function assertUsingTestContainer(): void {
   const expected = process.env.INTEGRATION_DATABASE_URL;
   if (!expected || process.env.DATABASE_URL !== expected) {
-    throw new Error('Los tests de integración deben correr contra el contenedor de global-setup');
+    throw new Error(
+      'Los tests de integración deben correr contra el contenedor de global-setup',
+    );
   }
 }
 

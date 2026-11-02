@@ -26,11 +26,12 @@ describe('CurrentUserResolver', () => {
       });
       userRepository.getUserById.mockResolvedValue({ id: 'user-1' });
 
-      await expect(resolver.resolve({ sub: 'sub-1' })).resolves.toEqual({ id: 'user-1' });
-      expect(authIdentityRepository.findAuthIdentityByProvider).toHaveBeenCalledWith(
-        AuthProvider.COGNITO,
-        'sub-1',
-      );
+      await expect(resolver.resolve({ sub: 'sub-1' })).resolves.toEqual({
+        id: 'user-1',
+      });
+      expect(
+        authIdentityRepository.findAuthIdentityByProvider,
+      ).toHaveBeenCalledWith(AuthProvider.COGNITO, 'sub-1');
     });
 
     it('sin identidad sincronizada lanza 401', async () => {
@@ -48,7 +49,9 @@ describe('CurrentUserResolver', () => {
       });
       userRepository.getUserById.mockResolvedValue(null);
 
-      await expect(resolver.resolve({ sub: 'sub-1' })).rejects.toThrow('User inexistente');
+      await expect(resolver.resolve({ sub: 'sub-1' })).rejects.toThrow(
+        'User inexistente',
+      );
     });
   });
 
@@ -64,11 +67,15 @@ describe('CurrentUserResolver', () => {
       expect(resolver.isProfileComplete(complete)).toBe(true);
     });
 
-    it.each(['firstName', 'paternalLastName', 'gender', 'dateOfBirth'] as const)(
-      'es false si falta %s',
-      (field) => {
-        expect(resolver.isProfileComplete({ ...complete, [field]: null })).toBe(false);
-      },
-    );
+    it.each([
+      'firstName',
+      'paternalLastName',
+      'gender',
+      'dateOfBirth',
+    ] as const)('es false si falta %s', (field) => {
+      expect(resolver.isProfileComplete({ ...complete, [field]: null })).toBe(
+        false,
+      );
+    });
   });
 });

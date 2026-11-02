@@ -7,10 +7,14 @@ describe('parsePlanJson', () => {
     });
   });
 
-  it.each([[null], [undefined], [''], ['{ no es json'], ['"un string"'], ['null']])(
-    'devuelve null para %p',
-    (raw) => {
-      expect(parsePlanJson(raw)).toBeNull();
-    },
-  );
+  it.each([
+    [null],
+    [undefined],
+    [''],
+    ['{ no es json'],
+    ['"un string"'],
+    ['null'],
+  ])('devuelve null para %p', (raw) => {
+    expect(parsePlanJson(raw)).toBeNull();
+  });
 });

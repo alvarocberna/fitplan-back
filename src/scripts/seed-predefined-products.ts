@@ -47,7 +47,10 @@ async function objectExists(
     await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return true;
   } catch (error) {
-    const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+    const err = error as {
+      name?: string;
+      $metadata?: { httpStatusCode?: number };
+    };
     if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
       return false;
     }
@@ -61,7 +64,9 @@ async function inBatches<T, R>(
 ): Promise<R[]> {
   const results: R[] = [];
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
-    results.push(...(await Promise.all(items.slice(i, i + BATCH_SIZE).map(fn))));
+    results.push(
+      ...(await Promise.all(items.slice(i, i + BATCH_SIZE).map(fn))),
+    );
   }
   return results;
 }
@@ -216,13 +221,22 @@ async function main(): Promise<void> {
       thumbnailExists: await objectExists(s3, bucket, row.thumbnailKey),
     }));
   } else {
-    statuses = rows.map((row) => ({ row, pdfExists: null, thumbnailExists: null }));
-    previewStatuses = previewRows.map((row) => ({ row, thumbnailExists: null }));
+    statuses = rows.map((row) => ({
+      row,
+      pdfExists: null,
+      thumbnailExists: null,
+    }));
+    previewStatuses = previewRows.map((row) => ({
+      row,
+      thumbnailExists: null,
+    }));
   }
 
   const missingPdfs = statuses.filter((s) => s.pdfExists === false);
   const missingThumbnails = statuses.filter((s) => s.thumbnailExists === false);
-  const missingPreviewThumbnails = previewStatuses.filter((s) => s.thumbnailExists === false);
+  const missingPreviewThumbnails = previewStatuses.filter(
+    (s) => s.thumbnailExists === false,
+  );
 
   if (dryRun) {
     console.log(
@@ -245,14 +259,20 @@ async function main(): Promise<void> {
   }
 
   if (verify) {
-    console.log(`Con PDF en S3 (activas): ${rows.length - missingPdfs.length}/${rows.length}`);
+    console.log(
+      `Con PDF en S3 (activas): ${rows.length - missingPdfs.length}/${rows.length}`,
+    );
     console.log(`Sin PDF (inactivas): ${missingPdfs.length}`);
-    console.log(`Sin miniatura (thumbnail_key = null): ${missingThumbnails.length}`);
+    console.log(
+      `Sin miniatura (thumbnail_key = null): ${missingThumbnails.length}`,
+    );
     console.log(
       `Vistas previas con miniatura (activas): ${previewRows.length - missingPreviewThumbnails.length}/${previewRows.length}`,
     );
   } else if (!dryRun) {
-    console.log('Sin verificación en S3: las filas nuevas quedaron inactivas (active = false).');
+    console.log(
+      'Sin verificación en S3: las filas nuevas quedaron inactivas (active = false).',
+    );
   }
 }
 

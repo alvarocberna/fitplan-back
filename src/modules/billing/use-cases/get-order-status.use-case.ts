@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { OrderStatusDto } from '../../../domain';
-import { GenerationStatus, PaymentStatus } from '../../../domain/entities/enums';
+import {
+  GenerationStatus,
+  PaymentStatus,
+} from '../../../domain/entities/enums';
 import { parsePlanJson } from '../../../domain/services/utils/plan-json';
 import { isGenerationRetryPending } from '../../../domain/services/orders/generation-retry.policy';
 import { FileStorage } from '../../../domain/ports';
@@ -36,7 +39,10 @@ export class GetOrderStatusUseCase {
     // nunca ve como pagable una orden vencida.
     const expired = await this.orderLifecycle.isExpired(order);
 
-    const { pdfUrl, thumbnailUrl } = await signPlanFiles(this.fileStorage, order);
+    const { pdfUrl, thumbnailUrl } = await signPlanFiles(
+      this.fileStorage,
+      order,
+    );
 
     return {
       paymentStatus: expired ? PaymentStatus.EXPIRED : order.paymentStatus,
