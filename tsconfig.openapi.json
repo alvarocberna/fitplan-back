@@ -2,7 +2,8 @@
   "extends": "./tsconfig.build.json",
   "compilerOptions": {
     "outDir": "./.openapi-build",
-    "incremental": false
+    "incremental": false,
+    "tsBuildInfoFile": null
   },
   "exclude": ["node_modules", "test", "dist", ".openapi-build", "**/*spec.ts"]
 }
