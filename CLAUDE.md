@@ -285,13 +285,16 @@ or documented flows.
 ## Keeping tests in sync
 
 This repo has a real test suite now (`*.spec.ts` co-located under `src/`, e2e under `test/` — see
-`../doc/doc-back/testing.md` for scope, coverage, and the mocking patterns established). After modifying a
-file that already has a `.spec.ts`, or adding a new service/function to the core pipeline
-(consultation → billing → plans generation, and wired-in domain formulas), invoke the `test-updater`
-subagent (Agent tool, `subagent_type: "test-updater"`) before considering the task done, so it
-updates/adds the relevant tests and confirms they pass. Skip it for changes to code that has no
-test coverage by design (see `../doc/doc-back/testing.md §7` — dead formulas, `ReactPdfPlanDocumentRenderer`, prompt builders)
-unless the user asks to expand coverage there.
+`../doc/doc-back/testing.md` for scope, coverage, and the mocking patterns established).
+
+The test agents are expensive in tokens, so they do **not** run after every change. **Rule: invoke `back-test-maintainer`
+(and `e2e-maintainer` if the change affects the front's e2e tests) only in these 2 cases:**
+
+1. **Large, important changes that really require updating tests**, such as modifying DTOs or database entities.
+2. **When the user asks for it.**
+
+Do not invoke them for small changes, internal fixes, refactors, comments or documentation. Tests are never changed just
+to make them pass.
 
 ## Stubs / not-yet-real integrations
 
