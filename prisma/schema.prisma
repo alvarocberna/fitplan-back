@@ -592,7 +592,7 @@ model MeasurementResults {
 }
 
 // Proyección de composición corporal asociada a un Plan (un Plan puede tener N). La crea la
-// generación del plan personalizado (CU-PLN-06) según doc/nutrition-plan/proyeccion.md.
+// generación del plan personalizado (CU-PLN-06) según ../doc/doc-back/nutrition-plan/proyeccion.md.
 model Projection {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 

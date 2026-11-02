@@ -14,7 +14,7 @@ asíncrona un plan nutricional personalizado (enviado por correo en PDF y descar
 > para el dominio comercial completo (`User`, `ClinicalRecord`,
 > `NutritionalConsultation`/`Anamnesis`/`Measurements`, `Order`, `Product`) — ver
 > [Base de datos](#base-de-datos-prisma). La autenticación es real,
-> vía Amazon Cognito (`modules/identity/`, `CognitoAuthGuard`) — ver **[doc/auth.md](./doc/auth.md)**
+> vía Amazon Cognito (`modules/identity/`, `CognitoAuthGuard`) — ver **[doc-back/auth.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/auth.md)**
 > — el `User` se resuelve por el `sub` del token validado, no por email suelto.
 
 ## Índice
@@ -174,7 +174,7 @@ Definidas en `.env.template`:
 | `OPENAI_PLAN_TIMEOUT_MS` | Opcional. Tope de la llamada que genera el plan, que tarda minutos (por defecto 300000) |
 | `PLAN_GENERATION_TIMING_LOGS` | `true` muestra en el log los tiempos por fase de la generación del plan. Apagado por defecto |
 | `ENABLE_PAYMENT_SIMULATION` | `true` habilita `POST /api/v1/dev/orders/:id/simulate-payment[-rejection]` (con cualquier otro valor responden 404). Solo para desarrollo y pruebas: marca la orden sin pasar por Webpay. **En producción va en `false`** |
-| `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | User Pool y App Client con los que se valida el Access Token (ver [doc/auth.md](./doc/auth.md)) |
+| `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | User Pool y App Client con los que se valida el Access Token (ver [doc-back/auth.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/auth.md)) |
 | `AWS_REGION` / `AWS_S3_BUCKET_NAME` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Bucket S3 de los PDFs (`S3FileStorage`) |
 
 Adicionalmente, `OpenaiLlmProvider` (`src/infrastructure/llm/openai/openai-llm.provider.ts`) recibe el
@@ -233,7 +233,7 @@ los consume, en [purchase-flow-personalized-plan.md](../doc/flows/purchase-flow-
   Cognito (`userInfo`) el email de la cuenta, exige que esté verificado (403 `EMAIL_NOT_VERIFIED` si no) y crea
   `AuthIdentity` + un `User` "esqueleto" (solo email); después devuelve el existente. **Nunca usa un email
   enviado por el cliente** (permitiría ligar la identidad a la cuenta de otra persona). El frontend lo llama en
-  el callback de login. Ver [doc/auth.md](./doc/auth.md).
+  el callback de login. Ver [doc-back/auth.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/auth.md).
 - **`GET /me`** / **`PATCH /me`**: perfil del usuario. `PATCH` recibe un único
   `UpdateProfileDtoImpl` con **todos los campos opcionales** (`rut`, `rutCheckDigit`, `firstName`,
   `middleName`, `paternalLastName`, `maternalLastName`, `gender`, `dateOfBirth`, `athlete`) y solo
@@ -364,7 +364,7 @@ llama al terminar la evaluación física, antes de generar la orden.
   LLM y es `mantencion`). Solo "definicion" puede no ser factible: si ni 1 mes de pérdida (2 kg) deja al
   paciente con IMC ≥ 20 y %GC sobre el mínimo por sexo (H 10 %, M 20 %), `feasible = false` con el mensaje
   para el paciente. Reglas en `domain/services/projection/projection.service.ts`
-  ([doc/nutrition-plan/proyeccion.md](./doc/nutrition-plan/proyeccion.md)).
+  ([doc-back/nutrition-plan/proyeccion.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/nutrition-plan/proyeccion.md)).
 
 **`POST /consultations`** (`CreateConsultationUseCase`): crea la consulta y su orden **antes** del pago.
 
@@ -664,7 +664,7 @@ muscular, % grasa corporal por pliegues, phantom, IMM, perímetros corregidos, s
 deportiva) implementan cálculos de evaluación antropométrica y deportiva clásicos en nutrición
 deportiva, pero **aún no están conectados** al flujo de generación del plan (los `mediciones` que llegan hoy solo
 traen peso y talla; `sesion-deportiva.service.ts` tiene la intención de calcular el gasto de cada
-sesión de entrenamiento pero no está enchufado — ver `doc/technical-debt.md`).
+sesión de entrenamiento pero no está enchufado — ver `../doc/backlog/technical-debt.md`).
 
 ### Porciones de alimentos
 
@@ -688,7 +688,7 @@ del objetivo) y `GeneratePersonalizedPlanUseCase` (clasificación de actividad/o
 corrección de tiempos de comida), cada uno con sus propios prompts (`modules/consultation/prompts/` y
 `modules/plans/generation/`). Errores: un fallo del SDK → `LlmUnavailableError`; respuesta vacía, que no es
 JSON, que no cumple el esquema, cortada por límite de tokens (`finish_reason: 'length'`) o rechazada por el
-modelo (`refusal`) → `LlmInvalidResponseError` (ver [doc/error-handling.md](./doc/error-handling.md)).
+modelo (`refusal`) → `LlmInvalidResponseError` (ver [doc-back/error-handling.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/error-handling.md)).
 
 ### Structured output
 
@@ -777,7 +777,7 @@ es el id de correlación (`x-request-id`) que también queda en los logs. El det
 nunca viaja en la respuesta.
 
 El resto (catálogo de códigos, guards, Prisma, adaptadores externos, jobs/listeners, generación del plan, alertas,
-logging y arranque) está en [`doc/error-handling.md`](doc/error-handling.md).
+logging y arranque) está en [`doc-back/error-handling.md`](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/error-handling.md).
 
 ## Seguridad
 
@@ -801,7 +801,7 @@ Modelos que participan directamente en el flujo comercial hoy:
 
 | Modelo | Rol |
 |---|---|
-| `User` (`identity-auth`) | Resuelto por el `sub` del Access Token de Cognito vía `CurrentUserResolver.resolve` (ver [doc/auth.md](./doc/auth.md)); `GET`/`PATCH /me` leen/actualizan sus campos de perfil |
+| `User` (`identity-auth`) | Resuelto por el `sub` del Access Token de Cognito vía `CurrentUserResolver.resolve` (ver [doc-back/auth.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/auth.md)); `GET`/`PATCH /me` leen/actualizan sus campos de perfil |
 | `ClinicalRecord` (`clinical-domain`) | Uno por paciente (`patientId` `@unique`), find-or-create |
 | `NutritionalConsultation` (`clinical-domain`) | Una por cada `POST /consultations`; vinculada 1:1 a la `Order` vía `orderId`; contiene el árbol `Anamnesis`+hijas y `Measurements`+hija que antes viajaba como `payload_json`. `NutritionalConsultationRepository` expone dos formas de traerla con detalle: `getNutritionalConsultationWithDetailsByOrderId` (`FULL_DETAILS_INCLUDE`, usado por la generación del plan) y la nueva `getLatestNutritionalConsultationWithDetailsByPatientId` (`PANEL_DETAILS_INCLUDE`: `patient`, `anamneses.goals`, `nutritionalPlans` — `findFirst` ordenado por `consultationNumber: 'desc'`, usada por `GET /me/summary`); son includes deliberadamente distintos para no alterar el comportamiento del lookup existente por orden |
 | `Product` (`commercial-domain`) | Dos usos: el producto `type='GENERATED' active=true` (uno solo, cargado por migración con su precio real, 4.990 CLP; lo expone `GET /plans/personalized` y de él sale el monto de la orden de una consulta) y las 112 versiones de plan `type='PREDEFINED'` (`code` único, `pdfKey`/`thumbnailKey` en `productos-estandarizados/`, cargadas con `npm run seed:predefined`) |
@@ -824,7 +824,7 @@ Campos relevantes de `Order` (tabla `order`):
 | `nutritionalConsultation` | Relación inversa 1:1 hacia la `NutritionalConsultation` con los datos de la anamnesis/mediciones de esta orden |
 
 La autenticación es real vía Amazon Cognito (`AuthIdentity` + `User`, ver
-[doc/auth.md](./doc/auth.md)) — ver `doc/technical-debt.md` para
+[doc-back/auth.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/auth.md)) — ver `../doc/backlog/technical-debt.md` para
 la deuda pendiente. `Payment` sí está conectado: es una fila por intento de pago (`INITIATED` al iniciar el pago en Webpay, y `AUTHORIZED` / `REJECTED` / `CANCELLED` al volver; la confirmación ocurre en la misma transacción que marca la orden pagada). Buena parte del resto del dominio (la
 mayoría de `clinical-domain` fuera de lo que usa la consulta nutricional básica) sigue sin ningún
 consumidor real — no asumir que "todo" el dominio Postgres está conectado. `NutritionalPlan` (solo
@@ -839,7 +839,7 @@ agrupar varios `NutritionalPlan` (hoy uno solo, `mainPlan = true`, con `planName
 producto y `startDate` = fecha de generación; `period` queda en null). `endDate` y la `Projection` del
 `Plan` los fija la generación según el objetivo clasificado (`calculateProjection`,
 `domain/services/projection/projection.service.ts`, reglas en
-[doc/nutrition-plan/proyeccion.md](./doc/nutrition-plan/proyeccion.md)): "definicion" proyecta −2 kg/mes de
+[doc-back/nutrition-plan/proyeccion.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/nutrition-plan/proyeccion.md)): "definicion" proyecta −2 kg/mes de
 grasa por 3 meses, acortando a 2 o 1 mes si el resultado baja de IMC 20 o del %GC mínimo por sexo;
 "volumen" proyecta +1 % del peso inicial/mes de músculo por 3 meses; "mantencion" no crea `Projection`.
 `endDate` = inicio + meses proyectados (3 si no hay proyección). La `Projection` se crea en el mismo upsert
@@ -852,13 +852,13 @@ No hay job de retención: `Order.planJson` (y el resto de la orden) se conserva 
 
 Cada controller, caso de uso, adaptador y servicio de `domain/services` trae su(s) `.spec.ts`
 co-localizado(s) junto al archivo que testea. Comandos: `npm run test` (unitarios), `npm run test:e2e`, `npm run
-test:cov`. Ver **[doc/testing.md](./doc/testing.md)** para el detalle de qué cubre cada test, las
+test:cov`. Ver **[doc-back/testing.md](https://github.com/alvarocberna/fitplan/blob/main/doc/doc-back/testing.md)** para el detalle de qué cubre cada test, las
 decisiones de infraestructura (stub de `@react-pdf/renderer`), y la deuda pendiente
 (fórmulas sin consumidor sin testear, e2e sin verificar en CI).
 
 ## Deuda técnica y pendientes
 
-Ver también `doc/technical-debt.md` (incluye la deuda de la conexión del dominio Postgres al flujo
+Ver también `../doc/backlog/technical-debt.md` (incluye la deuda de la conexión del dominio Postgres al flujo
 comercial) y `to-do-list.md` (esta última describe deuda de una versión anterior con capa de
 datasources/repositories que ya no existe en el código actual).
 
@@ -901,7 +901,7 @@ datasources/repositories que ya no existe en el código actual).
   tiene varias simplificaciones conocidas (campos clínicos singulares envueltos en arrays de 1,
   `mealHour` siempre `''`, `somatotype` guardado como texto libre en `Measurements.description`,
   `AnamnesisPsychosocial`/`Supplements` sin poblar) — ver
-  `doc/technical-debt.md` para el detalle completo.
+  `../doc/backlog/technical-debt.md` para el detalle completo.
 - Los datos de salud (`Order.planJson`, `NutritionalConsultation` y `NutritionalPlan`) se conservan
   sin límite de tiempo: se eliminó el job de retención de 45 días. Si más adelante se necesita una
   política de retención/anonimización, hay que definirla también para `NutritionalPlan`.

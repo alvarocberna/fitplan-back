@@ -1,5 +1,5 @@
 // Proyección de composición corporal de un plan y factibilidad del objetivo, según las reglas de
-// doc/nutrition-plan/proyeccion.md:
+// ../doc/doc-back/nutrition-plan/proyeccion.md:
 //
 // - "definicion": se proyecta pérdida de 2 kg/mes, toda de grasa corporal.
 // - "volumen": se proyecta ganancia del 1% del peso inicial por mes, toda de masa muscular.

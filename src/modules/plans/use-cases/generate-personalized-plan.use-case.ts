@@ -500,7 +500,7 @@ export class GeneratePersonalizedPlanUseCase {
     }
   }
 
-  //CU-PLN-06 - proyección (doc/nutrition-plan/proyeccion.md) según el objetivo clasificado: fija el
+  //CU-PLN-06 - proyección (../doc/doc-back/nutrition-plan/proyeccion.md) según el objetivo clasificado: fija el
   //end_date del NutritionalPlan y, si el objetivo implica cambio de peso, la fila de projection.
   private buildPlanWithProjection(
     plan: NutritionPlanDto,
