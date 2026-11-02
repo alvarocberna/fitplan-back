@@ -1,9 +1,5 @@
 import { EvaClassification } from '../classifications.enum';
 import {
-  sumSkinfolds6,
-  Skinfolds6Type,
-} from '../skinfolds/skinfold-sum.service';
-import {
   calculateKgFromPercentage,
   calculatePercentageFromKg,
 } from './mass-conversion.service';
@@ -170,6 +166,7 @@ export function getBodyFatClassification({
         } else if (bodyFatPercentage >= 28) {
           classification = EvaClassification.VERY_HIGH;
         }
+        break;
       case age >= 60:
         if (bodyFatPercentage < 13) {
           classification = EvaClassification.LOW;
