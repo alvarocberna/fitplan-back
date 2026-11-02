@@ -11,11 +11,11 @@ personalized nutrition plan (emailed as PDF, also downloadable from the frontend
 The **README.md is the primary source of truth** for this project — it documents every endpoint,
 the full plan-generation pipeline, the domain formulas, Prisma schema, and known technical debt in
 detail. Read it before making non-trivial changes. `../doc/flows/purchase-flow-personalized-plan.md` walks the
-end-to-end sequence of a successful consultation; `doc/error-handling.md` describes how errors
+end-to-end sequence of a successful consultation; `../doc/doc-back/error-handling.md` describes how errors
 are handled (single error contract `{ statusCode, code, message, errors?, requestId }`, guards, Prisma,
 LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `../doc/security/backend-security.md`
 lists every security control (guards, order ownership, the Webpay return endpoint, input caps, rate limiting, CORS, prompt
-guard) — keep it in sync when you touch one; `doc/technical-debt.md` lists known gaps
+guard) — keep it in sync when you touch one; `../doc/backlog/technical-debt.md` lists known gaps
 in more detail than the README's summary. `to-do-list.md` is stale — it describes a prior
 datasources/repositories architecture that no longer exists in `src/`; ignore it.
 
@@ -31,7 +31,9 @@ npm run test               # unit tests (jest)
 npm run test:watch
 npm run test:cov
 npm run test:e2e           # e2e tests (separate jest config: test/jest-e2e.json)
+npm run test:integration   # datasources + migrations against a disposable Postgres (Testcontainers; needs Docker)
 npx prisma migrate dev    # apply/create a Postgres migration (see prisma/migrations/)
+npm run openapi:export    # export the HTTP contract to ../fitplan-front/e2e/contract/openapi.json (no DB or AWS needed; doesn't touch dist/)
 ```
 
 Run a single unit test file (Jest `rootDir` is `src`, so pass a name that matches the `.spec.ts`
@@ -111,13 +113,14 @@ domain service or an internal use case (e.g. `CreateOrderUseCase`).
 user lives under `/me` (the user always comes from the token via `CurrentUserResolver.resolve`, never
 from a body/URL id — R1). A route with an id must filter by the user too and answer 404 for both
 "missing" and "not yours" (R2). The frontend (`../fitplan-front`) calls these routes
-through `apiFetch`, which adds the `api/v1` prefix — a route change is a coordinated back + front change.
+through `apiFetch`, which adds the `api/v1` prefix — a route change is a coordinated back + front change. After changing a route or an
+input DTO, run `npm run openapi:export` and commit the result in the front: its e2e fake backend validates requests against that copy.
 
 ### Request/response flow
 
 0. `POST /me/sync` — creates `AuthIdentity` + skeleton `User` for the Cognito `sub` (idempotent), called
    by the frontend's login callback. `PATCH /me` completes the profile (single DTO, all fields optional,
-   including `athlete`). See `doc/auth.md`.
+   including `athlete`). See `../doc/doc-back/auth.md`.
 1. `POST /consultations/chat` — one call per chat turn (`ChatAnamnesisUseCase`). Builds a system prompt
    (`modules/consultation/prompts/anamnesis-chat.prompt.ts`) describing the full `AnamnesisDto` schema and
    current fill-state, calls the LLM, normalizes the model's JSON (`dto/anamnesis-normalizer.ts`) and
@@ -151,7 +154,7 @@ through `apiFetch`, which adds the `api/v1` prefix — a route change is a coord
    verbatim, as exchange-group portions (validated in code by `generation/plan-validation.ts`; rejected meal
    times are fixed with up to 2 targeted repair calls, `llm_repair`, before the attempt fails) → retries up to 4x with exponential backoff →
    renders PDF + thumbnail, uploads to S3, upserts `Plan` + main `NutritionalPlan` (its `endDate`) + its
-   `Projection` (`calculateProjection`, rules in `doc/nutrition-plan/proyeccion.md`; none for
+   `Projection` (`calculateProjection`, rules in `../doc/doc-back/nutrition-plan/proyeccion.md`; none for
    "mantencion"), completes the order (`planJson`, `pdfKey`, `thumbnailKey`) and emails the PDF.
    Those 4 tries are one **round**; a failed round leaves the order `ERROR` with `attempts + 1`.
    `RetryPendingGenerationsJob` (`modules/plans/jobs/`, every 10 min) → `RetryPendingGenerationsUseCase`
@@ -197,7 +200,7 @@ On edit, the stored **percentage** is the source of truth (a weight change keeps
 Several other formula services exist (skinfolds, muscle mass, body fat % from skinfolds, phantom, IMM,
 corrected perimeters, somatocarta, sports-session expenditure) but are **not yet wired into the
 plan-generation flow** (nor into measurements) — only weight and height (`peso`/`talla`) from `MedicionesDto` are currently
-used. See the README's "Deuda técnica" section and `doc/technical-debt.md` before assuming any of
+used. See the README's "Deuda técnica" section and `../doc/backlog/technical-debt.md` before assuming any of
 these are live.
 
 `domain/services/alimentos/porciones-alimentos.ts` defines the food-exchange portion table used by
@@ -244,7 +247,7 @@ so an unpaid order never exposes the PDF, and it does **not** run plan generatio
 `../doc/flows/purchase-flow-predefined-plan.md`.
 
 **Login/registration is implemented** with Amazon Cognito (Hosted UI, native + Google as a
-federated Identity Provider) — see `doc/auth.md` for the full picture. `common/auth/CognitoAuthGuard` (with
+federated Identity Provider) — see `../doc/doc-back/auth.md` for the full picture. `common/auth/CognitoAuthGuard` (with
 `infrastructure/auth/cognito`) validates the Cognito Access Token
 (`aws-jwt-verify` against the User Pool's JWKS) and resolves/creates `AuthIdentity`+`User` by the
 token's `sub` (`CurrentUserResolver`, `modules/identity/`) — `POST /me/sync` creates the identity ("skeleton" `User`, no password ever
@@ -275,19 +278,19 @@ After making a large or structurally significant change — a new/removed module
 endpoint, a change to the plan-generation pipeline, a Prisma schema change, a mass rename/refactor
 of the kind this repo has had before — invoke the `doc-updater` subagent (Agent tool,
 `subagent_type: "doc-updater"`) before considering the task done, so it updates `README.md` and/or
-`doc/` to match. Don't rely on hooks for this; it's a step you take yourself as part of finishing
+`../doc/doc-back/` to match. Don't rely on hooks for this; it's a step you take yourself as part of finishing
 the task. Skip it for small/internal changes with no observable impact on architecture, endpoints,
 or documented flows.
 
 ## Keeping tests in sync
 
 This repo has a real test suite now (`*.spec.ts` co-located under `src/`, e2e under `test/` — see
-`doc/testing.md` for scope, coverage, and the mocking patterns established). After modifying a
+`../doc/doc-back/testing.md` for scope, coverage, and the mocking patterns established). After modifying a
 file that already has a `.spec.ts`, or adding a new service/function to the core pipeline
 (consultation → billing → plans generation, and wired-in domain formulas), invoke the `test-updater`
 subagent (Agent tool, `subagent_type: "test-updater"`) before considering the task done, so it
 updates/adds the relevant tests and confirms they pass. Skip it for changes to code that has no
-test coverage by design (see `doc/testing.md §7` — dead formulas, `ReactPdfPlanDocumentRenderer`, prompt builders)
+test coverage by design (see `../doc/doc-back/testing.md §7` — dead formulas, `ReactPdfPlanDocumentRenderer`, prompt builders)
 unless the user asks to expand coverage there.
 
 ## Stubs / not-yet-real integrations

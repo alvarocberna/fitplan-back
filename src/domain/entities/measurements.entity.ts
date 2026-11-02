@@ -3,7 +3,7 @@
 // cuando la registró el usuario por su cuenta, fuera de una consulta.
 // Nota: solo peso/talla (BasicMeasurements) están conectados al flujo de generación de plan
 // actual; el resto (skinfolds, circunferencias, diámetros, resultados derivados) existen en el
-// schema pero aún no se usan — ver README "Deuda técnica" / doc/technical-debt.md.
+// schema pero aún no se usan — ver README "Deuda técnica" / ../doc/backlog/technical-debt.md.
 
 import type {
   ClinicalRecordEntity,

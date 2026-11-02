@@ -1,0 +1,13 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts", "tsx"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".int-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)sx?$": "ts-jest"
+  },
+  "globalSetup": "<rootDir>/support/global-setup.ts",
+  "globalTeardown": "<rootDir>/support/global-teardown.ts",
+  "maxWorkers": 1,
+  "testTimeout": 30000
+}

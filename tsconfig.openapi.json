@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "./.openapi-build",
+    "incremental": false
+  },
+  "exclude": ["node_modules", "test", "dist", ".openapi-build", "**/*spec.ts"]
+}

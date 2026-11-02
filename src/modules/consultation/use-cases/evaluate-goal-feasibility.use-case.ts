@@ -30,7 +30,7 @@ export const WEIGHT_LOSS_NOT_FEASIBLE_MESSAGE =
 
 // CU-CON-03. Al terminar la evaluación física (y otra vez al crear la consulta, CU-CON-02) evalúa
 // si el objetivo es alcanzable sin comprometer el estado nutricional: clasifica el objetivo con el
-// LLM y aplica las reglas de proyección (doc/nutrition-plan/proyeccion.md). Bajar de peso no es
+// LLM y aplica las reglas de proyección (../doc/doc-back/nutrition-plan/proyeccion.md). Bajar de peso no es
 // factible si ni 1 mes de pérdida deja al paciente con IMC >= 20 y %GC sobre el mínimo por sexo.
 @Injectable()
 export class EvaluateGoalFeasibilityUseCase {
