@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generar el cliente de Prisma
+        run: npx prisma generate
+      - name: Lint
+        run: npm run lint:check
+      - name: Tipos
+        run: npx tsc --noEmit --incremental false
+      - name: Unitarios
+        run: npm test
+      - name: E2E HTTP
+        run: npm run test:e2e
+      - name: Build
+        run: npm run build
+      # Comprueba que el contrato se puede generar; la copia que usa el frontend vive en su repo.
+      - name: Exportar el contrato OpenAPI
+        run: npm run openapi:export -- "$RUNNER_TEMP/openapi.json"
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generar el cliente de Prisma
+        run: npx prisma generate
+      - name: Integración (Postgres real con Testcontainers)
+        run: npm run test:integration
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Construir la imagen de producción
+        run: docker build -t fitplan-back:ci .
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Vulnerabilidades en dependencias
+        run: npm audit --audit-level=moderate
