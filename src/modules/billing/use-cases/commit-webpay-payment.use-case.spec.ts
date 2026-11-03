@@ -2,7 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { CommitWebpayPaymentUseCase } from './commit-webpay-payment.use-case';
 import { ConfirmPaymentUseCase } from './confirm-payment.use-case';
 import { RejectPaymentUseCase } from './reject-payment.use-case';
-import { AlertNotifier, PaymentGateway } from '../../../domain/ports';
+import { PaymentGateway } from '../../../domain/ports';
 import { PaymentGatewayUnavailableError } from '../../../domain/errors/payment.errors';
 import { OrderRepository } from '../../../domain/repositories/commercial-domain/order.repository';
 import { PaymentRepository } from '../../../domain/repositories/commercial-domain/payment.repository';

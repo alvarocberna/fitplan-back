@@ -23,7 +23,10 @@ describe('MyPlansController', () => {
       providers: [
         { provide: ListMyPlansUseCase, useValue: listMyPlans },
         { provide: GetMyPlanUseCase, useValue: getMyPlan },
-        { provide: GetMyLatestPlanProjectionUseCase, useValue: getMyLatestPlanProjection },
+        {
+          provide: GetMyLatestPlanProjectionUseCase,
+          useValue: getMyLatestPlanProjection,
+        },
       ],
     }).compile();
 
@@ -43,7 +46,10 @@ describe('MyPlansController', () => {
     getMyPlan.execute.mockResolvedValue(detail);
 
     await expect(controller.getOne(claims, 'order-1')).resolves.toBe(detail);
-    expect(getMyPlan.execute).toHaveBeenCalledWith({ claims, orderId: 'order-1' });
+    expect(getMyPlan.execute).toHaveBeenCalledWith({
+      claims,
+      orderId: 'order-1',
+    });
   });
 
   it('latestProjection() delega en GetMyLatestPlanProjectionUseCase con los claims', async () => {

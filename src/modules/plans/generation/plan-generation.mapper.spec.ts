@@ -34,7 +34,12 @@ describe('mapPlanToNutritionalPlanDto', () => {
     },
     planIntake: {
       adequacy: { calories: 98, protein: 99, carbohydrate: 97, fat: 101 },
-      totalIntake: { calories: 1960, protein: 148.5, carbohydrate: 194, fat: 60.6 },
+      totalIntake: {
+        calories: 1960,
+        protein: 148.5,
+        carbohydrate: 194,
+        fat: 60.6,
+      },
     },
     mealTimes: [
       {
@@ -42,7 +47,10 @@ describe('mapPlanToNutritionalPlanDto', () => {
         intake: { calories: 400, protein: 20, carbohydrate: 50, fat: 10 },
         foods: {
           ...NO_FOODS,
-          cereals: { portion: '2 porciones', equivalence: 'pan 1 unidad (100gr), avena 1 taza (80gr)' },
+          cereals: {
+            portion: '2 porciones',
+            equivalence: 'pan 1 unidad (100gr), avena 1 taza (80gr)',
+          },
           lowFatDairy: { portion: '1 porción', equivalence: '' },
         },
         examples: ['Pan con quesillo', 'Avena con leche', 'Tostadas'],
@@ -51,7 +59,10 @@ describe('mapPlanToNutritionalPlanDto', () => {
       {
         description: { time: 'colacion', hour: null },
         intake: { calories: 100, protein: 2, carbohydrate: 20, fat: 1 },
-        foods: { ...NO_FOODS, fruits: { portion: '1 porción', equivalence: 'manzana 1 unidad' } },
+        foods: {
+          ...NO_FOODS,
+          fruits: { portion: '1 porción', equivalence: 'manzana 1 unidad' },
+        },
         examples: ['Una manzana'],
         comments: [],
       },
@@ -131,7 +142,11 @@ describe('mapPlanToNutritionalPlanDto', () => {
   });
 
   describe('tiempos de comida', () => {
-    const [breakfast, snack] = mapPlanToNutritionalPlanDto(plan, null, numericPortions).mealTimes;
+    const [breakfast, snack] = mapPlanToNutritionalPlanDto(
+      plan,
+      null,
+      numericPortions,
+    ).mealTimes;
 
     it('mapea el tiempo al enum, la hora y el intake (fat → fatIntake)', () => {
       expect(breakfast).toMatchObject({
@@ -164,24 +179,37 @@ describe('mapPlanToNutritionalPlanDto', () => {
         { note: 'Avena con leche', type: 'EXAMPLE' },
         { note: 'Tostadas', type: 'EXAMPLE' },
         { note: 'Preferir pan integral', type: 'COMMENT' },
-        { note: 'cereals: pan 1 unidad (100gr), avena 1 taza (80gr)', type: 'EQUIVALENCE' },
+        {
+          note: 'cereals: pan 1 unidad (100gr), avena 1 taza (80gr)',
+          type: 'EQUIVALENCE',
+        },
       ]);
       // una equivalencia vacía no genera nota
-      expect(breakfast.notes.filter((n) => n.note.startsWith('lowFatDairy'))).toHaveLength(0);
+      expect(
+        breakfast.notes.filter((n) => n.note.startsWith('lowFatDairy')),
+      ).toHaveLength(0);
     });
 
     it('lanza si el tiempo de comida no es uno conocido', () => {
       const badPlan = {
         ...plan,
-        mealTimes: [{ ...plan.mealTimes[0], description: { time: 'brunch', hour: null } }],
+        mealTimes: [
+          { ...plan.mealTimes[0], description: { time: 'brunch', hour: null } },
+        ],
       } as NutritionPlanDto;
 
-      expect(() => mapPlanToNutritionalPlanDto(badPlan, null, numericPortions)).toThrow(/brunch/);
+      expect(() =>
+        mapPlanToNutritionalPlanDto(badPlan, null, numericPortions),
+      ).toThrow(/brunch/);
     });
   });
 
   it('crea una fila por suplemento, con efectos y consideraciones como notas', () => {
-    const { supplements } = mapPlanToNutritionalPlanDto(plan, null, numericPortions);
+    const { supplements } = mapPlanToNutritionalPlanDto(
+      plan,
+      null,
+      numericPortions,
+    );
 
     expect(supplements).toEqual([
       {
@@ -214,7 +242,11 @@ describe('mapPlanToNutritionalPlanDto', () => {
   });
 
   it('mapea las recomendaciones deportivas 1:1', () => {
-    const { sportsRecommendations } = mapPlanToNutritionalPlanDto(plan, null, numericPortions);
+    const { sportsRecommendations } = mapPlanToNutritionalPlanDto(
+      plan,
+      null,
+      numericPortions,
+    );
 
     expect(sportsRecommendations).toEqual([
       {

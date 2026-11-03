@@ -37,5 +37,7 @@ export interface ConsultationDetailDto {
   measurements: ConsultationMeasurementDto[];
   // orderId permite navegar al plan (hoy /ordenes/[id] en el frontend; a futuro CU-PLN-05).
   // pdfUrl: URL firmada de descarga del PDF (R4), null si la orden todavía no tiene PDF.
-  plan: (ConsultationPlanSummaryDto & { orderId: string; pdfUrl: string | null }) | null;
+  plan:
+    | (ConsultationPlanSummaryDto & { orderId: string; pdfUrl: string | null })
+    | null;
 }

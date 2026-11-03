@@ -36,9 +36,10 @@ export class LogEmailSender implements EmailSender {
   }
 
   // TODO: reemplazar este stub por la integración real con el proveedor de correo elegido.
-  private async sendRealEmail(delivery: EmailDelivery): Promise<void> {
+  private sendRealEmail(delivery: EmailDelivery): Promise<void> {
     this.logger.log(
       `correo simulado enviado a ${delivery.email} (asunto: "${delivery.subject}", adjunto: ${delivery.attachmentName}, ${delivery.attachment.length} bytes)`,
     );
+    return Promise.resolve();
   }
 }

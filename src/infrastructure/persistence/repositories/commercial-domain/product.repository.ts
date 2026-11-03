@@ -27,7 +27,9 @@ export class ProductRepositoryImpl implements ProductRepository {
     return this.datasource.deleteProductById(id);
   }
 
-  getActivePredefinedProductByCode(code: string): Promise<ProductEntity | null> {
+  getActivePredefinedProductByCode(
+    code: string,
+  ): Promise<ProductEntity | null> {
     return this.datasource.getActivePredefinedProductByCode(code);
   }
 

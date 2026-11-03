@@ -113,7 +113,7 @@ export class NutritionalConsultationDatasourceImpl
   private toEntity(
     consultation: NutritionalConsultationWithDetails,
   ): NutritionalConsultationEntity {
-    return consultation as unknown as NutritionalConsultationEntity;
+    return consultation;
   }
 
   async createNutritionalConsultation(
@@ -278,9 +278,7 @@ export class NutritionalConsultationDatasourceImpl
         orderBy: { consultationNumber: 'desc' },
         include: PANEL_DETAILS_INCLUDE,
       });
-    return consultation
-      ? (consultation as unknown as NutritionalConsultationEntity)
-      : null;
+    return consultation ? consultation : null;
   }
 
   async deleteNutritionalConsultationByOrderId(

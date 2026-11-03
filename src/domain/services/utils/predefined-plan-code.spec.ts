@@ -26,8 +26,12 @@ describe('predefined-plan-code', () => {
   });
 
   it('acepta planes con guiones en el nombre y el rango 100-120', () => {
-    expect(isPredefinedPlanCode('plan-deporte-cancha-100-120-m-adulto')).toBe(true);
-    expect(isPredefinedPlanCode('plan-gimnasio-definicion-40-50-f-joven')).toBe(true);
+    expect(isPredefinedPlanCode('plan-deporte-cancha-100-120-m-adulto')).toBe(
+      true,
+    );
+    expect(isPredefinedPlanCode('plan-gimnasio-definicion-40-50-f-joven')).toBe(
+      true,
+    );
     expect(isPredefinedPlanCode('plan-running-90-100-f-adulto')).toBe(true);
   });
 
@@ -54,6 +58,8 @@ describe('predefined-plan-code', () => {
 
     expect(codes).toHaveLength(112);
     expect(new Set(codes).size).toBe(112);
-    expect(codes.every((code) => PREDEFINED_PLAN_CODE_REGEX.test(code))).toBe(true);
+    expect(codes.every((code) => PREDEFINED_PLAN_CODE_REGEX.test(code))).toBe(
+      true,
+    );
   });
 });

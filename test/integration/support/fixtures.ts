@@ -4,7 +4,8 @@ import { PrismaService } from '../../../src/infrastructure/persistence/orm/prism
 import { ProductType } from '../../../src/domain/entities/enums';
 
 export const HOUR_MS = 60 * 60_000;
-export const hoursFromNow = (hours: number) => new Date(Date.now() + hours * HOUR_MS);
+export const hoursFromNow = (hours: number) =>
+  new Date(Date.now() + hours * HOUR_MS);
 
 export function createUser(prisma: PrismaService) {
   return prisma.user.create({ data: { email: `${randomUUID()}@example.com` } });
@@ -49,7 +50,11 @@ export function createClinicalRecord(prisma: PrismaService, patientId: string) {
   return prisma.clinicalRecord.create({ data: { patientId } });
 }
 
-export function createPlanFor(prisma: PrismaService, consultationId: string, orderId: string) {
+export function createPlanFor(
+  prisma: PrismaService,
+  consultationId: string,
+  orderId: string,
+) {
   return prisma.plan.create({ data: { consultationId, orderId } });
 }
 

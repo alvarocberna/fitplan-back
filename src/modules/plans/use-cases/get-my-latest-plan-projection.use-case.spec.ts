@@ -6,7 +6,9 @@ import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decora
 
 describe('GetMyLatestPlanProjectionUseCase', () => {
   let useCase: GetMyLatestPlanProjectionUseCase;
-  let nutritionalPlanRepository: { getLatestDatedMainPlanWithProjectionByUserId: jest.Mock };
+  let nutritionalPlanRepository: {
+    getLatestDatedMainPlanWithProjectionByUserId: jest.Mock;
+  };
 
   const claims: CognitoUserClaims = { sub: 'test-sub' };
 
@@ -17,8 +19,12 @@ describe('GetMyLatestPlanProjectionUseCase', () => {
   };
 
   beforeEach(() => {
-    const currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
-    nutritionalPlanRepository = { getLatestDatedMainPlanWithProjectionByUserId: jest.fn() };
+    const currentUser = {
+      resolve: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
+    nutritionalPlanRepository = {
+      getLatestDatedMainPlanWithProjectionByUserId: jest.fn(),
+    };
     useCase = new GetMyLatestPlanProjectionUseCase(
       currentUser as unknown as CurrentUserResolver,
       nutritionalPlanRepository as unknown as NutritionalPlanRepository,
@@ -26,24 +32,26 @@ describe('GetMyLatestPlanProjectionUseCase', () => {
   });
 
   it('devuelve el período del último plan del usuario del token y su proyección', async () => {
-    nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId.mockResolvedValue({
-      ...nutritionalPlanRow,
-      plan: {
-        orderId: 'order-1',
-        projections: [
-          {
-            projectedStartDate: new Date('2026-09-27T00:00:00.000Z'),
-            projectedEndDate: new Date('2026-12-27T00:00:00.000Z'),
-            projectedWeight: 74,
-            projectedBmi: 25.01,
-            projectedBfKg: 11.6,
-            projectedBfPercentage: 15.68,
-            projectedMmKg: 32,
-            projectedMmPercentage: 43.24,
-          },
-        ],
+    nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId.mockResolvedValue(
+      {
+        ...nutritionalPlanRow,
+        plan: {
+          orderId: 'order-1',
+          projections: [
+            {
+              projectedStartDate: new Date('2026-09-27T00:00:00.000Z'),
+              projectedEndDate: new Date('2026-12-27T00:00:00.000Z'),
+              projectedWeight: 74,
+              projectedBmi: 25.01,
+              projectedBfKg: 11.6,
+              projectedBfPercentage: 15.68,
+              projectedMmKg: 32,
+              projectedMmPercentage: 43.24,
+            },
+          ],
+        },
       },
-    });
+    );
 
     const result = await useCase.execute({ claims });
 
@@ -69,17 +77,25 @@ describe('GetMyLatestPlanProjectionUseCase', () => {
   });
 
   it('plan sin proyección devuelve projection null', async () => {
-    nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId.mockResolvedValue({
-      ...nutritionalPlanRow,
-      plan: { orderId: 'order-1', projections: [] },
-    });
+    nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId.mockResolvedValue(
+      {
+        ...nutritionalPlanRow,
+        plan: { orderId: 'order-1', projections: [] },
+      },
+    );
 
-    await expect(useCase.execute({ claims })).resolves.toMatchObject({ projection: null });
+    await expect(useCase.execute({ claims })).resolves.toMatchObject({
+      projection: null,
+    });
   });
 
   it('sin plan con período responde 404', async () => {
-    nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId.mockResolvedValue(null);
+    nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId.mockResolvedValue(
+      null,
+    );
 
-    await expect(useCase.execute({ claims })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(useCase.execute({ claims })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { AuthIdentityRepository } from '../../../../domain/repositories/identity-auth/auth-identity.repository';
 import { AuthIdentityDatasource } from '../../../../domain/datasources/identity-auth/auth-identity.datasource';
-import { AuthIdentityEntity, AuthProvider } from '../../../../domain/entities/user.entity';
-import { CreateAuthIdentityDto, UpdateAuthIdentityDto } from '../../../../domain';
+import {
+  AuthIdentityEntity,
+  AuthProvider,
+} from '../../../../domain/entities/user.entity';
+import {
+  CreateAuthIdentityDto,
+  UpdateAuthIdentityDto,
+} from '../../../../domain';
 
 @Injectable()
 export class AuthIdentityRepositoryImpl implements AuthIdentityRepository {

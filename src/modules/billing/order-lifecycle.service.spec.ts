@@ -37,12 +37,16 @@ describe('OrderLifecycleService', () => {
 
   it('findByIdWithUser lanza NotFoundException si el repositorio devuelve null', async () => {
     orderRepository.getOrderWithUserById.mockResolvedValue(null);
-    await expect(service.findByIdWithUser('missing')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.findByIdWithUser('missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('findByIdWithUser devuelve la orden si existe', async () => {
     orderRepository.getOrderWithUserById.mockResolvedValue({ id: 'order-1' });
-    await expect(service.findByIdWithUser('order-1')).resolves.toEqual({ id: 'order-1' });
+    await expect(service.findByIdWithUser('order-1')).resolves.toEqual({
+      id: 'order-1',
+    });
   });
 
   it('tryStartGeneration delega el booleano del repositorio', async () => {
@@ -51,7 +55,9 @@ describe('OrderLifecycleService', () => {
   });
 
   it('completeGeneration serializa el plan a JSON, marca generationStatus completado y persiste pdfKey y thumbnailKey', async () => {
-    const plan = { prescription: { goal: 'definicion' } } as unknown as NutritionPlanDto;
+    const plan = {
+      prescription: { goal: 'definicion' },
+    } as unknown as NutritionPlanDto;
     await service.completeGeneration(
       'order-1',
       plan,
@@ -68,18 +74,30 @@ describe('OrderLifecycleService', () => {
   });
 
   it('completeGeneration persiste thumbnailKey null si la miniatura no se pudo generar', async () => {
-    const plan = { prescription: { goal: 'definicion' } } as unknown as NutritionPlanDto;
-    await service.completeGeneration('order-1', plan, 'productos-personalizados/order-1.pdf', null);
+    const plan = {
+      prescription: { goal: 'definicion' },
+    } as unknown as NutritionPlanDto;
+    await service.completeGeneration(
+      'order-1',
+      plan,
+      'productos-personalizados/order-1.pdf',
+      null,
+    );
 
     expect(orderRepository.updateOrderById).toHaveBeenCalledWith(
       'order-1',
-      expect.objectContaining({ generationStatus: 'COMPLETED', thumbnailKey: null }),
+      expect.objectContaining({
+        generationStatus: 'COMPLETED',
+        thumbnailKey: null,
+      }),
     );
   });
 
   it('recordFailedAttempt delega en el repositorio', async () => {
     await service.recordFailedAttempt('order-1');
-    expect(orderRepository.incrementOrderFailedAttempt).toHaveBeenCalledWith('order-1');
+    expect(orderRepository.incrementOrderFailedAttempt).toHaveBeenCalledWith(
+      'order-1',
+    );
   });
 
   describe('reintentos de generación', () => {
@@ -102,18 +120,24 @@ describe('OrderLifecycleService', () => {
     });
 
     it('findOrderIdsPendingGeneration busca con las esperas de 15 min, 1 h y 4 h y 5 min de gracia para las no iniciadas', async () => {
-      orderRepository.getOrderIdsPendingGeneration.mockResolvedValue(['order-1']);
+      orderRepository.getOrderIdsPendingGeneration.mockResolvedValue([
+        'order-1',
+      ]);
 
-      await expect(service.findOrderIdsPendingGeneration(5)).resolves.toEqual(['order-1']);
-      expect(orderRepository.getOrderIdsPendingGeneration).toHaveBeenCalledWith({
-        notStartedPaidBefore: new Date('2026-06-01T11:55:00.000Z'),
-        errorRetryDueBefore: [
-          new Date('2026-06-01T11:45:00.000Z'),
-          new Date('2026-06-01T11:00:00.000Z'),
-          new Date('2026-06-01T08:00:00.000Z'),
-        ],
-        limit: 5,
-      });
+      await expect(service.findOrderIdsPendingGeneration(5)).resolves.toEqual([
+        'order-1',
+      ]);
+      expect(orderRepository.getOrderIdsPendingGeneration).toHaveBeenCalledWith(
+        {
+          notStartedPaidBefore: new Date('2026-06-01T11:55:00.000Z'),
+          errorRetryDueBefore: [
+            new Date('2026-06-01T11:45:00.000Z'),
+            new Date('2026-06-01T11:00:00.000Z'),
+            new Date('2026-06-01T08:00:00.000Z'),
+          ],
+          limit: 5,
+        },
+      );
     });
   });
 
@@ -122,8 +146,13 @@ describe('OrderLifecycleService', () => {
       orderRepository.expireOrderIfDue.mockResolvedValue(true);
 
       await expect(service.expireIfDue('order-1')).resolves.toBe(true);
-      expect(orderRepository.expireOrderIfDue).toHaveBeenCalledWith('order-1', expect.any(Date));
-      expect(eventEmitter.emit).toHaveBeenCalledWith(ORDER_EXPIRED, { orderId: 'order-1' });
+      expect(orderRepository.expireOrderIfDue).toHaveBeenCalledWith(
+        'order-1',
+        expect.any(Date),
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(ORDER_EXPIRED, {
+        orderId: 'order-1',
+      });
     });
 
     it('si la orden no vencía (o ya estaba expirada/pagada), no emite nada', async () => {
@@ -138,14 +167,22 @@ describe('OrderLifecycleService', () => {
 
     it('EXPIRED: true sin tocar el repositorio', async () => {
       await expect(
-        service.isExpired({ id: 'order-1', paymentStatus: 'EXPIRED', expirationDate: past }),
+        service.isExpired({
+          id: 'order-1',
+          paymentStatus: 'EXPIRED',
+          expirationDate: past,
+        }),
       ).resolves.toBe(true);
       expect(orderRepository.expireOrderIfDue).not.toHaveBeenCalled();
     });
 
     it('PAID: false aunque la fecha de expiración ya haya pasado', async () => {
       await expect(
-        service.isExpired({ id: 'order-1', paymentStatus: 'PAID', expirationDate: past }),
+        service.isExpired({
+          id: 'order-1',
+          paymentStatus: 'PAID',
+          expirationDate: past,
+        }),
       ).resolves.toBe(false);
       expect(orderRepository.expireOrderIfDue).not.toHaveBeenCalled();
     });
@@ -154,10 +191,18 @@ describe('OrderLifecycleService', () => {
       '%s con plazo vigente o sin plazo: false',
       async (paymentStatus) => {
         await expect(
-          service.isExpired({ id: 'order-1', paymentStatus, expirationDate: future }),
+          service.isExpired({
+            id: 'order-1',
+            paymentStatus,
+            expirationDate: future,
+          }),
         ).resolves.toBe(false);
         await expect(
-          service.isExpired({ id: 'order-1', paymentStatus, expirationDate: null }),
+          service.isExpired({
+            id: 'order-1',
+            paymentStatus,
+            expirationDate: null,
+          }),
         ).resolves.toBe(false);
         expect(orderRepository.expireOrderIfDue).not.toHaveBeenCalled();
       },
@@ -169,15 +214,21 @@ describe('OrderLifecycleService', () => {
         orderRepository.expireOrderIfDue.mockResolvedValue(true);
 
         await expect(
-          service.isExpired({ id: 'order-1', paymentStatus, expirationDate: past }),
+          service.isExpired({
+            id: 'order-1',
+            paymentStatus,
+            expirationDate: past,
+          }),
         ).resolves.toBe(true);
-        expect(eventEmitter.emit).toHaveBeenCalledWith(ORDER_EXPIRED, { orderId: 'order-1' });
+        expect(eventEmitter.emit).toHaveBeenCalledWith(ORDER_EXPIRED, {
+          orderId: 'order-1',
+        });
       },
     );
   });
 
   it('touchGeneration renueva generationUpdatedAt: marca que la generación sigue avanzando', async () => {
-    orderRepository.updateOrderById.mockResolvedValue({} as never);
+    orderRepository.updateOrderById.mockResolvedValue({});
 
     await service.touchGeneration('order-1');
 

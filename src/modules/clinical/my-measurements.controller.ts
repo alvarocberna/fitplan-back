@@ -49,7 +49,8 @@ export class MyMeasurementsController {
   @Get(':measurementId')
   getOne(
     @CognitoUser() claims: CognitoUserClaims,
-    @Param('measurementId', new ParseUUIDPipe({ version: '4' })) measurementId: string,
+    @Param('measurementId', new ParseUUIDPipe({ version: '4' }))
+    measurementId: string,
   ): Promise<MeasurementDetailDto> {
     return this.getMyMeasurement.execute({ claims, measurementId });
   }
@@ -65,9 +66,14 @@ export class MyMeasurementsController {
   @Patch(':measurementId')
   update(
     @CognitoUser() claims: CognitoUserClaims,
-    @Param('measurementId', new ParseUUIDPipe({ version: '4' })) measurementId: string,
+    @Param('measurementId', new ParseUUIDPipe({ version: '4' }))
+    measurementId: string,
     @Body() body: UpdateMeasurementDtoImpl,
   ): Promise<MeasurementDetailDto> {
-    return this.updateMyMeasurement.execute({ claims, measurementId, data: body });
+    return this.updateMyMeasurement.execute({
+      claims,
+      measurementId,
+      data: body,
+    });
   }
 }

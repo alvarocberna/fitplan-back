@@ -39,7 +39,9 @@ async function bootstrap() {
   // como Authorization: Bearer desde el servidor de Next): credentials queda en false.
   const frontendOrigin = configService.get<string>('URL_FRONTEND');
   if (!frontendOrigin && isProduction) {
-    throw new Error('Falta la variable de entorno URL_FRONTEND (origen permitido por CORS)');
+    throw new Error(
+      'Falta la variable de entorno URL_FRONTEND (origen permitido por CORS)',
+    );
   }
   app.enableCors({
     origin: frontendOrigin ?? false,
@@ -71,6 +73,9 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error: Error) => {
-  logger.error(`No se pudo iniciar la aplicación: ${error.message}`, error.stack);
+  logger.error(
+    `No se pudo iniciar la aplicación: ${error.message}`,
+    error.stack,
+  );
   process.exit(1);
 });

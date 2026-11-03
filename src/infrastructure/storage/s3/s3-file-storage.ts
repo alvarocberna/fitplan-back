@@ -30,8 +30,7 @@ export class S3FileStorage implements FileStorage {
       },
       region: this.configService.getOrThrow<string>('AWS_REGION'),
       credentials: {
-        accessKeyId:
-          this.configService.getOrThrow<string>('AWS_ACCESS_KEY_ID'),
+        accessKeyId: this.configService.getOrThrow<string>('AWS_ACCESS_KEY_ID'),
         secretAccessKey: this.configService.getOrThrow<string>(
           'AWS_SECRET_ACCESS_KEY',
         ),

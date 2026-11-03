@@ -10,7 +10,9 @@ describe('GetMyProfileUseCase', () => {
 
   beforeEach(() => {
     currentUser = { resolve: jest.fn(), isProfileComplete: jest.fn() };
-    useCase = new GetMyProfileUseCase(currentUser as unknown as CurrentUserResolver);
+    useCase = new GetMyProfileUseCase(
+      currentUser as unknown as CurrentUserResolver,
+    );
   });
 
   it('resuelve el User por el token y devuelve el perfil completo con edad y profileComplete', async () => {

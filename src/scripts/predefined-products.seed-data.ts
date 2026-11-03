@@ -125,8 +125,7 @@ const PREVIEW_REPRESENTATIVE_WEIGHT_KG = 70;
 
 const SEX_FACTOR: Record<PredefinedSex, number> = { m: 1.08, f: 1 };
 // Sin sexo específico (fila vista previa): promedio de ambos factores.
-const NEUTRAL_SEX_FACTOR =
-  (SEX_FACTOR.m + SEX_FACTOR.f) / 2;
+const NEUTRAL_SEX_FACTOR = (SEX_FACTOR.m + SEX_FACTOR.f) / 2;
 
 export interface NutritionSummary {
   goal: string;
@@ -147,7 +146,8 @@ function buildFictitiousNutritionSummary(
   sexFactor: number,
 ): NutritionSummary {
   const profile = FAMILY_NUTRITION[family];
-  const calorieIntake = Math.round((weightKg * profile.kcalPerKg * sexFactor) / 10) * 10;
+  const calorieIntake =
+    Math.round((weightKg * profile.kcalPerKg * sexFactor) / 10) * 10;
 
   return {
     goal: profile.goal,

@@ -65,7 +65,7 @@ export class MeasurementsDatasourceImpl implements MeasurementsDatasource {
       orderBy: { measuredAt: 'desc' },
       include: { basicMeasurements: true, measurementResults: true },
     });
-    return measurement as MeasurementsEntity | null;
+    return measurement;
   }
 
   async listMeasurementsByPatientId(
@@ -120,7 +120,7 @@ export class MeasurementsDatasourceImpl implements MeasurementsDatasource {
         measurementResults: results ? { create: [results] } : undefined,
       },
     });
-    return created as MeasurementsEntity;
+    return created;
   }
 
   async updateMeasurementWithDetails(

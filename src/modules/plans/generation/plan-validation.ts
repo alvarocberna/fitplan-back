@@ -56,24 +56,33 @@ function implicitPortions(
   const groupInfo = FOOD_FIELD_TO_GROUP[field];
   if (!groupInfo) return { error: `campo "${field}" no existe` };
   const groupData = FOOD_GROUP_PORTIONS.find(
-    (g) => g.group === groupInfo.group && g.subcategory === groupInfo.subcategory,
+    (g) =>
+      g.group === groupInfo.group && g.subcategory === groupInfo.subcategory,
   );
   const foodData = groupData?.foods.find(
     (f) => f.food.toLowerCase() === food.toLowerCase(),
   );
-  if (!foodData) return { error: `alimento "${food}" no pertenece al grupo "${field}"` };
+  if (!foodData)
+    return { error: `alimento "${food}" no pertenece al grupo "${field}"` };
   if (!foodData.weight) return { portions: null };
   return { portions: weight / foodData.weight };
 }
 
-function requiredPortionsOf(calculated: CalculatedMealTime): Record<string, number> {
+function requiredPortionsOf(
+  calculated: CalculatedMealTime,
+): Record<string, number> {
   return calculated.numericPortions as unknown as Record<string, number>;
 }
 
-function examplesIssues(calculated: CalculatedMealTime, generated: GeneratedMealTime | undefined): string[] {
+function examplesIssues(
+  calculated: CalculatedMealTime,
+  generated: GeneratedMealTime | undefined,
+): string[] {
   const examples = generated?.examples ?? [];
   if (examples.length !== EXAMPLES_PER_MEAL_TIME) {
-    return [`se esperaban ${EXAMPLES_PER_MEAL_TIME} ejemplos, se recibieron ${examples.length}`];
+    return [
+      `se esperaban ${EXAMPLES_PER_MEAL_TIME} ejemplos, se recibieron ${examples.length}`,
+    ];
   }
 
   const requiredByField = requiredPortionsOf(calculated);
@@ -86,7 +95,11 @@ function examplesIssues(calculated: CalculatedMealTime, generated: GeneratedMeal
     let hasInvalidComponent = false;
 
     for (const component of example.components) {
-      const result = implicitPortions(component.field, component.food, component.weight);
+      const result = implicitPortions(
+        component.field,
+        component.food,
+        component.weight,
+      );
       if ('error' in result) {
         messages.push(`${context}: ${result.error}`);
         hasInvalidComponent = true;
@@ -124,7 +137,10 @@ function examplesIssues(calculated: CalculatedMealTime, generated: GeneratedMeal
   return messages;
 }
 
-function equivalencesIssues(calculated: CalculatedMealTime, generated: GeneratedMealTime | undefined): string[] {
+function equivalencesIssues(
+  calculated: CalculatedMealTime,
+  generated: GeneratedMealTime | undefined,
+): string[] {
   const requiredByField = requiredPortionsOf(calculated);
   const requiredFields = Object.entries(requiredByField)
     .filter(([, required]) => !!required)
@@ -138,7 +154,9 @@ function equivalencesIssues(calculated: CalculatedMealTime, generated: Generated
     const context = `equivalencias de "${field}"`;
     const generatedGroup = equivalenceByField.get(field);
     if (!generatedGroup) {
-      messages.push(`${context}: falta el desglose de equivalencias para este grupo`);
+      messages.push(
+        `${context}: falta el desglose de equivalencias para este grupo`,
+      );
       continue;
     }
     if (generatedGroup.options.length !== OPTIONS_PER_EQUIVALENCE) {
@@ -152,7 +170,9 @@ function equivalencesIssues(calculated: CalculatedMealTime, generated: Generated
     for (const option of generatedGroup.options) {
       const normalizedFood = option.food.toLowerCase();
       if (usedFoods.has(normalizedFood)) {
-        messages.push(`${context}: el alimento "${option.food}" está repetido entre las 3 opciones`);
+        messages.push(
+          `${context}: el alimento "${option.food}" está repetido entre las 3 opciones`,
+        );
         continue;
       }
       usedFoods.add(normalizedFood);
@@ -201,7 +221,9 @@ export function collectPlanIssues(
 
 // Índices (sin repetir, en orden) de los tiempos de comida que tienen algún problema.
 export function mealTimeIndexesWithIssues(issues: PlanIssue[]): number[] {
-  return [...new Set(issues.map((issue) => issue.mealTimeIndex))].sort((a, b) => a - b);
+  return [...new Set(issues.map((issue) => issue.mealTimeIndex))].sort(
+    (a, b) => a - b,
+  );
 }
 
 // Texto de un problema para logs y para el mensaje de PlanValidationError.

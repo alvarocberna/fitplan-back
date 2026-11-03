@@ -27,7 +27,9 @@ export class StandardPlansController {
   }
 
   @Get(':code')
-  get(@Param('code', ParseProductCodePipe) code: string): Promise<PredefinedProductDto> {
+  get(
+    @Param('code', ParseProductCodePipe) code: string,
+  ): Promise<PredefinedProductDto> {
     return this.getStandardPlan.execute({ code });
   }
 

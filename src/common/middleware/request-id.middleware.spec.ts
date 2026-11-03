@@ -1,4 +1,7 @@
-import { requestIdMiddleware, REQUEST_ID_HEADER } from './request-id.middleware';
+import {
+  requestIdMiddleware,
+  REQUEST_ID_HEADER,
+} from './request-id.middleware';
 
 function run(headers: Record<string, string | string[]> = {}) {
   const req = { headers } as any;
@@ -13,7 +16,10 @@ describe('requestIdMiddleware', () => {
     const { req, res, next } = run();
 
     expect(req.requestId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(res.setHeader).toHaveBeenCalledWith(REQUEST_ID_HEADER, req.requestId);
+    expect(res.setHeader).toHaveBeenCalledWith(
+      REQUEST_ID_HEADER,
+      req.requestId,
+    );
     expect(next).toHaveBeenCalledTimes(1);
   });
 

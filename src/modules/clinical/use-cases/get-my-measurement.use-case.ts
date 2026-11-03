@@ -19,10 +19,11 @@ export class GetMyMeasurementUseCase {
     measurementId: string;
   }): Promise<MeasurementDetailDto> {
     const user = await this.currentUser.resolve(input.claims);
-    const measurement = await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
-      input.measurementId,
-      user.id,
-    );
+    const measurement =
+      await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
+        input.measurementId,
+        user.id,
+      );
     if (!measurement) throw new NotFoundException('Medición no encontrada');
     return toMeasurementDetail(measurement);
   }

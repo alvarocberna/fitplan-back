@@ -15,7 +15,9 @@ describe('RetryPendingGenerationsUseCase', () => {
       releaseStalledGenerations: jest.fn().mockResolvedValue(0),
       findOrderIdsPendingGeneration: jest.fn().mockResolvedValue([]),
     };
-    generatePersonalizedPlan = { execute: jest.fn().mockResolvedValue(undefined) };
+    generatePersonalizedPlan = {
+      execute: jest.fn().mockResolvedValue(undefined),
+    };
     useCase = new RetryPendingGenerationsUseCase(
       orderLifecycle as unknown as OrderLifecycleService,
       generatePersonalizedPlan as unknown as GeneratePersonalizedPlanUseCase,
@@ -23,7 +25,10 @@ describe('RetryPendingGenerationsUseCase', () => {
   });
 
   it('sin órdenes pendientes no genera nada', async () => {
-    await expect(useCase.execute()).resolves.toEqual({ released: 0, retried: 0 });
+    await expect(useCase.execute()).resolves.toEqual({
+      released: 0,
+      retried: 0,
+    });
     expect(generatePersonalizedPlan.execute).not.toHaveBeenCalled();
   });
 
@@ -33,13 +38,20 @@ describe('RetryPendingGenerationsUseCase', () => {
       calls.push('release');
       return 1;
     });
-    orderLifecycle.findOrderIdsPendingGeneration.mockImplementation(async () => {
-      calls.push('find');
-      return ['order-1', 'order-2'];
-    });
-    jest.spyOn((useCase as any).logger, 'warn').mockImplementation(() => undefined);
+    orderLifecycle.findOrderIdsPendingGeneration.mockImplementation(
+      async () => {
+        calls.push('find');
+        return ['order-1', 'order-2'];
+      },
+    );
+    jest
+      .spyOn((useCase as any).logger, 'warn')
+      .mockImplementation(() => undefined);
 
-    await expect(useCase.execute()).resolves.toEqual({ released: 1, retried: 2 });
+    await expect(useCase.execute()).resolves.toEqual({
+      released: 1,
+      retried: 2,
+    });
 
     expect(calls).toEqual(['release', 'find']);
     expect(generatePersonalizedPlan.execute.mock.calls).toEqual([
@@ -49,7 +61,10 @@ describe('RetryPendingGenerationsUseCase', () => {
   });
 
   it('un error no controlado en una orden no frena al resto', async () => {
-    orderLifecycle.findOrderIdsPendingGeneration.mockResolvedValue(['order-1', 'order-2']);
+    orderLifecycle.findOrderIdsPendingGeneration.mockResolvedValue([
+      'order-1',
+      'order-2',
+    ]);
     generatePersonalizedPlan.execute
       .mockRejectedValueOnce(new Error('fallo inesperado'))
       .mockResolvedValueOnce(undefined);
@@ -57,8 +72,14 @@ describe('RetryPendingGenerationsUseCase', () => {
       .spyOn((useCase as any).logger, 'error')
       .mockImplementation(() => undefined);
 
-    await expect(useCase.execute()).resolves.toEqual({ released: 0, retried: 2 });
+    await expect(useCase.execute()).resolves.toEqual({
+      released: 0,
+      retried: 2,
+    });
     expect(generatePersonalizedPlan.execute).toHaveBeenCalledTimes(2);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'), expect.any(String));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('fallo inesperado'),
+      expect.any(String),
+    );
   });
 });

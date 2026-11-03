@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DevPaymentsController, PaymentsController } from './payments.controller';
+import {
+  DevPaymentsController,
+  PaymentsController,
+} from './payments.controller';
 import { CommitWebpayPaymentUseCase } from './use-cases/commit-webpay-payment.use-case';
 import { ConfirmPaymentUseCase } from './use-cases/confirm-payment.use-case';
 import { RejectPaymentUseCase } from './use-cases/reject-payment.use-case';
@@ -40,13 +43,19 @@ describe('PaymentsController / DevPaymentsController', () => {
 
   describe('POST /payments/webpay/commit', () => {
     it('delega en CommitWebpayPaymentUseCase con los parámetros de retorno de Webpay', async () => {
-      const result = { orderId: 'order-1', productType: 'GENERATED', outcome: 'paid' };
+      const result = {
+        orderId: 'order-1',
+        productType: 'GENERATED',
+        outcome: 'paid',
+      };
       commitWebpayPayment.execute.mockResolvedValue(result);
 
-      await expect(paymentsController.commitWebpay({ tokenWs: 'tok-1' })).resolves.toEqual(
-        result,
-      );
-      expect(commitWebpayPayment.execute).toHaveBeenCalledWith({ tokenWs: 'tok-1' });
+      await expect(
+        paymentsController.commitWebpay({ tokenWs: 'tok-1' }),
+      ).resolves.toEqual(result);
+      expect(commitWebpayPayment.execute).toHaveBeenCalledWith({
+        tokenWs: 'tok-1',
+      });
       expect(confirmPayment.execute).not.toHaveBeenCalled();
     });
   });
@@ -55,10 +64,15 @@ describe('PaymentsController / DevPaymentsController', () => {
     it('delega en RejectPaymentUseCase con el id de la ruta y el usuario del token', async () => {
       rejectPayment.execute.mockResolvedValue({ status: 'rejected' });
 
-      await expect(devController.simulateRejection('order-1', claims)).resolves.toEqual({
+      await expect(
+        devController.simulateRejection('order-1', claims),
+      ).resolves.toEqual({
         status: 'rejected',
       });
-      expect(rejectPayment.execute).toHaveBeenCalledWith({ orderId: 'order-1', claims });
+      expect(rejectPayment.execute).toHaveBeenCalledWith({
+        orderId: 'order-1',
+        claims,
+      });
       expect(confirmPayment.execute).not.toHaveBeenCalled();
     });
   });
@@ -69,7 +83,10 @@ describe('PaymentsController / DevPaymentsController', () => {
 
       await devController.simulate('order-1', claims);
 
-      expect(confirmPayment.execute).toHaveBeenCalledWith({ orderId: 'order-1', claims });
+      expect(confirmPayment.execute).toHaveBeenCalledWith({
+        orderId: 'order-1',
+        claims,
+      });
     });
   });
 });
@@ -84,7 +101,10 @@ describe('PaymentSimulationEnabledGuard', () => {
     expect(guardWith('true').canActivate()).toBe(true);
   });
 
-  it.each([undefined, 'false', ''])('responde 404 con ENABLE_PAYMENT_SIMULATION=%p', (value) => {
-    expect(() => guardWith(value).canActivate()).toThrow(NotFoundException);
-  });
+  it.each([undefined, 'false', ''])(
+    'responde 404 con ENABLE_PAYMENT_SIMULATION=%p',
+    (value) => {
+      expect(() => guardWith(value).canActivate()).toThrow(NotFoundException);
+    },
+  );
 });

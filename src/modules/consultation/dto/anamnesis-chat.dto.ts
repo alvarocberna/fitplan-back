@@ -1,4 +1,14 @@
-import { IsString, IsNotEmpty, IsArray, IsBoolean, IsIn, IsOptional, ValidateNested, MaxLength, ArrayMaxSize } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  ValidateNested,
+  MaxLength,
+  ArrayMaxSize,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ChatMessageDto, InputChatDto, OutputChatDto } from '../../../domain';
 import type { ChatRole } from '../../../domain';

@@ -25,7 +25,10 @@ describe('StandardPlansController', () => {
       providers: [
         { provide: ListStandardPlanPreviewsUseCase, useValue: listPreviews },
         { provide: GetStandardPlanUseCase, useValue: getStandardPlan },
-        { provide: PurchaseStandardPlanUseCase, useValue: purchaseStandardPlan },
+        {
+          provide: PurchaseStandardPlanUseCase,
+          useValue: purchaseStandardPlan,
+        },
       ],
     }).compile();
 
@@ -33,14 +36,28 @@ describe('StandardPlansController', () => {
   });
 
   it('previews() delega en ListStandardPlanPreviewsUseCase', async () => {
-    const previews = [{ code: 'plan-running', name: 'Plan Running', description: 'x', thumbnailUrl: null }];
+    const previews = [
+      {
+        code: 'plan-running',
+        name: 'Plan Running',
+        description: 'x',
+        thumbnailUrl: null,
+      },
+    ];
     listPreviews.execute.mockResolvedValue(previews);
 
     await expect(standardPlans.previews()).resolves.toBe(previews);
   });
 
   it('get() delega en GetStandardPlanUseCase con el code de la ruta', async () => {
-    const plan = { code, name: 'Plan', description: 'x', price: 14990, currency: 'CLP', thumbnailUrl: null };
+    const plan = {
+      code,
+      name: 'Plan',
+      description: 'x',
+      price: 14990,
+      currency: 'CLP',
+      thumbnailUrl: null,
+    };
     getStandardPlan.execute.mockResolvedValue(plan);
 
     await expect(standardPlans.get(code)).resolves.toBe(plan);
@@ -50,7 +67,9 @@ describe('StandardPlansController', () => {
   it('purchase() delega en PurchaseStandardPlanUseCase con el code de la ruta y los claims', async () => {
     purchaseStandardPlan.execute.mockResolvedValue({ orderId: 'order-2' });
 
-    await expect(standardPlans.purchase(code, claims)).resolves.toEqual({ orderId: 'order-2' });
+    await expect(standardPlans.purchase(code, claims)).resolves.toEqual({
+      orderId: 'order-2',
+    });
     expect(purchaseStandardPlan.execute).toHaveBeenCalledWith({ claims, code });
   });
 });

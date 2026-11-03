@@ -38,13 +38,18 @@ describe('RetryPendingGenerationsJob', () => {
   });
 
   it('un error del caso de uso queda contenido y no bloquea la corrida siguiente', async () => {
-    retryPendingGenerations.execute.mockRejectedValueOnce(new Error('fallo inesperado'));
+    retryPendingGenerations.execute.mockRejectedValueOnce(
+      new Error('fallo inesperado'),
+    );
     const errorSpy = jest
       .spyOn((job as any).logger, 'error')
       .mockImplementation(() => undefined);
 
     await expect(job.run()).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'), expect.any(String));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('fallo inesperado'),
+      expect.any(String),
+    );
 
     await job.run();
     expect(retryPendingGenerations.execute).toHaveBeenCalledTimes(2);

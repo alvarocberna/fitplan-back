@@ -6,9 +6,10 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 // cupo. La clave es el `sub` del access_token; sin token (endpoints públicos, webhook) es la IP.
 @Injectable()
 export class UserThrottlerGuard extends ThrottlerGuard {
-  protected async getTracker(req: Record<string, any>): Promise<string> {
-    const sub = subjectFromAuthorization(req.headers?.authorization);
-    return sub ? `user:${sub}` : `ip:${req.ip ?? 'unknown'}`;
+  protected getTracker(req: Record<string, any>): Promise<string> {
+    const headers = req.headers as Record<string, unknown> | undefined;
+    const sub = subjectFromAuthorization(headers?.authorization);
+    return Promise.resolve(sub ? `user:${sub}` : `ip:${req.ip ?? 'unknown'}`);
   }
 }
 
@@ -20,9 +21,13 @@ export function subjectFromAuthorization(header: unknown): string | null {
   const payload = header.slice('Bearer '.length).split('.')[1];
   if (!payload) return null;
   try {
-    const claims: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    const claims: unknown = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    );
     const sub = (claims as { sub?: unknown })?.sub;
-    return typeof sub === 'string' && sub.length > 0 && sub.length <= 128 ? sub : null;
+    return typeof sub === 'string' && sub.length > 0 && sub.length <= 128
+      ? sub
+      : null;
   } catch {
     return null;
   }

@@ -31,10 +31,15 @@ const COMPONENT_LABELS: Record<MeasurementComponent, string> = {
 
 export function assertValidMeasurementInput(input: MeasurementInput): void {
   if (input.measuredAt.getTime() > Date.now()) {
-    throw new BadRequestException('La fecha de la medición no puede ser futura');
+    throw new BadRequestException(
+      'La fecha de la medición no puede ser futura',
+    );
   }
 
-  const components: [MeasurementComponent, MeasurementValueInput | undefined][] = [
+  const components: [
+    MeasurementComponent,
+    MeasurementValueInput | undefined,
+  ][] = [
     ['bf', input.bodyFat],
     ['mm', input.muscleMass],
     ['vf', input.visceralFat],
@@ -60,7 +65,9 @@ export function assertValidMeasurementInput(input: MeasurementInput): void {
       throw new BadRequestException(`El % de ${label} debe estar entre 1 y 80`);
     }
     if (value.unit === 'KG' && value.value >= input.weight) {
-      throw new BadRequestException(`Los kg de ${label} deben ser menores que el peso`);
+      throw new BadRequestException(
+        `Los kg de ${label} deben ser menores que el peso`,
+      );
     }
   }
 }

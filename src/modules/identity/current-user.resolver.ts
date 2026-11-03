@@ -1,10 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthIdentityRepository } from '../../domain/repositories/identity-auth/auth-identity.repository';
 import { UserRepository } from '../../domain/repositories/identity-auth/user.repository';
-import {
-  AuthProvider,
-  UserEntity,
-} from '../../domain/entities/user.entity';
+import { AuthProvider, UserEntity } from '../../domain/entities/user.entity';
 import { ErrorCode } from '../../common/errors/error-codes';
 import { CognitoUserClaims } from '../../common/auth/cognito-user.decorator';
 
@@ -20,14 +17,16 @@ export class CurrentUserResolver {
   // sub de Cognito -> auth_identity -> user. No crea nada: falla si todavía no se sincronizó la
   // identidad (POST /me/sync).
   async resolve(claims: CognitoUserClaims): Promise<UserEntity> {
-    const existing = await this.authIdentityRepository.findAuthIdentityByProvider(
-      AuthProvider.COGNITO,
-      claims.sub,
-    );
+    const existing =
+      await this.authIdentityRepository.findAuthIdentityByProvider(
+        AuthProvider.COGNITO,
+        claims.sub,
+      );
     if (!existing) {
       throw new UnauthorizedException({
         code: ErrorCode.IDENTITY_NOT_SYNCED,
-        message: 'No hay una identidad registrada — sincroniza tu cuenta primero',
+        message:
+          'No hay una identidad registrada — sincroniza tu cuenta primero',
       });
     }
     const user = await this.userRepository.getUserById(existing.userId);
@@ -41,7 +40,10 @@ export class CurrentUserResolver {
 
   isProfileComplete(user: UserEntity): boolean {
     return Boolean(
-      user.firstName && user.paternalLastName && user.gender && user.dateOfBirth,
+      user.firstName &&
+        user.paternalLastName &&
+        user.gender &&
+        user.dateOfBirth,
     );
   }
 }

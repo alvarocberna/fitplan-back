@@ -43,7 +43,9 @@ export class OpenaiLlmProvider implements LlmProvider {
     // Límites propios de esta llamada; lo que no venga usa el default del cliente.
     const requestOptions = {
       ...(options?.timeoutMs !== undefined && { timeout: options.timeoutMs }),
-      ...(options?.maxRetries !== undefined && { maxRetries: options.maxRetries }),
+      ...(options?.maxRetries !== undefined && {
+        maxRetries: options.maxRetries,
+      }),
     };
     let content: string | null | undefined;
     let failure: string | null = null;
@@ -60,13 +62,19 @@ export class OpenaiLlmProvider implements LlmProvider {
       );
       const choice = response.choices[0];
       content = choice?.message?.content;
-      this.reportMetrics(options, model, performance.now() - startedAt, response.usage);
+      this.reportMetrics(
+        options,
+        model,
+        performance.now() - startedAt,
+        response.usage,
+      );
       // El modelo se negó a responder (política de contenido): no hay JSON que usar.
       if (choice?.message?.refusal) {
         failure = `OpenAI se negó a responder: ${choice.message.refusal}`;
       } else if (choice?.finish_reason === 'length') {
         // Se alcanzó el máximo de tokens de salida: el JSON quedó cortado.
-        failure = 'OpenAI cortó la respuesta por límite de tokens (JSON incompleto)';
+        failure =
+          'OpenAI cortó la respuesta por límite de tokens (JSON incompleto)';
       }
     } catch (error) {
       // Cualquier error del SDK (red, timeout, rate limit, 4xx/5xx del proveedor) se traduce al error
@@ -79,13 +87,16 @@ export class OpenaiLlmProvider implements LlmProvider {
     }
 
     if (failure) throw new LlmInvalidResponseError(failure);
-    if (!content) throw new LlmInvalidResponseError('OpenAI devolvió una respuesta vacía');
+    if (!content)
+      throw new LlmInvalidResponseError('OpenAI devolvió una respuesta vacía');
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
     } catch {
-      throw new LlmInvalidResponseError('OpenAI devolvió una respuesta que no es JSON válido');
+      throw new LlmInvalidResponseError(
+        'OpenAI devolvió una respuesta que no es JSON válido',
+      );
     }
 
     // Con esquema, la estructura se comprueba acá aunque el proveedor ya la garantice: el resto del
@@ -133,7 +144,8 @@ export class OpenaiLlmProvider implements LlmProvider {
         durationMs: Math.round(durationMs),
         promptTokens: usage?.prompt_tokens ?? null,
         completionTokens: usage?.completion_tokens ?? null,
-        reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens ?? null,
+        reasoningTokens:
+          usage?.completion_tokens_details?.reasoning_tokens ?? null,
         totalTokens: usage?.total_tokens ?? null,
       });
     } catch {

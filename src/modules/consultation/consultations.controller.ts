@@ -1,6 +1,9 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { LLM_THROTTLE, ORDER_THROTTLE } from '../../common/throttling/throttle-limits';
+import {
+  LLM_THROTTLE,
+  ORDER_THROTTLE,
+} from '../../common/throttling/throttle-limits';
 import { CognitoAuthGuard } from '../../common/auth/cognito-auth.guard';
 import { CognitoUser } from '../../common/auth/cognito-user.decorator';
 import type { CognitoUserClaims } from '../../common/auth/cognito-user.decorator';

@@ -63,7 +63,8 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
 
     await consultationWithDetails(patient, order.id);
 
-    const stored: any = await datasource.getNutritionalConsultationWithDetailsByOrderId(order.id);
+    const stored: any =
+      await datasource.getNutritionalConsultationWithDetailsByOrderId(order.id);
     expect(stored.anamneses[0].goals[0]).toMatchObject({
       mainGoal: 'bajar de peso',
       secondaryGoal: ['dormir mejor'],
@@ -78,14 +79,18 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
     const order = await orderFor(patient.user.id);
     await consultationWithDetails(patient, order.id);
 
-    await expect(consultationWithDetails(patient, order.id, 2)).rejects.toMatchObject({
+    await expect(
+      consultationWithDetails(patient, order.id, 2),
+    ).rejects.toMatchObject({
       code: 'P2002',
     });
   });
 
   it('getMaxConsultationNumberByClinicalRecordId no reutiliza números tras un borrado (max + 1)', async () => {
     expect(
-      await datasource.getMaxConsultationNumberByClinicalRecordId(patient.clinicalRecord.id),
+      await datasource.getMaxConsultationNumberByClinicalRecordId(
+        patient.clinicalRecord.id,
+      ),
     ).toBe(0);
 
     const first = await orderFor(patient.user.id);
@@ -94,7 +99,9 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
     await datasource.deleteNutritionalConsultationByOrderId(first.id);
 
     expect(
-      await datasource.getMaxConsultationNumberByClinicalRecordId(patient.clinicalRecord.id),
+      await datasource.getMaxConsultationNumberByClinicalRecordId(
+        patient.clinicalRecord.id,
+      ),
     ).toBe(2);
   });
 
@@ -103,15 +110,23 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
       const order = await orderFor(patient.user.id);
       const { id } = await consultationWithDetails(patient, order.id);
 
-      expect(await datasource.deleteNutritionalConsultationByOrderId(order.id)).toBe(true);
+      expect(
+        await datasource.deleteNutritionalConsultationByOrderId(order.id),
+      ).toBe(true);
 
-      expect(await prisma.nutritionalConsultation.count({ where: { id } })).toBe(0);
-      expect(await prisma.anamnesis.count({ where: { consultationId: id } })).toBe(0);
+      expect(
+        await prisma.nutritionalConsultation.count({ where: { id } }),
+      ).toBe(0);
+      expect(
+        await prisma.anamnesis.count({ where: { consultationId: id } }),
+      ).toBe(0);
       expect(await prisma.goals.count()).toBe(0);
       const measurements = await prisma.measurements.findMany({
         where: { clinicalRecordId: patient.clinicalRecord.id },
       });
-      expect(measurements).toEqual([expect.objectContaining({ consultationId: null })]);
+      expect(measurements).toEqual([
+        expect.objectContaining({ consultationId: null }),
+      ]);
     });
 
     it('no borra una consulta que ya tiene plan', async () => {
@@ -119,9 +134,13 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
       const { id } = await consultationWithDetails(patient, order.id);
       await createPlanFor(prisma, id, order.id);
 
-      expect(await datasource.deleteNutritionalConsultationByOrderId(order.id)).toBe(false);
+      expect(
+        await datasource.deleteNutritionalConsultationByOrderId(order.id),
+      ).toBe(false);
 
-      expect(await prisma.nutritionalConsultation.count({ where: { id } })).toBe(1);
+      expect(
+        await prisma.nutritionalConsultation.count({ where: { id } }),
+      ).toBe(1);
       const measurement = await prisma.measurements.findFirstOrThrow({
         where: { clinicalRecordId: patient.clinicalRecord.id },
       });
@@ -131,13 +150,17 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
     it('devuelve false si la orden no tiene consulta', async () => {
       const order = await orderFor(patient.user.id);
 
-      expect(await datasource.deleteNutritionalConsultationByOrderId(order.id)).toBe(false);
+      expect(
+        await datasource.deleteNutritionalConsultationByOrderId(order.id),
+      ).toBe(false);
     });
 
     it('la base impide borrar directamente una consulta con mediciones vinculadas', async () => {
       const { id } = await consultationWithDetails(patient, null);
 
-      await expect(datasource.deleteNutritionalConsultationById(id)).rejects.toBeDefined();
+      await expect(
+        datasource.deleteNutritionalConsultationById(id),
+      ).rejects.toBeDefined();
     });
   });
 
@@ -147,26 +170,38 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
       const other = await createPatient(prisma);
 
       expect(
-        await datasource.getNutritionalConsultationDetailByIdAndPatientId(id, other.user.id),
+        await datasource.getNutritionalConsultationDetailByIdAndPatientId(
+          id,
+          other.user.id,
+        ),
       ).toBeNull();
       expect(
-        await datasource.getNutritionalConsultationDetailByIdAndPatientId(id, patient.user.id),
+        await datasource.getNutritionalConsultationDetailByIdAndPatientId(
+          id,
+          patient.user.id,
+        ),
       ).toMatchObject({ id });
     });
 
     it('el listado es del paciente, oculta las de orden expirada y conserva las sin orden', async () => {
       const pending = await orderFor(patient.user.id);
-      const expired = await orderFor(patient.user.id, { paymentStatus: PaymentStatus.EXPIRED });
+      const expired = await orderFor(patient.user.id, {
+        paymentStatus: PaymentStatus.EXPIRED,
+      });
       const withoutOrder = await consultationWithDetails(patient, null, 1);
       const withPending = await consultationWithDetails(patient, pending.id, 2);
       const withExpired = await consultationWithDetails(patient, expired.id, 3);
       await consultationWithDetails(await createPatient(prisma), null, 1);
 
-      const list = await datasource.getNutritionalConsultationsWithStatusByPatientId(
-        patient.user.id,
-      );
+      const list =
+        await datasource.getNutritionalConsultationsWithStatusByPatientId(
+          patient.user.id,
+        );
 
-      expect(list.map(({ id }) => id)).toEqual([withPending.id, withoutOrder.id]);
+      expect(list.map(({ id }) => id)).toEqual([
+        withPending.id,
+        withoutOrder.id,
+      ]);
       expect(
         await datasource.getNutritionalConsultationDetailByIdAndPatientId(
           withExpired.id,
@@ -176,16 +211,28 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
     });
 
     it('getOrderIdsOfConsultationsWithExpiredOrder ignora las que tienen plan y las no expiradas', async () => {
-      const expired = await orderFor(patient.user.id, { paymentStatus: PaymentStatus.EXPIRED });
+      const expired = await orderFor(patient.user.id, {
+        paymentStatus: PaymentStatus.EXPIRED,
+      });
       await consultationWithDetails(patient, expired.id, 1);
       const expiredWithPlan = await orderFor(patient.user.id, {
         paymentStatus: PaymentStatus.EXPIRED,
       });
-      const consultationWithPlan = await consultationWithDetails(patient, expiredWithPlan.id, 2);
+      const consultationWithPlan = await consultationWithDetails(
+        patient,
+        expiredWithPlan.id,
+        2,
+      );
       await createPlanFor(prisma, consultationWithPlan.id, expiredWithPlan.id);
-      await consultationWithDetails(patient, (await orderFor(patient.user.id)).id, 3);
+      await consultationWithDetails(
+        patient,
+        (await orderFor(patient.user.id)).id,
+        3,
+      );
 
-      expect(await datasource.getOrderIdsOfConsultationsWithExpiredOrder(10)).toEqual([expired.id]);
+      expect(
+        await datasource.getOrderIdsOfConsultationsWithExpiredOrder(10),
+      ).toEqual([expired.id]);
     });
   });
 
@@ -212,14 +259,21 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
     };
 
     it('devuelve la última consulta con plan, no una más nueva todavía sin plan', async () => {
-      const paid = await orderFor(patient.user.id, { paymentStatus: PaymentStatus.PAID });
+      const paid = await orderFor(patient.user.id, {
+        paymentStatus: PaymentStatus.PAID,
+      });
       const withPlan = await consultationWithDetails(patient, paid.id, 1);
       await addMainPlan(withPlan.id, paid.id);
-      await consultationWithDetails(patient, (await orderFor(patient.user.id)).id, 2);
-
-      const latest = await datasource.getLatestNutritionalConsultationWithDetailsByPatientId(
-        patient.user.id,
+      await consultationWithDetails(
+        patient,
+        (await orderFor(patient.user.id)).id,
+        2,
       );
+
+      const latest =
+        await datasource.getLatestNutritionalConsultationWithDetailsByPatientId(
+          patient.user.id,
+        );
 
       expect(latest?.id).toBe(withPlan.id);
     });
@@ -228,7 +282,9 @@ describe('NutritionalConsultationDatasourceImpl (Postgres)', () => {
       await consultationWithDetails(patient, null);
 
       expect(
-        await datasource.getLatestNutritionalConsultationWithDetailsByPatientId(patient.user.id),
+        await datasource.getLatestNutritionalConsultationWithDetailsByPatientId(
+          patient.user.id,
+        ),
       ).toBeNull();
     });
   });

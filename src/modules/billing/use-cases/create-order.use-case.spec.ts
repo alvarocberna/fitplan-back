@@ -3,8 +3,12 @@ import { OrderRepository } from '../../../domain/repositories/commercial-domain/
 
 describe('CreateOrderUseCase', () => {
   it('crea la orden pendiente con monto y moneda del producto, sin archivos ni plan, con 24 h para pagarse', async () => {
-    const orderRepository = { createOrder: jest.fn().mockResolvedValue({ id: 'order-1' }) };
-    const useCase = new CreateOrderUseCase(orderRepository as unknown as OrderRepository);
+    const orderRepository = {
+      createOrder: jest.fn().mockResolvedValue({ id: 'order-1' }),
+    };
+    const useCase = new CreateOrderUseCase(
+      orderRepository as unknown as OrderRepository,
+    );
 
     await expect(
       useCase.execute({
@@ -30,8 +34,8 @@ describe('CreateOrderUseCase', () => {
       expirationDate: expect.any(Date),
     });
     const [created] = orderRepository.createOrder.mock.calls[0];
-    expect(created.expirationDate.getTime() - created.creationDate.getTime()).toBe(
-      24 * 60 * 60 * 1000,
-    );
+    expect(
+      created.expirationDate.getTime() - created.creationDate.getTime(),
+    ).toBe(24 * 60 * 60 * 1000);
   });
 });

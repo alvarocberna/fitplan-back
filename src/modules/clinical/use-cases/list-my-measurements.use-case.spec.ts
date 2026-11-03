@@ -10,7 +10,9 @@ describe('ListMyMeasurementsUseCase', () => {
   const claims: CognitoUserClaims = { sub: 'test-sub' };
 
   beforeEach(() => {
-    const currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
+    const currentUser = {
+      resolve: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
     measurementsRepository = { listMeasurementsByPatientId: jest.fn() };
     useCase = new ListMyMeasurementsUseCase(
       currentUser as unknown as CurrentUserResolver,
@@ -27,7 +29,16 @@ describe('ListMyMeasurementsUseCase', () => {
         level: 'BIOIMPEDANCE',
         consultationId: null,
         basicMeasurements: [{ weight: 70, height: 172 }],
-        measurementResults: [{ bmi: null, bmiClassification: null, bfKg: 12.6, bfPercentage: 18, mmKg: 30, mmPercentage: null }],
+        measurementResults: [
+          {
+            bmi: null,
+            bmiClassification: null,
+            bfKg: 12.6,
+            bfPercentage: 18,
+            mmKg: 30,
+            mmPercentage: null,
+          },
+        ],
       },
       {
         id: 'm-1',
@@ -44,7 +55,9 @@ describe('ListMyMeasurementsUseCase', () => {
 
     const result = await useCase.execute({ claims, from });
 
-    expect(measurementsRepository.listMeasurementsByPatientId).toHaveBeenCalledWith('user-1', {
+    expect(
+      measurementsRepository.listMeasurementsByPatientId,
+    ).toHaveBeenCalledWith('user-1', {
       from,
       to: undefined,
     });

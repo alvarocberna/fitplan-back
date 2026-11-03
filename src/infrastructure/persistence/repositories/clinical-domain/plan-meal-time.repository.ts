@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { PlanMealTimeRepository } from '../../../../domain/repositories/clinical-domain/plan-meal-time.repository';
 import { PlanMealTimeDatasource } from '../../../../domain/datasources/clinical-domain/plan-meal-time.datasource';
 import { PlanMealTimeEntity } from '../../../../domain/entities/nutritional-plan.entity';
-import { CreatePlanMealTimeDto, UpdatePlanMealTimeDto } from '../../../../domain';
+import {
+  CreatePlanMealTimeDto,
+  UpdatePlanMealTimeDto,
+} from '../../../../domain';
 
 @Injectable()
 export class PlanMealTimeRepositoryImpl implements PlanMealTimeRepository {

@@ -6,23 +6,34 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { FetchError, JwksValidationError, JwtBaseError } from 'aws-jwt-verify/error';
+import {
+  FetchError,
+  JwksValidationError,
+  JwtBaseError,
+} from 'aws-jwt-verify/error';
 import { getCognitoVerifier } from '../../infrastructure/auth/cognito/cognito-verifier';
 import { ErrorCode } from '../errors/error-codes';
+import { CognitoUserClaims } from './cognito-user.decorator';
+
+interface AuthenticatedRequest {
+  headers: Record<string, string | string[] | undefined>;
+  cognitoUser?: CognitoUserClaims;
+}
 
 @Injectable()
 export class CognitoAuthGuard implements CanActivate {
   private readonly logger = new Logger(CognitoAuthGuard.name);
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const authHeader = request.headers['authorization'];
     const token =
       typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
         ? authHeader.slice('Bearer '.length)
         : null;
 
-    if (!token) throw new UnauthorizedException('Falta el token de autenticación');
+    if (!token)
+      throw new UnauthorizedException('Falta el token de autenticación');
 
     // Fuera del try: una configuración faltante es un error del servidor (500), no un token inválido.
     const verifier = getCognitoVerifier();

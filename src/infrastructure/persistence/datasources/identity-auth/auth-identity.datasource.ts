@@ -6,7 +6,10 @@ import {
   AuthIdentityEntity,
   AuthProvider,
 } from '../../../../domain/entities/user.entity';
-import { CreateAuthIdentityDto, UpdateAuthIdentityDto } from '../../../../domain';
+import {
+  CreateAuthIdentityDto,
+  UpdateAuthIdentityDto,
+} from '../../../../domain';
 
 @Injectable()
 export class AuthIdentityDatasourceImpl implements AuthIdentityDatasource {

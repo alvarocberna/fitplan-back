@@ -34,7 +34,9 @@ export class CreateOrderUseCase {
       generationUpdatedAt: null,
       creationDate,
       paymentDate: null,
-      expirationDate: new Date(creationDate.getTime() + ORDER_PAYMENT_WINDOW_MS),
+      expirationDate: new Date(
+        creationDate.getTime() + ORDER_PAYMENT_WINDOW_MS,
+      ),
     });
   }
 }

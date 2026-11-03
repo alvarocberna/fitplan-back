@@ -27,12 +27,15 @@ Reglas:
 
 No incluyas ningún texto fuera del objeto JSON.${UNTRUSTED_INPUT_RULES}`;
 
-export function buildExtractInfoPromptUserMessage(consultation: CompleteConsultationDto): string {
+export function buildExtractInfoPromptUserMessage(
+  consultation: CompleteConsultationDto,
+): string {
   return `Determina physicalActivityLevel y goal en base a los siguientes datos de la consulta:
 
 ${JSON.stringify(
   {
-    physicalActivityLevel: consultation.anamnesis?.lifestyle?.physicalActivityLevel ?? null,
+    physicalActivityLevel:
+      consultation.anamnesis?.lifestyle?.physicalActivityLevel ?? null,
     primaryGoal: consultation.anamnesis?.goals?.primaryGoal ?? null,
     secondaryGoal: consultation.anamnesis?.goals?.secondaryGoal ?? null,
   },

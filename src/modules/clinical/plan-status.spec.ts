@@ -15,7 +15,9 @@ describe('toPlanStatus', () => {
   ] as const)(
     'paymentStatus %s + generationStatus %s + attempts %i -> %s',
     (paymentStatus, generationStatus, attempts, expected) => {
-      expect(toPlanStatus({ paymentStatus, generationStatus, attempts })).toBe(expected);
+      expect(toPlanStatus({ paymentStatus, generationStatus, attempts })).toBe(
+        expected,
+      );
     },
   );
 

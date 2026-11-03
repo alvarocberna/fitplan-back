@@ -18,7 +18,10 @@ export const PROJECTION_MIN_MONTHS = 1;
 export const FAT_LOSS_KG_PER_MONTH = 2;
 export const MUSCLE_GAIN_RATE_PER_MONTH = 0.01;
 export const MIN_HEALTHY_BMI = 20;
-export const MIN_HEALTHY_BF_PERCENTAGE: Record<'M' | 'F', number> = { M: 10, F: 20 };
+export const MIN_HEALTHY_BF_PERCENTAGE: Record<'M' | 'F', number> = {
+  M: 10,
+  F: 20,
+};
 
 export interface ProjectionInput {
   goal: string;
@@ -62,14 +65,18 @@ function addMonths(date: Date, months: number): Date {
 
 function minBfPercentageFor(gender: string | null): number | null {
   const initial = gender?.charAt(0).toUpperCase();
-  if (initial === 'M' || initial === 'F') return MIN_HEALTHY_BF_PERCENTAGE[initial];
+  if (initial === 'M' || initial === 'F')
+    return MIN_HEALTHY_BF_PERCENTAGE[initial];
   return null;
 }
 
 // Pérdida de `lossKg` de grasa: devuelve los valores resultantes (sin redondear).
 function afterFatLoss(input: ProjectionInput, lossKg: number) {
   const weight = input.weight - lossKg;
-  const bfKg = input.bfPercentage != null ? (input.weight * input.bfPercentage) / 100 - lossKg : null;
+  const bfKg =
+    input.bfPercentage != null
+      ? (input.weight * input.bfPercentage) / 100 - lossKg
+      : null;
   return {
     weight,
     bmi: calculateBmi({ weight, height: input.height }),
@@ -90,19 +97,27 @@ function toProjectedValues(values: {
     weight: round1(values.weight),
     bmi: round1(values.bmi),
     bfKg: values.bfKg != null ? round1(values.bfKg) : null,
-    bfPercentage: values.bfPercentage != null ? round1(values.bfPercentage) : null,
+    bfPercentage:
+      values.bfPercentage != null ? round1(values.bfPercentage) : null,
     mmKg: values.mmKg != null ? round1(values.mmKg) : null,
-    mmPercentage: values.mmKg != null ? round1((values.mmKg / values.weight) * 100) : null,
+    mmPercentage:
+      values.mmKg != null ? round1((values.mmKg / values.weight) * 100) : null,
   };
 }
 
 function projectFatLoss(input: ProjectionInput): ProjectionResult {
   const minBf = minBfPercentageFor(input.gender);
-  for (let months = PROJECTION_MAX_MONTHS; months >= PROJECTION_MIN_MONTHS; months--) {
+  for (
+    let months = PROJECTION_MAX_MONTHS;
+    months >= PROJECTION_MIN_MONTHS;
+    months--
+  ) {
     const values = afterFatLoss(input, FAT_LOSS_KG_PER_MONTH * months);
     const healthyBmi = values.bmi >= MIN_HEALTHY_BMI;
     const healthyBf =
-      minBf == null || values.bfPercentage == null || values.bfPercentage >= minBf;
+      minBf == null ||
+      values.bfPercentage == null ||
+      values.bfPercentage >= minBf;
     if (healthyBmi && healthyBf) {
       return {
         months,
@@ -122,7 +137,10 @@ function projectMuscleGain(input: ProjectionInput): ProjectionResult {
   const months = PROJECTION_MAX_MONTHS;
   const gainKg = input.weight * MUSCLE_GAIN_RATE_PER_MONTH * months;
   const weight = input.weight + gainKg;
-  const bfKg = input.bfPercentage != null ? (input.weight * input.bfPercentage) / 100 : null;
+  const bfKg =
+    input.bfPercentage != null
+      ? (input.weight * input.bfPercentage) / 100
+      : null;
   return {
     months,
     endDate: addMonths(input.startDate, months),

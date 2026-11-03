@@ -102,29 +102,54 @@ describe('calculateProjection', () => {
 describe('evaluateGoalFeasibility', () => {
   it('bajar de peso con IMC 20 o menor no es factible', () => {
     expect(
-      evaluateGoalFeasibility({ goal: 'definicion', weight: 59, height: 172, gender: 'M' }),
+      evaluateGoalFeasibility({
+        goal: 'definicion',
+        weight: 59,
+        height: 172,
+        gender: 'M',
+      }),
     ).toEqual({ feasible: false });
   });
 
   it('bajar de peso con IMC que tras 1 mes quedaría bajo 20 no es factible', () => {
     // 60 kg / 172 cm = IMC 20,3; -2 kg -> 19,6
     expect(
-      evaluateGoalFeasibility({ goal: 'definicion', weight: 60, height: 172, gender: 'M' }),
+      evaluateGoalFeasibility({
+        goal: 'definicion',
+        weight: 60,
+        height: 172,
+        gender: 'M',
+      }),
     ).toEqual({ feasible: false });
   });
 
   it('bajar de peso con IMC saludable es factible', () => {
     expect(
-      evaluateGoalFeasibility({ goal: 'definicion', weight: 80, height: 172, gender: 'M' }),
+      evaluateGoalFeasibility({
+        goal: 'definicion',
+        weight: 80,
+        height: 172,
+        gender: 'M',
+      }),
     ).toEqual({ feasible: true });
   });
 
   it('volumen y mantención siempre son factibles', () => {
     expect(
-      evaluateGoalFeasibility({ goal: 'volumen', weight: 50, height: 172, gender: 'M' }),
+      evaluateGoalFeasibility({
+        goal: 'volumen',
+        weight: 50,
+        height: 172,
+        gender: 'M',
+      }),
     ).toEqual({ feasible: true });
     expect(
-      evaluateGoalFeasibility({ goal: 'mantencion', weight: 50, height: 172, gender: 'M' }),
+      evaluateGoalFeasibility({
+        goal: 'mantencion',
+        weight: 50,
+        height: 172,
+        gender: 'M',
+      }),
     ).toEqual({ feasible: true });
   });
 });
@@ -141,7 +166,9 @@ describe('findLatestBodyComposition', () => {
   });
 
   it('sin mediciones con composición corporal devuelve nulls', () => {
-    expect(findLatestBodyComposition([{ measurementResults: [] }] as any)).toEqual({
+    expect(
+      findLatestBodyComposition([{ measurementResults: [] }] as any),
+    ).toEqual({
       bfPercentage: null,
       mmKg: null,
     });

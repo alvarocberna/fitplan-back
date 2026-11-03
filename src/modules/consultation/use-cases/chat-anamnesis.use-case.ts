@@ -9,12 +9,12 @@ import { buildAnamnesisChatSystemPrompt } from '../prompts/anamnesis-chat.prompt
 import { OutputChatDto, AnamnesisDto } from '../../../domain';
 import { LlmProvider } from '../../../domain/ports';
 
-
 // CU-CON-01. Este endpoint (POST /consultations/chat) puede ser usado por cualquier visitante de la página, incluso
 // sin llegar a pagar: se mantiene en el modelo económico actual para no disparar costos por tráfico
 // curioso. Configurable vía env var sin necesidad de redeploy.
 // Se lee en cada uso (función): al importar este archivo el .env todavía no está cargado.
-const consultationModel = () => process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
+const consultationModel = () =>
+  process.env.OPENAI_MODEL_CONSULTA ?? 'gpt-4o-mini';
 
 @Injectable()
 export class ChatAnamnesisUseCase {
@@ -22,7 +22,6 @@ export class ChatAnamnesisUseCase {
 
   //método principal - recibe mensajes del user y devuelve una respuesta
   async execute(body: InputChatDtoImpl): Promise<OutputChatDtoImpl> {
-
     /*
       systemPrompt genera un prompt que le dice a openai como actuar
       intrucciones del prompt:
@@ -55,15 +54,22 @@ export class ChatAnamnesisUseCase {
 
     // repara desvíos de forma del LLM (campos anidados, tipos incorrectos, claves
     // desconocidas) antes de usar el objeto internamente o devolverlo al cliente.
-    const normalizedAnamnesis = normalizeAnamnesisPayload(llmResponse.anamnesis);
+    const normalizedAnamnesis = normalizeAnamnesisPayload(
+      llmResponse.anamnesis,
+    );
 
     // server-side guard: si el campo isComplete de la respuesta de openai es true
     // y los campos obligatorios están completos, isComplete del responde cambia a true
-    const isComplete = llmResponse.isComplete && this.meetsCompletionRules(normalizedAnamnesis);
+    const isComplete =
+      llmResponse.isComplete && this.meetsCompletionRules(normalizedAnamnesis);
 
     return {
-      reply: llmResponse.reply?.trim() ? llmResponse.reply : this.fallbackReply(),
-      titleReply: llmResponse.titleReply?.trim() ? llmResponse.titleReply : this.fallbackTitleReply(),
+      reply: llmResponse.reply?.trim()
+        ? llmResponse.reply
+        : this.fallbackReply(),
+      titleReply: llmResponse.titleReply?.trim()
+        ? llmResponse.titleReply
+        : this.fallbackTitleReply(),
       anamnesis: normalizedAnamnesis as unknown as AnamnesisDtoImpl,
       isComplete,
     };
@@ -78,7 +84,6 @@ export class ChatAnamnesisUseCase {
   private fallbackTitleReply(): string {
     return 'Continuando con la consulta';
   }
-
 
   // ── Completeness helpers ───────────────────────────────────────────────────
 

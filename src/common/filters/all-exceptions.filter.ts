@@ -24,7 +24,7 @@ import {
 // español); `errors` lleva el detalle técnico de una validación fallida.
 export interface ErrorResponseBody {
   statusCode: number;
-  code: ErrorCode | string;
+  code: string;
   message: string;
   errors?: string[];
   requestId?: string;
@@ -32,10 +32,19 @@ export interface ErrorResponseBody {
   path?: string;
 }
 
-type ResolvedError = Pick<ErrorResponseBody, 'statusCode' | 'code' | 'message' | 'errors'>;
+type ResolvedError = Pick<
+  ErrorResponseBody,
+  'statusCode' | 'code' | 'message' | 'errors'
+>;
 
 // Códigos de Prisma que significan "no se pudo hablar con la base de datos".
-const PRISMA_CONNECTION_CODES = new Set(['P1001', 'P1002', 'P1008', 'P1017', 'P2024']);
+const PRISMA_CONNECTION_CODES = new Set([
+  'P1001',
+  'P1002',
+  'P1008',
+  'P1017',
+  'P2024',
+]);
 
 const LLM_UNAVAILABLE_MESSAGE =
   'El asistente no está disponible en este momento. Intenta nuevamente en unos minutos.';
@@ -52,7 +61,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<{ url?: string; method?: string; requestId?: string }>();
+    const request = ctx.getRequest<{
+      url?: string;
+      method?: string;
+      requestId?: string;
+    }>();
 
     const resolved = this.resolve(exception);
     const requestId = request?.requestId;
@@ -73,7 +86,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private resolve(exception: unknown): ResolvedError {
-    if (exception instanceof HttpException) return this.fromHttpException(exception);
+    if (exception instanceof HttpException)
+      return this.fromHttpException(exception);
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       return this.fromPrismaKnownError(exception);
@@ -120,7 +134,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // Errores de middlewares de Express (body-parser: cuerpo demasiado grande, JSON malformado) no
     // son HttpException pero traen su status. Solo se respeta si es un error del cliente (4xx).
-    const status = (exception as { status?: unknown; statusCode?: unknown })?.status ??
+    const status =
+      (exception as { status?: unknown; statusCode?: unknown })?.status ??
       (exception as { statusCode?: unknown })?.statusCode;
     if (typeof status === 'number' && status >= 400 && status < 500) {
       return {
@@ -153,7 +168,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (typeof body === 'string') {
       message = body;
     } else if (body && typeof body === 'object') {
-      const raw = body as { message?: unknown; errors?: unknown; code?: unknown; error?: unknown };
+      const raw = body as {
+        message?: unknown;
+        errors?: unknown;
+        code?: unknown;
+        error?: unknown;
+      };
       if (typeof raw.code === 'string') code = raw.code;
       if (Array.isArray(raw.errors)) errors = raw.errors.map(String);
       if (Array.isArray(raw.message)) {
@@ -181,9 +201,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private isFrameworkMessage(message: string): boolean {
-    return /^(Cannot (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) |Validation failed|Unexpected token|Bad Request$|Unauthorized$|Not Found$|Forbidden$|Internal Server Error$|ThrottlerException|Too Many Requests|request entity too large|Payload Too Large)/i.test(
-      message,
-    ) || /in JSON at position/.test(message);
+    return (
+      /^(Cannot (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) |Validation failed|Unexpected token|Bad Request$|Unauthorized$|Not Found$|Forbidden$|Internal Server Error$|ThrottlerException|Too Many Requests|request entity too large|Payload Too Large)/i.test(
+        message,
+      ) || /in JSON at position/.test(message)
+    );
   }
 
   private fromPrismaKnownError(
@@ -265,10 +287,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
       return;
     }
-    if (
-      resolved.statusCode === HttpStatus.UNAUTHORIZED ||
-      resolved.statusCode === HttpStatus.NOT_FOUND
-    ) {
+    const debugOnlyStatuses: number[] = [
+      HttpStatus.UNAUTHORIZED,
+      HttpStatus.NOT_FOUND,
+    ];
+    if (debugOnlyStatuses.includes(resolved.statusCode)) {
       this.logger.debug(context);
       return;
     }

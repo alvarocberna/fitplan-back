@@ -4,8 +4,14 @@ import { AnamnesisDto } from '../../../domain';
 // System prompt del chat de anamnesis (CU-CON-01): describe el esquema completo de AnamnesisDto y el
 // estado ya recopilado, para que el modelo devuelva la ficha completa actualizada en cada turno.
 
-export function buildAnamnesisChatSystemPrompt(currentAnamnesis: AnamnesisDto | null): string {
-  const currentState = JSON.stringify(currentAnamnesis ?? buildEmptyAnamnesis(), null, 2);
+export function buildAnamnesisChatSystemPrompt(
+  currentAnamnesis: AnamnesisDto | null,
+): string {
+  const currentState = JSON.stringify(
+    currentAnamnesis ?? buildEmptyAnamnesis(),
+    null,
+    2,
+  );
 
   return `
     Eres un nutricionista deportivo experto que está realizando una consulta nutricional por chat.
@@ -390,6 +396,12 @@ export function buildEmptyAnamnesis(): AnamnesisDto {
       surgeries: null,
     },
     dietary: { r24h: null, foodPreferenceGroups: null, sportsStrategy: null },
-    lifestyle: { alcohol: null, tobacco: null, physicalActivityLevel: null, sport: null, sportSession: null },
+    lifestyle: {
+      alcohol: null,
+      tobacco: null,
+      physicalActivityLevel: null,
+      sport: null,
+      sportSession: null,
+    },
   };
 }

@@ -16,9 +16,10 @@ import { PaymentGatewayUnavailableError } from '../../domain/errors/payment.erro
 import { ErrorCode } from '../errors/error-codes';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
-function createMockHost(
-  request: Record<string, unknown> = {},
-): { host: ArgumentsHost; response: any } {
+function createMockHost(request: Record<string, unknown> = {}): {
+  host: ArgumentsHost;
+  response: any;
+} {
   const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
   const host = {
     switchToHttp: () => ({
@@ -43,12 +44,19 @@ function prismaKnownError(code: string): Prisma.PrismaClientKnownRequestError {
 
 describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter;
-  let logger: { error: jest.SpyInstance; warn: jest.SpyInstance; debug: jest.SpyInstance };
+  let logger: {
+    error: jest.SpyInstance;
+    warn: jest.SpyInstance;
+    debug: jest.SpyInstance;
+  };
 
   const run = (exception: unknown, request?: Record<string, unknown>) => {
     const { host, response } = createMockHost(request);
     filter.catch(exception, host);
-    return { status: response.status.mock.calls[0][0], body: response.json.mock.calls[0][0] };
+    return {
+      status: response.status.mock.calls[0][0],
+      body: response.json.mock.calls[0][0],
+    };
   };
 
   beforeEach(() => {
@@ -63,7 +71,9 @@ describe('AllExceptionsFilter', () => {
 
   describe('formato de la respuesta', () => {
     it('responde siempre { statusCode, code, message, requestId, timestamp, path }', () => {
-      const { status, body } = run(new NotFoundException('Orden no encontrada'));
+      const { status, body } = run(
+        new NotFoundException('Orden no encontrada'),
+      );
 
       expect(status).toBe(404);
       expect(body).toEqual({
@@ -90,7 +100,10 @@ describe('AllExceptionsFilter', () => {
   describe('HttpException', () => {
     it('usa el code y el message que trae la excepción', () => {
       const { status, body } = run(
-        new ConflictException({ code: ErrorCode.ORDER_EXPIRED, message: 'La orden expiró sin pagarse' }),
+        new ConflictException({
+          code: ErrorCode.ORDER_EXPIRED,
+          message: 'La orden expiró sin pagarse',
+        }),
       );
 
       expect(status).toBe(409);
@@ -99,16 +112,18 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('sin code propio lo deriva del status', () => {
-      expect(run(new UnauthorizedException('Token inválido o expirado')).body.code).toBe(
-        ErrorCode.UNAUTHENTICATED,
-      );
-      expect(run(new BadRequestException('Se requieren peso y talla')).body.code).toBe(
-        ErrorCode.BAD_REQUEST,
-      );
+      expect(
+        run(new UnauthorizedException('Token inválido o expirado')).body.code,
+      ).toBe(ErrorCode.UNAUTHENTICATED);
+      expect(
+        run(new BadRequestException('Se requieren peso y talla')).body.code,
+      ).toBe(ErrorCode.BAD_REQUEST);
     });
 
     it('un message en arreglo pasa a errors y message queda como string', () => {
-      const { body } = run(new BadRequestException({ message: ['campo x es requerido'] }));
+      const { body } = run(
+        new BadRequestException({ message: ['campo x es requerido'] }),
+      );
 
       expect(body.message).toBe('La solicitud no es válida');
       expect(body.errors).toEqual(['campo x es requerido']);
@@ -130,11 +145,20 @@ describe('AllExceptionsFilter', () => {
 
     it.each([
       [new NotFoundException(), 'No encontramos lo que buscas'],
-      [new NotFoundException('Cannot GET /api/v1/nada'), 'No encontramos lo que buscas'],
-      [new BadRequestException('Validation failed (uuid v 4 is expected)'), 'La solicitud no es válida'],
-    ])('reemplaza los textos en inglés del framework por un mensaje en español', (exception, message) => {
-      expect(run(exception).body.message).toBe(message);
-    });
+      [
+        new NotFoundException('Cannot GET /api/v1/nada'),
+        'No encontramos lo que buscas',
+      ],
+      [
+        new BadRequestException('Validation failed (uuid v 4 is expected)'),
+        'La solicitud no es válida',
+      ],
+    ])(
+      'reemplaza los textos en inglés del framework por un mensaje en español',
+      (exception, message) => {
+        expect(run(exception).body.message).toBe(message);
+      },
+    );
   });
 
   describe('errores de Prisma', () => {
@@ -145,17 +169,23 @@ describe('AllExceptionsFilter', () => {
       ['P1001', 503, ErrorCode.DATABASE_UNAVAILABLE],
       ['P2024', 503, ErrorCode.DATABASE_UNAVAILABLE],
       ['P2010', 500, ErrorCode.INTERNAL_ERROR],
-    ])('%s -> %i %s, sin filtrar el mensaje interno', (prismaCode, statusCode, code) => {
-      const { status, body } = run(prismaKnownError(prismaCode));
+    ])(
+      '%s -> %i %s, sin filtrar el mensaje interno',
+      (prismaCode, statusCode, code) => {
+        const { status, body } = run(prismaKnownError(prismaCode));
 
-      expect(status).toBe(statusCode);
-      expect(body.code).toBe(code);
-      expect(body.message).not.toContain('prisma');
-    });
+        expect(status).toBe(statusCode);
+        expect(body.code).toBe(code);
+        expect(body.message).not.toContain('prisma');
+      },
+    );
 
     it('no poder conectarse a la base responde 503 DATABASE_UNAVAILABLE', () => {
       const { status, body } = run(
-        new Prisma.PrismaClientInitializationError("Can't reach database server", 'test'),
+        new Prisma.PrismaClientInitializationError(
+          "Can't reach database server",
+          'test',
+        ),
       );
 
       expect(status).toBe(503);
@@ -167,16 +197,21 @@ describe('AllExceptionsFilter', () => {
     it.each([
       [new LlmUnavailableError('OpenAI no respondió (HTTP 429)')],
       [new LlmInvalidResponseError('respuesta vacía')],
-    ])('un error del proveedor de LLM responde 503 LLM_UNAVAILABLE', (exception) => {
-      const { status, body } = run(exception);
+    ])(
+      'un error del proveedor de LLM responde 503 LLM_UNAVAILABLE',
+      (exception) => {
+        const { status, body } = run(exception);
 
-      expect(status).toBe(503);
-      expect(body.code).toBe(ErrorCode.LLM_UNAVAILABLE);
-      expect(body.message).not.toContain('OpenAI');
-    });
+        expect(status).toBe(503);
+        expect(body.code).toBe(ErrorCode.LLM_UNAVAILABLE);
+        expect(body.message).not.toContain('OpenAI');
+      },
+    );
 
     it('un fallo de la pasarela de pago responde 503 PAYMENT_UNAVAILABLE, sin detalle del proveedor', () => {
-      const { status, body } = run(new PaymentGatewayUnavailableError('Transbank commit: 422'));
+      const { status, body } = run(
+        new PaymentGatewayUnavailableError('Transbank commit: 422'),
+      );
 
       expect(status).toBe(503);
       expect(body.code).toBe(ErrorCode.PAYMENT_UNAVAILABLE);
@@ -184,7 +219,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('un fallo del proveedor de identidad responde 503 AUTH_UNAVAILABLE', () => {
-      const { status, body } = run(new IdentityProviderUnavailableError('Cognito respondió HTTP 500'));
+      const { status, body } = run(
+        new IdentityProviderUnavailableError('Cognito respondió HTTP 500'),
+      );
 
       expect(status).toBe(503);
       expect(body.code).toBe(ErrorCode.AUTH_UNAVAILABLE);
@@ -192,7 +229,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('el rate limiting responde 429 RATE_LIMITED con un mensaje en español', () => {
-      const { status, body } = run(new HttpException('ThrottlerException: Too Many Requests', 429));
+      const { status, body } = run(
+        new HttpException('ThrottlerException: Too Many Requests', 429),
+      );
 
       expect(status).toBe(429);
       expect(body.code).toBe(ErrorCode.RATE_LIMITED);
@@ -200,7 +239,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('un error 4xx de un middleware de Express (body demasiado grande) conserva su status', () => {
-      const { status, body } = run(Object.assign(new Error('request entity too large'), { status: 413 }));
+      const { status, body } = run(
+        Object.assign(new Error('request entity too large'), { status: 413 }),
+      );
 
       expect(status).toBe(413);
       expect(body.code).toBe(ErrorCode.PAYLOAD_TOO_LARGE);
@@ -208,7 +249,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('un status 5xx en un error que no es HttpException no se respeta: es un 500', () => {
-      expect(run(Object.assign(new Error('x'), { status: 502 })).status).toBe(500);
+      expect(run(Object.assign(new Error('x'), { status: 502 })).status).toBe(
+        500,
+      );
     });
 
     it('un error desconocido responde 500 INTERNAL_ERROR con un mensaje genérico', () => {
@@ -216,7 +259,9 @@ describe('AllExceptionsFilter', () => {
 
       expect(status).toBe(500);
       expect(body.code).toBe(ErrorCode.INTERNAL_ERROR);
-      expect(body.message).toBe('Ocurrió un error inesperado. Intenta nuevamente.');
+      expect(body.message).toBe(
+        'Ocurrió un error inesperado. Intenta nuevamente.',
+      );
     });
 
     it('algo lanzado que no es un Error también responde 500', () => {
@@ -224,7 +269,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('sin requestId en la request no lo incluye', () => {
-      expect(run(new Error('x'), { requestId: undefined }).body).not.toHaveProperty('requestId');
+      expect(
+        run(new Error('x'), { requestId: undefined }).body,
+      ).not.toHaveProperty('requestId');
     });
   });
 
@@ -234,7 +281,11 @@ describe('AllExceptionsFilter', () => {
       run(exception);
 
       expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ requestId: 'req-12345678', status: 500, cause: 'Error: algo explotó' }),
+        expect.objectContaining({
+          requestId: 'req-12345678',
+          status: 500,
+          cause: 'Error: algo explotó',
+        }),
         exception.stack,
       );
     });
@@ -260,7 +311,9 @@ describe('AllExceptionsFilter', () => {
     it('el resto de los 4xx se loguea como warn, sin stack', () => {
       run(new BadRequestException('Se requieren peso y talla'));
 
-      expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ status: 400 }));
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 400 }),
+      );
       expect(logger.error).not.toHaveBeenCalled();
     });
   });

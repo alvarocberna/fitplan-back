@@ -90,7 +90,11 @@ describe('App (e2e)', () => {
         findOrCreateAuthIdentity: jest.fn(),
       })
       .overrideProvider(UserRepository)
-      .useValue({ getUserById: jest.fn(), findOrCreateUserByEmail: jest.fn(), updateUserById: jest.fn() })
+      .useValue({
+        getUserById: jest.fn(),
+        findOrCreateUserByEmail: jest.fn(),
+        updateUserById: jest.fn(),
+      })
       .overrideProvider(ClinicalRecordRepository)
       .useValue({ findOrCreateClinicalRecordByPatientId: jest.fn() })
       .overrideProvider(NutritionalConsultationRepository)
@@ -160,7 +164,11 @@ describe('App (e2e)', () => {
       .overrideProvider(PlanDocumentRenderer)
       .useValue({ renderPdf: jest.fn(), renderThumbnail: jest.fn() })
       .overrideProvider(FileStorage)
-      .useValue({ uploadPdf: jest.fn(), uploadImage: jest.fn(), getSignedDownloadUrl: jest.fn() })
+      .useValue({
+        uploadPdf: jest.fn(),
+        uploadImage: jest.fn(),
+        getSignedDownloadUrl: jest.fn(),
+      })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -171,7 +179,9 @@ describe('App (e2e)', () => {
     authIdentityRepository = moduleFixture.get(AuthIdentityRepository);
     userRepository = moduleFixture.get(UserRepository);
     clinicalRecordRepository = moduleFixture.get(ClinicalRecordRepository);
-    nutritionalConsultationRepository = moduleFixture.get(NutritionalConsultationRepository);
+    nutritionalConsultationRepository = moduleFixture.get(
+      NutritionalConsultationRepository,
+    );
     productRepository = moduleFixture.get(ProductRepository);
     orderRepository = moduleFixture.get(OrderRepository);
     paymentRepository = moduleFixture.get(PaymentRepository);
@@ -197,13 +207,22 @@ describe('App (e2e)', () => {
   });
 
   it('las rutas anteriores (en español y sin prefijo) ya no existen', async () => {
-    await request(app.getHttpServer()).post('/ordenes/crear').set(AUTH).expect(404);
-    await request(app.getHttpServer()).post(api('/ordenes/crear')).set(AUTH).expect(404);
+    await request(app.getHttpServer())
+      .post('/ordenes/crear')
+      .set(AUTH)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(api('/ordenes/crear'))
+      .set(AUTH)
+      .expect(404);
   });
 
   describe('GET /me y PATCH /me', () => {
     it('GET /me devuelve el perfil del usuario del token', async () => {
-      const response = await request(app.getHttpServer()).get(api('/me')).set(AUTH).expect(200);
+      const response = await request(app.getHttpServer())
+        .get(api('/me'))
+        .set(AUTH)
+        .expect(200);
 
       expect(response.body).toMatchObject({
         email: 'ana@example.com',
@@ -217,7 +236,10 @@ describe('App (e2e)', () => {
     });
 
     it('PATCH /me acepta un body parcial y actualiza solo esos campos', async () => {
-      userRepository.updateUserById.mockResolvedValue({ ...completeUser, athlete: true } as any);
+      userRepository.updateUserById.mockResolvedValue({
+        ...completeUser,
+        athlete: true,
+      } as any);
 
       const response = await request(app.getHttpServer())
         .patch(api('/me'))
@@ -225,30 +247,41 @@ describe('App (e2e)', () => {
         .send({ athlete: true })
         .expect(200);
 
-      expect(userRepository.updateUserById).toHaveBeenCalledWith('user-1', { athlete: true });
+      expect(userRepository.updateUserById).toHaveBeenCalledWith('user-1', {
+        athlete: true,
+      });
       expect(response.body.athlete).toBe(true);
     });
   });
 
   describe('GET /me/consultations', () => {
     it('devuelve las consultas del usuario del token con el estado de su plan', async () => {
-      nutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId.mockResolvedValue([
-        {
-          id: 'c-1',
-          consultationNumber: 1,
-          consultationDate: new Date('2026-03-15T12:00:00.000Z'),
-          orderId: 'order-1',
-          order: { id: 'order-1', paymentStatus: 'PENDING', generationStatus: 'NOT_STARTED' },
-          anamneses: [{ goals: [{ mainGoal: 'bajar de peso' }] }],
-          plans: [],
-        },
-      ] as any);
-
-      const response = await request(app.getHttpServer()).get(api('/me/consultations')).set(AUTH).expect(200);
-
-      expect(nutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId).toHaveBeenCalledWith(
-        'user-1',
+      nutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId.mockResolvedValue(
+        [
+          {
+            id: 'c-1',
+            consultationNumber: 1,
+            consultationDate: new Date('2026-03-15T12:00:00.000Z'),
+            orderId: 'order-1',
+            order: {
+              id: 'order-1',
+              paymentStatus: 'PENDING',
+              generationStatus: 'NOT_STARTED',
+            },
+            anamneses: [{ goals: [{ mainGoal: 'bajar de peso' }] }],
+            plans: [],
+          },
+        ] as any,
       );
+
+      const response = await request(app.getHttpServer())
+        .get(api('/me/consultations'))
+        .set(AUTH)
+        .expect(200);
+
+      expect(
+        nutritionalConsultationRepository.getNutritionalConsultationsWithStatusByPatientId,
+      ).toHaveBeenCalledWith('user-1');
       expect(response.body).toEqual([
         {
           consultationId: 'c-1',
@@ -263,7 +296,9 @@ describe('App (e2e)', () => {
     });
 
     it('sin token devuelve 401', async () => {
-      await request(app.getHttpServer()).get(api('/me/consultations')).expect(401);
+      await request(app.getHttpServer())
+        .get(api('/me/consultations'))
+        .expect(401);
     });
   });
 
@@ -271,26 +306,33 @@ describe('App (e2e)', () => {
     const consultationId = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
 
     it('devuelve el detalle de una consulta del usuario del token', async () => {
-      nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId.mockResolvedValue({
-        id: consultationId,
-        consultationNumber: 1,
-        consultationDate: new Date('2026-03-15T12:00:00.000Z'),
-        orderId: 'order-1',
-        order: { id: 'order-1', paymentStatus: 'PENDING', generationStatus: 'NOT_STARTED' },
-        anamneses: [{ goals: [{ mainGoal: 'bajar de peso', secondaryGoal: [] }] }],
-        measurements: [],
-        plans: [],
-      } as any);
+      nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId.mockResolvedValue(
+        {
+          id: consultationId,
+          consultationNumber: 1,
+          consultationDate: new Date('2026-03-15T12:00:00.000Z'),
+          orderId: 'order-1',
+          order: {
+            id: 'order-1',
+            paymentStatus: 'PENDING',
+            generationStatus: 'NOT_STARTED',
+          },
+          anamneses: [
+            { goals: [{ mainGoal: 'bajar de peso', secondaryGoal: [] }] },
+          ],
+          measurements: [],
+          plans: [],
+        } as any,
+      );
 
       const response = await request(app.getHttpServer())
         .get(api(`/me/consultations/${consultationId}`))
         .set(AUTH)
         .expect(200);
 
-      expect(nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId).toHaveBeenCalledWith(
-        consultationId,
-        'user-1',
-      );
+      expect(
+        nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId,
+      ).toHaveBeenCalledWith(consultationId, 'user-1');
       expect(response.body).toMatchObject({
         consultationId,
         goals: { mainGoal: 'bajar de peso', secondaryGoals: [] },
@@ -301,13 +343,21 @@ describe('App (e2e)', () => {
     });
 
     it('si la consulta no existe o es de otro usuario devuelve 404 (BOLA)', async () => {
-      nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId.mockResolvedValue(null);
+      nutritionalConsultationRepository.getNutritionalConsultationDetailByIdAndPatientId.mockResolvedValue(
+        null,
+      );
 
-      await request(app.getHttpServer()).get(api(`/me/consultations/${consultationId}`)).set(AUTH).expect(404);
+      await request(app.getHttpServer())
+        .get(api(`/me/consultations/${consultationId}`))
+        .set(AUTH)
+        .expect(404);
     });
 
     it('con un id que no es UUID v4 devuelve 400', async () => {
-      await request(app.getHttpServer()).get(api('/me/consultations/no-es-uuid')).set(AUTH).expect(400);
+      await request(app.getHttpServer())
+        .get(api('/me/consultations/no-es-uuid'))
+        .set(AUTH)
+        .expect(400);
     });
   });
 
@@ -327,17 +377,23 @@ describe('App (e2e)', () => {
     const measurements = { weight: 70, height: 175, somatotype: null };
 
     it('con payload válido crea la consulta y su orden, y devuelve 201 + orderId', async () => {
-      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue({
-        id: 'clinical-1',
-      } as any);
+      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue(
+        {
+          id: 'clinical-1',
+        } as any,
+      );
       productRepository.getActiveGeneratedProduct.mockResolvedValue({
         id: 'product-1',
         price: 10000,
         currency: 'CLP',
       } as any);
       orderRepository.createOrder.mockResolvedValue({ id: 'order-1' } as any);
-      nutritionalConsultationRepository.getMaxConsultationNumberByClinicalRecordId.mockResolvedValue(0);
-      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mockResolvedValue({} as any);
+      nutritionalConsultationRepository.getMaxConsultationNumberByClinicalRecordId.mockResolvedValue(
+        0,
+      );
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mockResolvedValue(
+        {} as any,
+      );
 
       const response = await request(app.getHttpServer())
         .post(api('/consultations'))
@@ -378,45 +434,87 @@ describe('App (e2e)', () => {
     };
 
     it('GET /me/measurements lista las mediciones del usuario del token', async () => {
-      measurementsRepository.listMeasurementsByPatientId.mockResolvedValue([measurement] as any);
+      measurementsRepository.listMeasurementsByPatientId.mockResolvedValue([
+        measurement,
+      ] as any);
 
-      const response = await request(app.getHttpServer()).get(api('/me/measurements')).set(AUTH).expect(200);
+      const response = await request(app.getHttpServer())
+        .get(api('/me/measurements'))
+        .set(AUTH)
+        .expect(200);
 
-      expect(measurementsRepository.listMeasurementsByPatientId).toHaveBeenCalledWith('user-1', {
+      expect(
+        measurementsRepository.listMeasurementsByPatientId,
+      ).toHaveBeenCalledWith('user-1', {
         from: undefined,
         to: undefined,
       });
       expect(response.body).toEqual([
-        expect.objectContaining({ measurementId, origin: 'SELF_REPORTED', weight: 70, bmi: null }),
+        expect.objectContaining({
+          measurementId,
+          origin: 'SELF_REPORTED',
+          weight: 70,
+          bmi: null,
+        }),
       ]);
     });
 
     it('GET /me/measurements/:id devuelve el detalle, o 404 si no existe o es de otro usuario (BOLA)', async () => {
-      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValueOnce(measurement as any);
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValueOnce(
+        measurement as any,
+      );
       const response = await request(app.getHttpServer())
         .get(api(`/me/measurements/${measurementId}`))
         .set(AUTH)
         .expect(200);
-      expect(response.body).toMatchObject({ measurementId, raw: { basic: { weight: 70, height: 172 } }, results: [] });
+      expect(response.body).toMatchObject({
+        measurementId,
+        raw: { basic: { weight: 70, height: 172 } },
+        results: [],
+      });
 
-      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValueOnce(null);
-      await request(app.getHttpServer()).get(api(`/me/measurements/${measurementId}`)).set(AUTH).expect(404);
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValueOnce(
+        null,
+      );
+      await request(app.getHttpServer())
+        .get(api(`/me/measurements/${measurementId}`))
+        .set(AUTH)
+        .expect(404);
     });
 
     it('POST /me/measurements registra una medición en el historial del usuario y devuelve 201 con el detalle', async () => {
-      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue({ id: 'cr-1' } as any);
-      measurementsRepository.getMaxMeasurementNumberByClinicalRecordId.mockResolvedValue(0);
-      measurementsRepository.createMeasurementWithDetails.mockResolvedValue({ id: measurementId } as any);
-      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(measurement as any);
+      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId.mockResolvedValue(
+        { id: 'cr-1' } as any,
+      );
+      measurementsRepository.getMaxMeasurementNumberByClinicalRecordId.mockResolvedValue(
+        0,
+      );
+      measurementsRepository.createMeasurementWithDetails.mockResolvedValue({
+        id: measurementId,
+      } as any);
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+        measurement as any,
+      );
 
       const response = await request(app.getHttpServer())
         .post(api('/me/measurements'))
         .set(AUTH)
-        .send({ level: 'BASIC', measuredAt: '2026-05-10T12:00:00.000Z', weight: 70, height: 172 })
+        .send({
+          level: 'BASIC',
+          measuredAt: '2026-05-10T12:00:00.000Z',
+          weight: 70,
+          height: 172,
+        })
         .expect(201);
 
-      expect(measurementsRepository.createMeasurementWithDetails).toHaveBeenCalledWith(
-        expect.objectContaining({ clinicalRecordId: 'cr-1', measurementNumber: 1, level: 'BASIC' }),
+      expect(
+        measurementsRepository.createMeasurementWithDetails,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clinicalRecordId: 'cr-1',
+          measurementNumber: 1,
+          level: 'BASIC',
+        }),
       );
       expect(response.body).toMatchObject({ measurementId, editable: true });
     });
@@ -427,11 +525,15 @@ describe('App (e2e)', () => {
         .set(AUTH)
         .send({ level: 'ISAK_1', weight: 5, height: 172 })
         .expect(400);
-      expect(measurementsRepository.createMeasurementWithDetails).not.toHaveBeenCalled();
+      expect(
+        measurementsRepository.createMeasurementWithDetails,
+      ).not.toHaveBeenCalled();
     });
 
     it('PATCH /me/measurements/:id corrige la medición', async () => {
-      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(measurement as any);
+      measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+        measurement as any,
+      );
 
       await request(app.getHttpServer())
         .patch(api(`/me/measurements/${measurementId}`))
@@ -439,14 +541,18 @@ describe('App (e2e)', () => {
         .send({ weight: 69 })
         .expect(200);
 
-      expect(measurementsRepository.updateMeasurementWithDetails).toHaveBeenCalledWith(
+      expect(
+        measurementsRepository.updateMeasurementWithDetails,
+      ).toHaveBeenCalledWith(
         measurementId,
         expect.objectContaining({ basic: { weight: 69 } }),
       );
     });
 
     it('sin token devuelve 401', async () => {
-      await request(app.getHttpServer()).get(api('/me/measurements')).expect(401);
+      await request(app.getHttpServer())
+        .get(api('/me/measurements'))
+        .expect(401);
     });
   });
 
@@ -477,7 +583,9 @@ describe('App (e2e)', () => {
     it('responde 404 si no hay un producto GENERATED activo', async () => {
       productRepository.getActiveGeneratedProduct.mockResolvedValue(null);
 
-      await request(app.getHttpServer()).get(api('/plans/personalized')).expect(404);
+      await request(app.getHttpServer())
+        .get(api('/plans/personalized'))
+        .expect(404);
     });
   });
 
@@ -505,15 +613,24 @@ describe('App (e2e)', () => {
     };
 
     beforeEach(() => {
-      fileStorage.getSignedDownloadUrl.mockResolvedValue('https://signed.example/plan.pdf');
+      fileStorage.getSignedDownloadUrl.mockResolvedValue(
+        'https://signed.example/plan.pdf',
+      );
     });
 
     it('GET /me/plans lista los planes del usuario del token con tipo, nombre y URL de descarga', async () => {
-      orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([predefinedOrder] as any);
+      orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([
+        predefinedOrder,
+      ] as any);
 
-      const response = await request(app.getHttpServer()).get(api('/me/plans')).set(AUTH).expect(200);
+      const response = await request(app.getHttpServer())
+        .get(api('/me/plans'))
+        .set(AUTH)
+        .expect(200);
 
-      expect(orderRepository.getPaidOrdersWithPdfByUserId).toHaveBeenCalledWith('user-1');
+      expect(orderRepository.getPaidOrdersWithPdfByUserId).toHaveBeenCalledWith(
+        'user-1',
+      );
       expect(response.body).toEqual([
         {
           orderId,
@@ -528,11 +645,18 @@ describe('App (e2e)', () => {
     });
 
     it('GET /me/plans/:orderId devuelve el detalle del plan del usuario del token', async () => {
-      orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(predefinedOrder as any);
+      orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(
+        predefinedOrder as any,
+      );
 
-      const response = await request(app.getHttpServer()).get(api(`/me/plans/${orderId}`)).set(AUTH).expect(200);
+      const response = await request(app.getHttpServer())
+        .get(api(`/me/plans/${orderId}`))
+        .set(AUTH)
+        .expect(200);
 
-      expect(orderRepository.getReadyOrderWithPlanDetailByIdAndUserId).toHaveBeenCalledWith(orderId, 'user-1');
+      expect(
+        orderRepository.getReadyOrderWithPlanDetailByIdAndUserId,
+      ).toHaveBeenCalledWith(orderId, 'user-1');
       expect(response.body).toMatchObject({
         orderId,
         type: 'PREDEFINED',
@@ -542,17 +666,27 @@ describe('App (e2e)', () => {
     });
 
     it('GET /me/plans/:orderId responde 404 si el plan no existe, es de otro usuario o no está listo (BOLA)', async () => {
-      orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(null);
+      orderRepository.getReadyOrderWithPlanDetailByIdAndUserId.mockResolvedValue(
+        null,
+      );
 
-      await request(app.getHttpServer()).get(api(`/me/plans/${orderId}`)).set(AUTH).expect(404);
+      await request(app.getHttpServer())
+        .get(api(`/me/plans/${orderId}`))
+        .set(AUTH)
+        .expect(404);
     });
 
     it('GET /me/plans/:orderId con un id que no es UUID v4 devuelve 400', async () => {
-      await request(app.getHttpServer()).get(api('/me/plans/no-es-uuid')).set(AUTH).expect(400);
+      await request(app.getHttpServer())
+        .get(api('/me/plans/no-es-uuid'))
+        .set(AUTH)
+        .expect(400);
     });
 
     it('sin token devuelve 401', async () => {
-      await request(app.getHttpServer()).get(api(`/me/plans/${orderId}`)).expect(401);
+      await request(app.getHttpServer())
+        .get(api(`/me/plans/${orderId}`))
+        .expect(401);
     });
   });
 
@@ -591,7 +725,9 @@ describe('App (e2e)', () => {
     });
 
     it('si la orden es de otro usuario devuelve 404 (BOLA)', async () => {
-      orderRepository.getOrderById.mockResolvedValue({ userId: 'otro-usuario' } as any);
+      orderRepository.getOrderById.mockResolvedValue({
+        userId: 'otro-usuario',
+      } as any);
 
       await request(app.getHttpServer())
         .get(api('/orders/22222222-2222-4222-8222-222222222222/status'))
@@ -620,7 +756,12 @@ describe('App (e2e)', () => {
       currency: 'CLP',
       paymentStatus: 'PENDING',
       expirationDate: new Date(Date.now() + 60 * 60_000),
-      product: { id: 'product-1', type: 'GENERATED', pdfKey: null, thumbnailKey: null },
+      product: {
+        id: 'product-1',
+        type: 'GENERATED',
+        pdfKey: null,
+        thumbnailKey: null,
+      },
     };
     const authorizedTransaction = {
       approved: true,
@@ -639,7 +780,8 @@ describe('App (e2e)', () => {
       orderRepository.getOrderById.mockResolvedValue(payableOrder as any);
       paymentGateway.createTransaction.mockResolvedValue({
         token,
-        redirectUrl: 'https://webpay3gint.transbank.cl/webpayserver/initTransaction',
+        redirectUrl:
+          'https://webpay3gint.transbank.cl/webpayserver/initTransaction',
       });
 
       const response = await request(app.getHttpServer())
@@ -668,23 +810,38 @@ describe('App (e2e)', () => {
     });
 
     it('no inicia el pago de una orden ajena (404), ya pagada (409) ni sin sesión (401)', async () => {
-      orderRepository.getOrderById.mockResolvedValue({ ...payableOrder, userId: 'otro-usuario' } as any);
-      await request(app.getHttpServer()).post(api(`/orders/${orderId}/payments`)).set(AUTH).expect(404);
+      orderRepository.getOrderById.mockResolvedValue({
+        ...payableOrder,
+        userId: 'otro-usuario',
+      } as any);
+      await request(app.getHttpServer())
+        .post(api(`/orders/${orderId}/payments`))
+        .set(AUTH)
+        .expect(404);
 
-      orderRepository.getOrderById.mockResolvedValue({ ...payableOrder, paymentStatus: 'PAID' } as any);
+      orderRepository.getOrderById.mockResolvedValue({
+        ...payableOrder,
+        paymentStatus: 'PAID',
+      } as any);
       const paid = await request(app.getHttpServer())
         .post(api(`/orders/${orderId}/payments`))
         .set(AUTH)
         .expect(409);
       expect(paid.body.code).toBe('ORDER_ALREADY_PAID');
 
-      await request(app.getHttpServer()).post(api(`/orders/${orderId}/payments`)).expect(401);
+      await request(app.getHttpServer())
+        .post(api(`/orders/${orderId}/payments`))
+        .expect(401);
       expect(paymentGateway.createTransaction).not.toHaveBeenCalled();
     });
 
     it('commit aprobado: confirma en Webpay, paga la orden, dispara la generación y es idempotente al recargar', async () => {
-      paymentRepository.getPaymentByToken.mockResolvedValueOnce(initiatedPayment as any);
-      orderRepository.getOrderWithProductById.mockResolvedValue(payableOrder as any);
+      paymentRepository.getPaymentByToken.mockResolvedValueOnce(
+        initiatedPayment as any,
+      );
+      orderRepository.getOrderWithProductById.mockResolvedValue(
+        payableOrder as any,
+      );
       paymentGateway.commitTransaction.mockResolvedValue(authorizedTransaction);
       orderRepository.markOrderAsPaidWithPayment.mockResolvedValue(true);
       orderRepository.tryTransitionOrderToGenerating.mockResolvedValue(false); // corta el pipeline de generación acá
@@ -694,7 +851,11 @@ describe('App (e2e)', () => {
         .send({ tokenWs: token })
         .expect(200);
 
-      expect(first.body).toEqual({ orderId, productType: 'GENERATED', outcome: 'paid' });
+      expect(first.body).toEqual({
+        orderId,
+        productType: 'GENERATED',
+        outcome: 'paid',
+      });
       expect(orderRepository.markOrderAsPaidWithPayment).toHaveBeenCalledWith(
         orderId,
         expect.objectContaining({
@@ -706,7 +867,9 @@ describe('App (e2e)', () => {
         undefined,
         'payment-1',
       );
-      expect(orderRepository.tryTransitionOrderToGenerating).toHaveBeenCalledWith(orderId);
+      expect(
+        orderRepository.tryTransitionOrderToGenerating,
+      ).toHaveBeenCalledWith(orderId);
 
       // recarga de la URL de retorno: el intento ya está cerrado
       paymentRepository.getPaymentByToken.mockResolvedValueOnce({
@@ -720,12 +883,18 @@ describe('App (e2e)', () => {
 
       expect(second.body.outcome).toBe('paid');
       expect(paymentGateway.commitTransaction).toHaveBeenCalledTimes(1);
-      expect(orderRepository.tryTransitionOrderToGenerating).toHaveBeenCalledTimes(1);
+      expect(
+        orderRepository.tryTransitionOrderToGenerating,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it('commit rechazado: registra el rechazo y no marca la orden como pagada', async () => {
-      paymentRepository.getPaymentByToken.mockResolvedValue(initiatedPayment as any);
-      orderRepository.getOrderWithProductById.mockResolvedValue(payableOrder as any);
+      paymentRepository.getPaymentByToken.mockResolvedValue(
+        initiatedPayment as any,
+      );
+      orderRepository.getOrderWithProductById.mockResolvedValue(
+        payableOrder as any,
+      );
       orderRepository.getOrderById.mockResolvedValue(payableOrder as any);
       paymentGateway.commitTransaction.mockResolvedValue({
         ...authorizedTransaction,
@@ -741,7 +910,9 @@ describe('App (e2e)', () => {
         .expect(200);
 
       expect(response.body.outcome).toBe('rejected');
-      expect(orderRepository.markOrderAsRejectedWithPayment).toHaveBeenCalledWith(
+      expect(
+        orderRepository.markOrderAsRejectedWithPayment,
+      ).toHaveBeenCalledWith(
         orderId,
         expect.objectContaining({ status: 'REJECTED', responseCode: -1 }),
         'payment-1',
@@ -750,8 +921,12 @@ describe('App (e2e)', () => {
     });
 
     it('pago anulado en el formulario (TBK_TOKEN): cierra el intento sin llamar a Webpay ni tocar la orden', async () => {
-      paymentRepository.getPaymentByToken.mockResolvedValue(initiatedPayment as any);
-      orderRepository.getOrderWithProductById.mockResolvedValue(payableOrder as any);
+      paymentRepository.getPaymentByToken.mockResolvedValue(
+        initiatedPayment as any,
+      );
+      orderRepository.getOrderWithProductById.mockResolvedValue(
+        payableOrder as any,
+      );
 
       const response = await request(app.getHttpServer())
         .post(api('/payments/webpay/commit'))
@@ -759,21 +934,28 @@ describe('App (e2e)', () => {
         .expect(200);
 
       expect(response.body.outcome).toBe('cancelled');
-      expect(paymentRepository.closeInitiatedPayment).toHaveBeenCalledWith('payment-1', {
-        status: 'CANCELLED',
-      });
+      expect(paymentRepository.closeInitiatedPayment).toHaveBeenCalledWith(
+        'payment-1',
+        {
+          status: 'CANCELLED',
+        },
+      );
       expect(paymentGateway.commitTransaction).not.toHaveBeenCalled();
       expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
     });
 
     it('si la orden expiró mientras el usuario pagaba, no confirma la transacción (no hay cobro)', async () => {
-      paymentRepository.getPaymentByToken.mockResolvedValue(initiatedPayment as any);
+      paymentRepository.getPaymentByToken.mockResolvedValue(
+        initiatedPayment as any,
+      );
       orderRepository.getOrderWithProductById.mockResolvedValue({
         ...payableOrder,
         expirationDate: new Date(Date.now() - 60_000),
       } as any);
       orderRepository.expireOrderIfDue.mockResolvedValue(true);
-      nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(true);
+      nutritionalConsultationRepository.deleteNutritionalConsultationByOrderId.mockResolvedValue(
+        true,
+      );
 
       const response = await request(app.getHttpServer())
         .post(api('/payments/webpay/commit'))
@@ -782,7 +964,10 @@ describe('App (e2e)', () => {
 
       expect(response.body.outcome).toBe('not_committed');
       expect(paymentGateway.commitTransaction).not.toHaveBeenCalled();
-      expect(orderRepository.expireOrderIfDue).toHaveBeenCalledWith(orderId, expect.any(Date));
+      expect(orderRepository.expireOrderIfDue).toHaveBeenCalledWith(
+        orderId,
+        expect.any(Date),
+      );
     });
   });
 
@@ -827,7 +1012,9 @@ describe('App (e2e)', () => {
 
       expect(response.body).toEqual({ status: 'processed' });
       // un plan estándar no dispara la generación
-      expect(orderRepository.tryTransitionOrderToGenerating).not.toHaveBeenCalled();
+      expect(
+        orderRepository.tryTransitionOrderToGenerating,
+      ).not.toHaveBeenCalled();
     });
 
     it('simulate-payment-rejection: 404 sin el flag y, con él, deja la orden rechazada', async () => {
@@ -836,7 +1023,9 @@ describe('App (e2e)', () => {
         .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
         .set(AUTH)
         .expect(404);
-      expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
+      expect(
+        orderRepository.markOrderAsRejectedWithPayment,
+      ).not.toHaveBeenCalled();
 
       process.env.ENABLE_PAYMENT_SIMULATION = 'true';
       orderRepository.getOrderById.mockResolvedValue({
@@ -861,7 +1050,9 @@ describe('App (e2e)', () => {
     const consultationId = '8b1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
 
     it('401 sin token: code UNAUTHENTICATED y requestId en el body y en el header', async () => {
-      const response = await request(app.getHttpServer()).get(api('/me')).expect(401);
+      const response = await request(app.getHttpServer())
+        .get(api('/me'))
+        .expect(401);
 
       expect(response.body).toEqual({
         statusCode: 401,
@@ -893,7 +1084,10 @@ describe('App (e2e)', () => {
       expect(response.body.code).toBe('VALIDATION_ERROR');
       expect(response.body.message).toBe('Los datos enviados no son válidos');
       expect(response.body.errors).toEqual(
-        expect.arrayContaining([expect.stringContaining('inventada'), expect.stringContaining('tokenWs')]),
+        expect.arrayContaining([
+          expect.stringContaining('inventada'),
+          expect.stringContaining('tokenWs'),
+        ]),
       );
     });
 
@@ -909,7 +1103,9 @@ describe('App (e2e)', () => {
     });
 
     it('404 de una ruta inexistente usa el mismo formato', async () => {
-      const response = await request(app.getHttpServer()).get(api('/no-existe')).expect(404);
+      const response = await request(app.getHttpServer())
+        .get(api('/no-existe'))
+        .expect(404);
 
       expect(response.body).toMatchObject({
         statusCode: 404,
@@ -955,7 +1151,9 @@ describe('App (e2e)', () => {
     });
 
     it('un fallo del proveedor de LLM responde 503 LLM_UNAVAILABLE', async () => {
-      llm.chatJson.mockRejectedValue(new LlmUnavailableError('OpenAI no respondió (HTTP 429)'));
+      llm.chatJson.mockRejectedValue(
+        new LlmUnavailableError('OpenAI no respondió (HTTP 429)'),
+      );
 
       const response = await request(app.getHttpServer())
         .post(api('/consultations/chat'))
@@ -997,7 +1195,8 @@ describe('App (e2e)', () => {
     });
 
     afterAll(() => {
-      if (previousSimulation === undefined) delete process.env.ENABLE_PAYMENT_SIMULATION;
+      if (previousSimulation === undefined)
+        delete process.env.ENABLE_PAYMENT_SIMULATION;
       else process.env.ENABLE_PAYMENT_SIMULATION = previousSimulation;
     });
 
@@ -1014,7 +1213,9 @@ describe('App (e2e)', () => {
           .expect(404);
 
         expect(paymentGateway.commitTransaction).not.toHaveBeenCalled();
-        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+        expect(
+          orderRepository.markOrderAsPaidWithPayment,
+        ).not.toHaveBeenCalled();
       });
 
       it('el webhook anterior ya no existe', async () => {
@@ -1033,7 +1234,9 @@ describe('App (e2e)', () => {
         await request(app.getHttpServer())
           .post(api(`/dev/orders/${orderId}/simulate-payment-rejection`))
           .expect(401);
-        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
+        expect(
+          orderRepository.markOrderAsPaidWithPayment,
+        ).not.toHaveBeenCalled();
       });
 
       it('la orden de otro usuario responde 404 y no se paga ni se rechaza (BOLA)', async () => {
@@ -1044,7 +1247,9 @@ describe('App (e2e)', () => {
           paymentStatus: 'PENDING',
           product: { id: 'product-1', type: 'GENERATED' },
         };
-        orderRepository.getOrderWithProductById.mockResolvedValue(foreignOrder as any);
+        orderRepository.getOrderWithProductById.mockResolvedValue(
+          foreignOrder as any,
+        );
         orderRepository.getOrderById.mockResolvedValue(foreignOrder as any);
 
         await request(app.getHttpServer())
@@ -1056,15 +1261,23 @@ describe('App (e2e)', () => {
           .set(AUTH)
           .expect(404);
 
-        expect(orderRepository.markOrderAsPaidWithPayment).not.toHaveBeenCalled();
-        expect(orderRepository.markOrderAsRejectedWithPayment).not.toHaveBeenCalled();
+        expect(
+          orderRepository.markOrderAsPaidWithPayment,
+        ).not.toHaveBeenCalled();
+        expect(
+          orderRepository.markOrderAsRejectedWithPayment,
+        ).not.toHaveBeenCalled();
       });
     });
 
     describe('POST /me/sync', () => {
       beforeEach(() => {
-        authIdentityRepository.findAuthIdentityByProvider.mockResolvedValue(null);
-        userRepository.findOrCreateUserByEmail.mockResolvedValue({ ...completeUser } as any);
+        authIdentityRepository.findAuthIdentityByProvider.mockResolvedValue(
+          null,
+        );
+        userRepository.findOrCreateUserByEmail.mockResolvedValue({
+          ...completeUser,
+        } as any);
       });
 
       it('ignora el email del body: liga la identidad al email que informa Cognito', async () => {
@@ -1081,7 +1294,9 @@ describe('App (e2e)', () => {
           .expect(201);
 
         expect(identityProvider.getIdentity).toHaveBeenCalledWith('token-e2e');
-        expect(userRepository.findOrCreateUserByEmail).toHaveBeenCalledWith({ email: 'ana@example.com' });
+        expect(userRepository.findOrCreateUserByEmail).toHaveBeenCalledWith({
+          email: 'ana@example.com',
+        });
       });
 
       it('con un email no verificado responde 403 EMAIL_NOT_VERIFIED y no crea ni liga nada', async () => {
@@ -1091,11 +1306,16 @@ describe('App (e2e)', () => {
           emailVerified: false,
         });
 
-        const response = await request(app.getHttpServer()).post(api('/me/sync')).set(AUTH).expect(403);
+        const response = await request(app.getHttpServer())
+          .post(api('/me/sync'))
+          .set(AUTH)
+          .expect(403);
 
         expect(response.body.code).toBe('EMAIL_NOT_VERIFIED');
         expect(userRepository.findOrCreateUserByEmail).not.toHaveBeenCalled();
-        expect(authIdentityRepository.findOrCreateAuthIdentity).not.toHaveBeenCalled();
+        expect(
+          authIdentityRepository.findOrCreateAuthIdentity,
+        ).not.toHaveBeenCalled();
       });
     });
 
@@ -1112,7 +1332,10 @@ describe('App (e2e)', () => {
       });
 
       it('un historial con demasiados mensajes responde 400', async () => {
-        const messages = Array.from({ length: 81 }, () => ({ role: 'user', content: 'hola' }));
+        const messages = Array.from({ length: 81 }, () => ({
+          role: 'user',
+          content: 'hola',
+        }));
 
         await request(app.getHttpServer())
           .post(api('/consultations/chat'))
@@ -1123,10 +1346,16 @@ describe('App (e2e)', () => {
       });
 
       it('un código de plan con formato inválido responde 404 sin consultar la base', async () => {
-        await request(app.getHttpServer()).get(api('/plans/standard/..%2F..%2Fetc')).expect(404);
-        await request(app.getHttpServer()).get(api('/plans/standard/plan-inventado')).expect(404);
+        await request(app.getHttpServer())
+          .get(api('/plans/standard/..%2F..%2Fetc'))
+          .expect(404);
+        await request(app.getHttpServer())
+          .get(api('/plans/standard/plan-inventado'))
+          .expect(404);
 
-        expect(productRepository.getActivePredefinedProductByCode).not.toHaveBeenCalled();
+        expect(
+          productRepository.getActivePredefinedProductByCode,
+        ).not.toHaveBeenCalled();
       });
     });
 

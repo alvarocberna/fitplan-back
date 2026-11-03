@@ -29,11 +29,15 @@ describe('UpdateMyMeasurementUseCase', () => {
     id: 'm-2',
     level: 'BIOIMPEDANCE',
     consultationId: null,
-    measurementResults: [{ bfPercentage: 18, bfKg: null, mmPercentage: null, mmKg: 32 }],
+    measurementResults: [
+      { bfPercentage: 18, bfKg: null, mmPercentage: null, mmKg: 32 },
+    ],
   };
 
   beforeEach(() => {
-    const currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
+    const currentUser = {
+      resolve: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
     measurementsRepository = {
       getMeasurementDetailByIdAndPatientId: jest.fn(),
       updateMeasurementWithDetails: jest.fn(),
@@ -47,7 +51,10 @@ describe('UpdateMyMeasurementUseCase', () => {
   it('corrige peso y fecha de una medición de consulta, recalcula su IMC y devuelve el detalle actualizado', async () => {
     measurementsRepository.getMeasurementDetailByIdAndPatientId
       .mockResolvedValueOnce(basicMeasurement)
-      .mockResolvedValueOnce({ ...basicMeasurement, basicMeasurements: [{ weight: 70, height: 172 }] });
+      .mockResolvedValueOnce({
+        ...basicMeasurement,
+        basicMeasurements: [{ weight: 70, height: 172 }],
+      });
 
     const detail = await useCase.execute({
       claims,
@@ -55,8 +62,12 @@ describe('UpdateMyMeasurementUseCase', () => {
       data: { weight: 70, measuredAt: '2026-03-14T12:00:00.000Z' },
     });
 
-    expect(measurementsRepository.getMeasurementDetailByIdAndPatientId).toHaveBeenCalledWith('m-1', 'user-1');
-    expect(measurementsRepository.updateMeasurementWithDetails).toHaveBeenCalledWith('m-1', {
+    expect(
+      measurementsRepository.getMeasurementDetailByIdAndPatientId,
+    ).toHaveBeenCalledWith('m-1', 'user-1');
+    expect(
+      measurementsRepository.updateMeasurementWithDetails,
+    ).toHaveBeenCalledWith('m-1', {
       measuredAt: new Date('2026-03-14T12:00:00.000Z'),
       basic: { weight: 70 },
       results: { bmi: 23.66, bmiClassification: 'NORMAL_WEIGHT' },
@@ -65,7 +76,9 @@ describe('UpdateMyMeasurementUseCase', () => {
   });
 
   it('solo con la fecha no recalcula los resultados', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(basicMeasurement);
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      basicMeasurement,
+    );
 
     await useCase.execute({
       claims,
@@ -73,14 +86,18 @@ describe('UpdateMyMeasurementUseCase', () => {
       data: { measuredAt: '2026-03-14T12:00:00.000Z' },
     });
 
-    expect(measurementsRepository.updateMeasurementWithDetails).toHaveBeenCalledWith(
+    expect(
+      measurementsRepository.updateMeasurementWithDetails,
+    ).toHaveBeenCalledWith(
       'm-1',
       expect.objectContaining({ results: undefined }),
     );
   });
 
   it('en una bioimpedancia reemplaza la grasa enviada y recalcula todo con lo guardado', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(bioimpedance);
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      bioimpedance,
+    );
 
     await useCase.execute({
       claims,
@@ -88,7 +105,9 @@ describe('UpdateMyMeasurementUseCase', () => {
       data: { bodyFat: { value: 12, unit: 'KG' } },
     });
 
-    expect(measurementsRepository.updateMeasurementWithDetails).toHaveBeenCalledWith('m-2', {
+    expect(
+      measurementsRepository.updateMeasurementWithDetails,
+    ).toHaveBeenCalledWith('m-2', {
       measuredAt: undefined,
       basic: undefined,
       results: {
@@ -111,16 +130,32 @@ describe('UpdateMyMeasurementUseCase', () => {
   });
 
   it('en una bioimpedancia, si cambia solo el peso mantiene los % y recalcula los kg y el IMC', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue({
-      ...bioimpedance,
-      measurementResults: [
-        { bfPercentage: 18, bfKg: 12.96, mmPercentage: 44.44, mmKg: 32, bmPercentage: 4, bmKg: 2.88 },
-      ],
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      {
+        ...bioimpedance,
+        measurementResults: [
+          {
+            bfPercentage: 18,
+            bfKg: 12.96,
+            mmPercentage: 44.44,
+            mmKg: 32,
+            bmPercentage: 4,
+            bmKg: 2.88,
+          },
+        ],
+      },
+    );
+
+    await useCase.execute({
+      claims,
+      measurementId: 'm-2',
+      data: { weight: 80 },
     });
 
-    await useCase.execute({ claims, measurementId: 'm-2', data: { weight: 80 } });
-
-    expect(measurementsRepository.updateMeasurementWithDetails.mock.calls[0][1].results).toMatchObject({
+    expect(
+      measurementsRepository.updateMeasurementWithDetails.mock.calls[0][1]
+        .results,
+    ).toMatchObject({
       bmi: 27.04,
       bmiClassification: 'OVERWEIGHT',
       bfPercentage: 18,
@@ -133,16 +168,31 @@ describe('UpdateMyMeasurementUseCase', () => {
   });
 
   it('en una bioimpedancia, null en un componente opcional lo quita', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue({
-      ...bioimpedance,
-      measurementResults: [
-        { bfPercentage: 18, mmPercentage: 44, vfPercentage: 3, vfKg: 2.16, vfMethod: 'BIOIMPEDANCE' },
-      ],
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      {
+        ...bioimpedance,
+        measurementResults: [
+          {
+            bfPercentage: 18,
+            mmPercentage: 44,
+            vfPercentage: 3,
+            vfKg: 2.16,
+            vfMethod: 'BIOIMPEDANCE',
+          },
+        ],
+      },
+    );
+
+    await useCase.execute({
+      claims,
+      measurementId: 'm-2',
+      data: { visceralFat: null },
     });
 
-    await useCase.execute({ claims, measurementId: 'm-2', data: { visceralFat: null } });
-
-    expect(measurementsRepository.updateMeasurementWithDetails.mock.calls[0][1].results).toMatchObject({
+    expect(
+      measurementsRepository.updateMeasurementWithDetails.mock.calls[0][1]
+        .results,
+    ).toMatchObject({
       bfPercentage: 18,
       vfKg: null,
       vfPercentage: null,
@@ -151,52 +201,82 @@ describe('UpdateMyMeasurementUseCase', () => {
   });
 
   it('rechaza con 400 un peso menor que los kg de masa muscular guardados', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(bioimpedance);
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      bioimpedance,
+    );
 
     await expect(
       useCase.execute({ claims, measurementId: 'm-2', data: { weight: 30 } }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(measurementsRepository.updateMeasurementWithDetails).not.toHaveBeenCalled();
+    expect(
+      measurementsRepository.updateMeasurementWithDetails,
+    ).not.toHaveBeenCalled();
   });
 
   it('rechaza con 400 grasa corporal en una medición que no es de bioimpedancia', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(basicMeasurement);
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      basicMeasurement,
+    );
 
     await expect(
-      useCase.execute({ claims, measurementId: 'm-1', data: { bodyFat: { value: 18, unit: 'PERCENTAGE' } } }),
+      useCase.execute({
+        claims,
+        measurementId: 'm-1',
+        data: { bodyFat: { value: 18, unit: 'PERCENTAGE' } },
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      useCase.execute({ claims, measurementId: 'm-1', data: { boneMass: { value: 3, unit: 'KG' } } }),
+      useCase.execute({
+        claims,
+        measurementId: 'm-1',
+        data: { boneMass: { value: 3, unit: 'KG' } },
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rechaza con 400 una fecha futura', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(basicMeasurement);
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      basicMeasurement,
+    );
 
     await expect(
-      useCase.execute({ claims, measurementId: 'm-1', data: { measuredAt: '2999-01-01T00:00:00.000Z' } }),
+      useCase.execute({
+        claims,
+        measurementId: 'm-1',
+        data: { measuredAt: '2999-01-01T00:00:00.000Z' },
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('crea los valores básicos si la medición no los tenía, pero exige peso y talla juntos', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue({
-      ...basicMeasurement,
-      basicMeasurements: [],
-    });
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      {
+        ...basicMeasurement,
+        basicMeasurements: [],
+      },
+    );
 
     await expect(
       useCase.execute({ claims, measurementId: 'm-1', data: { weight: 70 } }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    await useCase.execute({ claims, measurementId: 'm-1', data: { weight: 70, height: 170 } });
-    expect(measurementsRepository.updateMeasurementWithDetails).toHaveBeenCalledWith(
+    await useCase.execute({
+      claims,
+      measurementId: 'm-1',
+      data: { weight: 70, height: 170 },
+    });
+    expect(
+      measurementsRepository.updateMeasurementWithDetails,
+    ).toHaveBeenCalledWith(
       'm-1',
       expect.objectContaining({ basic: { weight: 70, height: 170 } }),
     );
   });
 
   it('lanza 404 si la medición no existe o no es del usuario', async () => {
-    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(null);
+    measurementsRepository.getMeasurementDetailByIdAndPatientId.mockResolvedValue(
+      null,
+    );
 
     await expect(
       useCase.execute({ claims, measurementId: 'm-x', data: { weight: 70 } }),

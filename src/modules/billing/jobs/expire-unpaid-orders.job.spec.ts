@@ -6,7 +6,9 @@ describe('ExpireUnpaidOrdersJob', () => {
   let expireUnpaidOrders: { execute: jest.Mock };
 
   beforeEach(() => {
-    expireUnpaidOrders = { execute: jest.fn().mockResolvedValue({ expired: 0 }) };
+    expireUnpaidOrders = {
+      execute: jest.fn().mockResolvedValue({ expired: 0 }),
+    };
     job = new ExpireUnpaidOrdersJob(
       expireUnpaidOrders as unknown as ExpireUnpaidOrdersUseCase,
     );
@@ -24,6 +26,9 @@ describe('ExpireUnpaidOrdersJob', () => {
       .mockImplementation(() => undefined);
 
     await expect(job.run()).resolves.toBeUndefined();
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('fallo inesperado'), expect.any(String));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('fallo inesperado'),
+      expect.any(String),
+    );
   });
 });

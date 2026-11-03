@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   calculateMeasurementResults,
   MeasurementBasicInput,
@@ -8,7 +12,10 @@ import { MeasurementLevel } from '../../../domain/entities/enums';
 import { MeasurementsRepository } from '../../../domain/repositories/clinical-domain/measurements.repository';
 import { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
-import { MeasurementDetailDto, UpdateMeasurementDtoImpl } from '../dto/measurement.dto';
+import {
+  MeasurementDetailDto,
+  UpdateMeasurementDtoImpl,
+} from '../dto/measurement.dto';
 import { toMeasurementDetail } from '../measurement.mapper';
 import { assertValidMeasurementInput, storedValue } from '../measurement-input';
 
@@ -32,17 +39,20 @@ export class UpdateMyMeasurementUseCase {
   }): Promise<MeasurementDetailDto> {
     const { data } = input;
     const user = await this.currentUser.resolve(input.claims);
-    const current = await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
-      input.measurementId,
-      user.id,
-    );
+    const current =
+      await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
+        input.measurementId,
+        user.id,
+      );
     if (!current) throw new NotFoundException('Medición no encontrada');
 
     const currentBasic = current.basicMeasurements?.[0];
     const currentResults = current.measurementResults?.[0];
     const isBioimpedance = current.level === MeasurementLevel.BIOIMPEDANCE;
 
-    const measuredAt = data.measuredAt ? new Date(data.measuredAt) : current.measuredAt;
+    const measuredAt = data.measuredAt
+      ? new Date(data.measuredAt)
+      : current.measuredAt;
     const weight = data.weight ?? currentBasic?.weight;
     const height = data.height ?? currentBasic?.height;
 
@@ -117,10 +127,11 @@ export class UpdateMyMeasurementUseCase {
       results,
     });
 
-    const updated = await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
-      current.id,
-      user.id,
-    );
+    const updated =
+      await this.measurementsRepository.getMeasurementDetailByIdAndPatientId(
+        current.id,
+        user.id,
+      );
     return toMeasurementDetail(updated!);
   }
 }

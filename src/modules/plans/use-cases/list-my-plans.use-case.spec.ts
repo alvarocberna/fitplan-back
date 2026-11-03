@@ -36,11 +36,15 @@ describe('ListMyPlansUseCase', () => {
   };
 
   beforeEach(() => {
-    const currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1' }) };
+    const currentUser = {
+      resolve: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
     orderRepository = { getPaidOrdersWithPdfByUserId: jest.fn() };
     // firma distinto según la key para poder contrastar qué URL corresponde a qué objeto
     fileStorage = {
-      getSignedDownloadUrl: jest.fn(async (key: string) => `https://signed-url.example/${key}`),
+      getSignedDownloadUrl: jest.fn(
+        async (key: string) => `https://signed-url.example/${key}`,
+      ),
     };
     useCase = new ListMyPlansUseCase(
       currentUser as unknown as CurrentUserResolver,
@@ -50,19 +54,25 @@ describe('ListMyPlansUseCase', () => {
   });
 
   it('devuelve cada plan personalizado con nombre, tipo, fecha de compra, resumen y URLs firmadas', async () => {
-    orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([generatedOrder]);
+    orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([
+      generatedOrder,
+    ]);
 
     const summaries = await useCase.execute({ claims });
 
-    expect(orderRepository.getPaidOrdersWithPdfByUserId).toHaveBeenCalledWith('user-1');
+    expect(orderRepository.getPaidOrdersWithPdfByUserId).toHaveBeenCalledWith(
+      'user-1',
+    );
     expect(summaries).toEqual([
       {
         orderId: 'order-1',
         type: 'GENERATED',
         name: 'Plan personalizado',
         purchasedAt: '2026-01-02T10:00:00.000Z',
-        pdfUrl: 'https://signed-url.example/productos-personalizados/order-1.pdf',
-        thumbnailUrl: 'https://signed-url.example/productos-personalizados/miniaturas/order-1.webp',
+        pdfUrl:
+          'https://signed-url.example/productos-personalizados/order-1.pdf',
+        thumbnailUrl:
+          'https://signed-url.example/productos-personalizados/miniaturas/order-1.webp',
         summary: {
           goal: 'definicion',
           dietRegimen: 'Hipocalórico',
@@ -119,12 +129,24 @@ describe('ListMyPlansUseCase', () => {
     };
     orderRepository.getPaidOrdersWithPdfByUserId.mockResolvedValue([
       predefined,
-      { ...predefined, id: 'order-3', product: { ...predefined.product, dietRegimen: 'Normocalórico', calorieIntake: 2500 } },
+      {
+        ...predefined,
+        id: 'order-3',
+        product: {
+          ...predefined.product,
+          dietRegimen: 'Normocalórico',
+          calorieIntake: 2500,
+        },
+      },
     ]);
 
     const [withoutSummary, withSummary] = await useCase.execute({ claims });
 
-    expect(withoutSummary).toMatchObject({ type: 'PREDEFINED', name: 'Plan Running', summary: null });
+    expect(withoutSummary).toMatchObject({
+      type: 'PREDEFINED',
+      name: 'Plan Running',
+      summary: null,
+    });
     expect(withSummary.summary).toEqual({
       goal: null,
       dietRegimen: 'Normocalórico',

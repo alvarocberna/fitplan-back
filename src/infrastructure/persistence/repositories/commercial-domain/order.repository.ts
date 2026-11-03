@@ -77,7 +77,11 @@ export class OrderRepositoryImpl implements OrderRepository {
     payment: Omit<CreatePaymentDto, 'orderId'>,
     paymentId?: string,
   ): Promise<boolean> {
-    return this.datasource.markOrderAsRejectedWithPayment(id, payment, paymentId);
+    return this.datasource.markOrderAsRejectedWithPayment(
+      id,
+      payment,
+      paymentId,
+    );
   }
 
   expireOrderIfDue(id: string, now: Date): Promise<boolean> {

@@ -16,7 +16,10 @@ describe('MeController', () => {
   let getMySummary: { execute: jest.Mock };
 
   const claims: CognitoUserClaims = { sub: 'test-sub' };
-  const profile = { email: 'ana@example.com', profileComplete: true } as ProfileDto;
+  const profile = {
+    email: 'ana@example.com',
+    profileComplete: true,
+  } as ProfileDto;
 
   beforeEach(async () => {
     syncIdentity = { execute: jest.fn() };
@@ -40,7 +43,9 @@ describe('MeController', () => {
   it('sync() delega en SyncIdentityUseCase solo con los claims: el email del body se ignora', async () => {
     syncIdentity.execute.mockResolvedValue(profile);
 
-    await expect(controller.sync({ email: 'victima@example.com' }, claims)).resolves.toBe(profile);
+    await expect(
+      controller.sync({ email: 'victima@example.com' }, claims),
+    ).resolves.toBe(profile);
     expect(syncIdentity.execute).toHaveBeenCalledWith({ claims });
   });
 
@@ -56,7 +61,10 @@ describe('MeController', () => {
     const body = { firstName: 'Ana', athlete: true };
 
     await expect(controller.update(body, claims)).resolves.toBe(profile);
-    expect(updateMyProfile.execute).toHaveBeenCalledWith({ claims, data: body });
+    expect(updateMyProfile.execute).toHaveBeenCalledWith({
+      claims,
+      data: body,
+    });
   });
 
   it('summary() delega en GetMySummaryUseCase', async () => {

@@ -2,21 +2,27 @@
 // masa ósea).
 
 type KgFromPercentageType = {
-    weight: number
-    percentage: number
-}
+  weight: number;
+  percentage: number;
+};
 
 type PercentageFromKgType = {
-    weight: number
-    kg: number
+  weight: number;
+  kg: number;
+};
+
+export function calculateKgFromPercentage({
+  weight,
+  percentage,
+}: KgFromPercentageType): number {
+  const kg = (percentage * weight) / 100;
+  return kg;
 }
 
-export function calculateKgFromPercentage({weight, percentage}: KgFromPercentageType): number{
-    const kg = ( percentage * weight ) / 100;
-    return kg;
-}
-
-export function calculatePercentageFromKg({weight, kg}: PercentageFromKgType): number{
-    const percentage = ( kg * 100 ) / weight;
-    return percentage;
+export function calculatePercentageFromKg({
+  weight,
+  kg,
+}: PercentageFromKgType): number {
+  const percentage = (kg * 100) / weight;
+  return percentage;
 }

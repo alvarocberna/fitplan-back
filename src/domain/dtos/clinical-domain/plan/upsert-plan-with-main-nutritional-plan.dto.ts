@@ -8,7 +8,10 @@ import { CreateProjectionDto } from '../projection/create-projection.dto';
 
 // NutritionalPlan con todas sus tablas hijas, tal como se crea en una sola escritura anidada: las
 // FKs hacia el padre (planId, planMealTimeId, planSupplementId) las resuelve Prisma.
-export type NutritionalPlanTreeDto = Omit<CreateNutritionalPlanDto, 'planId'> & {
+export type NutritionalPlanTreeDto = Omit<
+  CreateNutritionalPlanDto,
+  'planId'
+> & {
   mealTimes: (Omit<CreatePlanMealTimeDto, 'planId'> & {
     notes: Omit<CreatePlanMealTimeNoteDto, 'planMealTimeId'>[];
   })[];

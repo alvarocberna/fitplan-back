@@ -36,20 +36,31 @@ describe('PurchaseStandardPlanUseCase', () => {
   });
 
   it('crea la orden (vía billing) con el producto de la versión, sin exigir perfil completo', async () => {
-    productRepository.getActivePredefinedProductByCode.mockResolvedValue(product);
+    productRepository.getActivePredefinedProductByCode.mockResolvedValue(
+      product,
+    );
 
-    await expect(useCase.execute({ claims, code })).resolves.toEqual({ orderId: 'order-2' });
+    await expect(useCase.execute({ claims, code })).resolves.toEqual({
+      orderId: 'order-2',
+    });
 
     expect(currentUser.resolve).toHaveBeenCalledWith(claims);
-    expect(productRepository.getActivePredefinedProductByCode).toHaveBeenCalledWith(code);
-    expect(createOrder.execute).toHaveBeenCalledWith({ userId: 'user-1', product });
+    expect(
+      productRepository.getActivePredefinedProductByCode,
+    ).toHaveBeenCalledWith(code);
+    expect(createOrder.execute).toHaveBeenCalledWith({
+      userId: 'user-1',
+      product,
+    });
     expect(currentUser.isProfileComplete).not.toHaveBeenCalled();
   });
 
   it('lanza NotFoundException si la versión no existe o está inactiva', async () => {
     productRepository.getActivePredefinedProductByCode.mockResolvedValue(null);
 
-    await expect(useCase.execute({ claims, code })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(useCase.execute({ claims, code })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(createOrder.execute).not.toHaveBeenCalled();
   });
 
@@ -59,14 +70,18 @@ describe('PurchaseStandardPlanUseCase', () => {
       pdfKey: null,
     });
 
-    await expect(useCase.execute({ claims, code })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(useCase.execute({ claims, code })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(createOrder.execute).not.toHaveBeenCalled();
   });
 
   it('lanza NotFoundException con un código de formato inválido, sin consultar la base de datos', async () => {
-    await expect(useCase.execute({ claims, code: '../../etc/passwd' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-    expect(productRepository.getActivePredefinedProductByCode).not.toHaveBeenCalled();
+    await expect(
+      useCase.execute({ claims, code: '../../etc/passwd' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(
+      productRepository.getActivePredefinedProductByCode,
+    ).not.toHaveBeenCalled();
   });
 });

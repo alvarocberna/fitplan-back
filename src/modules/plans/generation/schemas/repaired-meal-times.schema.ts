@@ -24,7 +24,8 @@ export const REPAIRED_MEAL_TIMES_SCHEMA: NamedJsonSchema = {
       items: strictObject({
         index: {
           type: 'integer',
-          description: 'El mismo "index" del tiempo de comida que se está corrigiendo',
+          description:
+            'El mismo "index" del tiempo de comida que se está corrigiendo',
         },
         ...GENERATED_MEAL_TIME_PROPERTIES,
       }),

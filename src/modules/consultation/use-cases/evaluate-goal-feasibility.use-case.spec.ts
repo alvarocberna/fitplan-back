@@ -4,7 +4,6 @@ import {
 } from './evaluate-goal-feasibility.use-case';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
 import { MeasurementsRepository } from '../../../domain/repositories/clinical-domain/measurements.repository';
-import { LlmProvider } from '../../../domain/ports';
 import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 
 describe('EvaluateGoalFeasibilityUseCase', () => {
@@ -14,16 +13,23 @@ describe('EvaluateGoalFeasibilityUseCase', () => {
   let llm: { chatJson: jest.Mock };
 
   const claims: CognitoUserClaims = { sub: 'test-sub' };
-  const loseWeight = { primaryGoal: 'quiero bajar de peso', secondaryGoal: null };
+  const loseWeight = {
+    primaryGoal: 'quiero bajar de peso',
+    secondaryGoal: null,
+  };
 
   beforeEach(() => {
-    currentUser = { resolve: jest.fn().mockResolvedValue({ id: 'user-1', gender: 'F' }) };
-    measurementsRepository = { listMeasurementsByPatientId: jest.fn().mockResolvedValue([]) };
+    currentUser = {
+      resolve: jest.fn().mockResolvedValue({ id: 'user-1', gender: 'F' }),
+    };
+    measurementsRepository = {
+      listMeasurementsByPatientId: jest.fn().mockResolvedValue([]),
+    };
     llm = { chatJson: jest.fn().mockResolvedValue({ goal: 'definicion' }) };
     useCase = new EvaluateGoalFeasibilityUseCase(
       currentUser as unknown as CurrentUserResolver,
       measurementsRepository as unknown as MeasurementsRepository,
-      llm as unknown as LlmProvider,
+      llm,
     );
   });
 
@@ -41,12 +47,18 @@ describe('EvaluateGoalFeasibilityUseCase', () => {
       message: WEIGHT_LOSS_NOT_FEASIBLE_MESSAGE,
     });
     expect(currentUser.resolve).toHaveBeenCalledWith(claims);
-    expect(measurementsRepository.listMeasurementsByPatientId).toHaveBeenCalledWith('user-1');
+    expect(
+      measurementsRepository.listMeasurementsByPatientId,
+    ).toHaveBeenCalledWith('user-1');
   });
 
   it('bajar de peso con IMC saludable es factible', async () => {
     await expect(
-      useCase.execute({ claims, goals: loseWeight, measurements: { weight: 80, height: 172 } }),
+      useCase.execute({
+        claims,
+        goals: loseWeight,
+        measurements: { weight: 80, height: 172 },
+      }),
     ).resolves.toEqual({ feasible: true, goal: 'definicion', message: null });
   });
 
@@ -79,24 +91,40 @@ describe('EvaluateGoalFeasibilityUseCase', () => {
 
   it('sin objetivo declarado es "mantencion" sin llamar al LLM', async () => {
     await expect(
-      useCase.execute({ claims, goals: null, measurements: { weight: 50, height: 175 } }),
+      useCase.execute({
+        claims,
+        goals: null,
+        measurements: { weight: 50, height: 175 },
+      }),
     ).resolves.toEqual({ feasible: true, goal: 'mantencion', message: null });
     expect(llm.chatJson).not.toHaveBeenCalled();
   });
 
   it('pide la clasificación con su esquema: el modelo solo puede responder uno de los tres objetivos', async () => {
-    await useCase.execute({ claims, goals: loseWeight, measurements: { weight: 50, height: 175 } });
+    await useCase.execute({
+      claims,
+      goals: loseWeight,
+      measurements: { weight: 50, height: 175 },
+    });
 
     const options = llm.chatJson.mock.calls[0][4];
     expect(options.schema.name).toBe('goal_classification');
-    expect(options.schema.schema.properties.goal.enum).toEqual(['definicion', 'mantencion', 'volumen']);
+    expect(options.schema.schema.properties.goal.enum).toEqual([
+      'definicion',
+      'mantencion',
+      'volumen',
+    ]);
   });
 
   it('una clasificación fuera de los valores esperados se trata como "mantencion"', async () => {
     llm.chatJson.mockResolvedValue({ goal: 'otra cosa' });
 
     await expect(
-      useCase.execute({ claims, goals: loseWeight, measurements: { weight: 50, height: 175 } }),
+      useCase.execute({
+        claims,
+        goals: loseWeight,
+        measurements: { weight: 50, height: 175 },
+      }),
     ).resolves.toEqual({ feasible: true, goal: 'mantencion', message: null });
   });
 

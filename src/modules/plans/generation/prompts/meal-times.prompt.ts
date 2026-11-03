@@ -1,4 +1,7 @@
-import { FOOD_GROUP_PORTIONS, FOOD_FIELD_TO_GROUP } from '../../../../domain/services/alimentos/food-portions';
+import {
+  FOOD_GROUP_PORTIONS,
+  FOOD_FIELD_TO_GROUP,
+} from '../../../../domain/services/alimentos/food-portions';
 import { CalculatedMealTime } from '../../../../domain/services/alimentos/portion-adequacy.service';
 
 // Datos ya calculados de cada tiempo de comida que se le entregan al modelo: su índice, las porciones
@@ -6,7 +9,7 @@ import { CalculatedMealTime } from '../../../../domain/services/alimentos/portio
 // prompt de generación (todos los tiempos) y el de corrección (solo los que tuvieron errores).
 export function buildMealTimesInfo(calculatedMealTimes: CalculatedMealTime[]) {
   return calculatedMealTimes.map((mealTime, index) => {
-    const foods = Object.entries(mealTime.foods)
+    const foods = (Object.entries(mealTime.foods) as [string, string | null][])
       .filter(([, portions]) => portions !== null)
       .map(([field, portions]) => {
         const { group, subcategory } = FOOD_FIELD_TO_GROUP[field];
@@ -19,7 +22,12 @@ export function buildMealTimesInfo(calculatedMealTimes: CalculatedMealTime[]) {
           exampleFoods: groupData?.foods ?? [],
         };
       });
-    return { index, mealTime: mealTime.mealTimeType, intake: mealTime.intake, foods };
+    return {
+      index,
+      mealTime: mealTime.mealTimeType,
+      intake: mealTime.intake,
+      foods,
+    };
   });
 }
 
@@ -174,7 +182,9 @@ orden en que se entregan, completar:
 
 //PASO 3 Y 4 DOC (tiempos de comida + porciones y ejemplos y comentarios)
 //El campo "foods" (con las porciones por grupo) y "intake" ya vienen calculados por código.
-export function buildMealTimesPrompt(calculatedMealTimes: CalculatedMealTime[]): string {
+export function buildMealTimesPrompt(
+  calculatedMealTimes: CalculatedMealTime[],
+): string {
   return `${MEAL_TIMES_INSTRUCTIONS}
 ${JSON.stringify(buildMealTimesInfo(calculatedMealTimes), null, 2)}
 `;

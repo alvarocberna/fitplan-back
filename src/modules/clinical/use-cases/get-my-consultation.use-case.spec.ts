@@ -136,7 +136,12 @@ describe('GetMyConsultationUseCase', () => {
           measurementNumber: 1,
           measuredAt: '2026-03-15T12:00:00.000Z',
           level: 'BASIC',
-          basic: { weight: 70.5, height: 172, sittingHeight: null, armSpan: null },
+          basic: {
+            weight: 70.5,
+            height: 172,
+            sittingHeight: null,
+            armSpan: null,
+          },
           results: {
             bmi: 23.8,
             bmiClassification: 'NORMAL_WEIGHT',

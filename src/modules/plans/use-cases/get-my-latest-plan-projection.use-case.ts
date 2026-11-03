@@ -3,7 +3,10 @@ import { ProjectionEntity } from '../../../domain/entities/measurements.entity';
 import { NutritionalPlanRepository } from '../../../domain/repositories/clinical-domain/nutritional-plan.repository';
 import { CognitoUserClaims } from '../../../common/auth/cognito-user.decorator';
 import { CurrentUserResolver } from '../../identity/current-user.resolver';
-import { MyLatestPlanProjectionDto, MyPlanProjectionValuesDto } from '../dto/my-plan.dto';
+import {
+  MyLatestPlanProjectionDto,
+  MyPlanProjectionValuesDto,
+} from '../dto/my-plan.dto';
 
 // start_date/end_date/projected_* son columnas DATE: Prisma las entrega a medianoche UTC, así que
 // se exponen como YYYY-MM-DD (sin hora, para que el front no las corra de día por zona horaria).
@@ -11,7 +14,9 @@ function dateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function projectionValuesOf(projection: ProjectionEntity): MyPlanProjectionValuesDto {
+function projectionValuesOf(
+  projection: ProjectionEntity,
+): MyPlanProjectionValuesDto {
   return {
     projectedStartDate: dateOnly(projection.projectedStartDate),
     projectedEndDate: dateOnly(projection.projectedEndDate),
@@ -34,10 +39,14 @@ export class GetMyLatestPlanProjectionUseCase {
     private readonly nutritionalPlanRepository: NutritionalPlanRepository,
   ) {}
 
-  async execute(input: { claims: CognitoUserClaims }): Promise<MyLatestPlanProjectionDto> {
+  async execute(input: {
+    claims: CognitoUserClaims;
+  }): Promise<MyLatestPlanProjectionDto> {
     const user = await this.currentUser.resolve(input.claims);
     const nutritionalPlan =
-      await this.nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId(user.id);
+      await this.nutritionalPlanRepository.getLatestDatedMainPlanWithProjectionByUserId(
+        user.id,
+      );
     if (!nutritionalPlan?.endDate || !nutritionalPlan.plan) {
       throw new NotFoundException('No hay un plan con período definido');
     }

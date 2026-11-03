@@ -12,7 +12,9 @@ import type { CognitoUserClaims } from '../../../common/auth/cognito-user.decora
 describe('CreateConsultationUseCase', () => {
   let useCase: CreateConsultationUseCase;
   let currentUser: { resolve: jest.Mock; isProfileComplete: jest.Mock };
-  let clinicalRecordRepository: { findOrCreateClinicalRecordByPatientId: jest.Mock };
+  let clinicalRecordRepository: {
+    findOrCreateClinicalRecordByPatientId: jest.Mock;
+  };
   let nutritionalConsultationRepository: {
     getMaxConsultationNumberByClinicalRecordId: jest.Mock;
     createNutritionalConsultationWithDetails: jest.Mock;
@@ -47,10 +49,14 @@ describe('CreateConsultationUseCase', () => {
       isProfileComplete: jest.fn().mockReturnValue(true),
     };
     clinicalRecordRepository = {
-      findOrCreateClinicalRecordByPatientId: jest.fn().mockResolvedValue({ id: 'clinical-1' }),
+      findOrCreateClinicalRecordByPatientId: jest
+        .fn()
+        .mockResolvedValue({ id: 'clinical-1' }),
     };
     nutritionalConsultationRepository = {
-      getMaxConsultationNumberByClinicalRecordId: jest.fn().mockResolvedValue(0),
+      getMaxConsultationNumberByClinicalRecordId: jest
+        .fn()
+        .mockResolvedValue(0),
       createNutritionalConsultationWithDetails: jest.fn().mockResolvedValue({}),
     };
     productRepository = {
@@ -58,7 +64,11 @@ describe('CreateConsultationUseCase', () => {
     };
     createOrder = { execute: jest.fn().mockResolvedValue({ id: 'order-1' }) };
     evaluateGoalFeasibility = {
-      execute: jest.fn().mockResolvedValue({ feasible: true, goal: 'mantencion', message: null }),
+      execute: jest.fn().mockResolvedValue({
+        feasible: true,
+        goal: 'mantencion',
+        message: null,
+      }),
     };
 
     useCase = new CreateConsultationUseCase(
@@ -72,21 +82,26 @@ describe('CreateConsultationUseCase', () => {
   });
 
   it('lanza BadRequestException si falta personalInfo', async () => {
-    const dto = { ...baseDto, personalInfo: null } as unknown as CompleteConsultationDtoImpl;
+    const dto = {
+      ...baseDto,
+      personalInfo: null,
+    } as unknown as CompleteConsultationDtoImpl;
 
-    await expect(useCase.execute({ claims, consultation: dto })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      useCase.execute({ claims, consultation: dto }),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(currentUser.resolve).not.toHaveBeenCalled();
   });
 
   it('lanza BadRequestException si el perfil (User) está incompleto', async () => {
     currentUser.isProfileComplete.mockReturnValue(false);
 
-    await expect(useCase.execute({ claims, consultation: baseDto })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(clinicalRecordRepository.findOrCreateClinicalRecordByPatientId).not.toHaveBeenCalled();
+    await expect(
+      useCase.execute({ claims, consultation: baseDto }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(
+      clinicalRecordRepository.findOrCreateClinicalRecordByPatientId,
+    ).not.toHaveBeenCalled();
     expect(createOrder.execute).not.toHaveBeenCalled();
   });
 
@@ -98,13 +113,15 @@ describe('CreateConsultationUseCase', () => {
     });
     const dto = {
       ...baseDto,
-      anamnesis: { goals: { primaryGoal: 'bajar de peso', secondaryGoal: null } },
+      anamnesis: {
+        goals: { primaryGoal: 'bajar de peso', secondaryGoal: null },
+      },
       measurements: { weight: 50, height: 170, somatotype: null },
     } as unknown as CompleteConsultationDtoImpl;
 
-    await expect(useCase.execute({ claims, consultation: dto })).rejects.toThrow(
-      new BadRequestException('peso bajo'),
-    );
+    await expect(
+      useCase.execute({ claims, consultation: dto }),
+    ).rejects.toThrow(new BadRequestException('peso bajo'));
     expect(evaluateGoalFeasibility.execute).toHaveBeenCalledWith({
       claims,
       goals: { primaryGoal: 'bajar de peso', secondaryGoal: null },
@@ -121,7 +138,10 @@ describe('CreateConsultationUseCase', () => {
 
     expect(result).toEqual({ orderId: 'order-1' });
     expect(currentUser.resolve).toHaveBeenCalledWith(claims);
-    expect(createOrder.execute).toHaveBeenCalledWith({ userId: 'user-1', product });
+    expect(createOrder.execute).toHaveBeenCalledWith({
+      userId: 'user-1',
+      product,
+    });
     expect(
       nutritionalConsultationRepository.createNutritionalConsultationWithDetails,
     ).toHaveBeenCalledWith(
@@ -136,16 +156,17 @@ describe('CreateConsultationUseCase', () => {
     );
     // athlete vive en User (se captura en el perfil), ya no en la consulta.
     const [details] =
-      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mock.calls[0];
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails
+        .mock.calls[0];
     expect(details.consultation).not.toHaveProperty('athlete');
   });
 
   it('sin un producto GENERATED activo falla (error de configuración) sin crear la orden ni la consulta', async () => {
     productRepository.getActiveGeneratedProduct.mockResolvedValue(null);
 
-    await expect(useCase.execute({ claims, consultation: baseDto })).rejects.toThrow(
-      /producto GENERATED activo/,
-    );
+    await expect(
+      useCase.execute({ claims, consultation: baseDto }),
+    ).rejects.toThrow(/producto GENERATED activo/);
     expect(createOrder.execute).not.toHaveBeenCalled();
     expect(
       nutritionalConsultationRepository.createNutritionalConsultationWithDetails,
@@ -153,12 +174,15 @@ describe('CreateConsultationUseCase', () => {
   });
 
   it('numera la consulta a continuación del mayor número del historial', async () => {
-    nutritionalConsultationRepository.getMaxConsultationNumberByClinicalRecordId.mockResolvedValue(2);
+    nutritionalConsultationRepository.getMaxConsultationNumberByClinicalRecordId.mockResolvedValue(
+      2,
+    );
 
     await useCase.execute({ claims, consultation: baseDto });
 
     const [details] =
-      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mock.calls[0];
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails
+        .mock.calls[0];
     expect(details.consultation.consultationNumber).toBe(3);
   });
 
@@ -171,9 +195,12 @@ describe('CreateConsultationUseCase', () => {
     await useCase.execute({ claims, consultation: dto });
 
     const [details] =
-      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mock.calls[0];
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails
+        .mock.calls[0];
     expect(details.measurements!.measuredAt).toBeInstanceOf(Date);
-    expect(details.measurements!.measuredAt).toBe(details.consultation.consultationDate);
+    expect(details.measurements!.measuredAt).toBe(
+      details.consultation.consultationDate,
+    );
   });
 
   it('guarda la medición como BASIC con su IMC en measurement_results', async () => {
@@ -185,7 +212,8 @@ describe('CreateConsultationUseCase', () => {
     await useCase.execute({ claims, consultation: dto });
 
     const [details] =
-      nutritionalConsultationRepository.createNutritionalConsultationWithDetails.mock.calls[0];
+      nutritionalConsultationRepository.createNutritionalConsultationWithDetails
+        .mock.calls[0];
     expect(details.measurements!.level).toBe('BASIC');
     expect(details.measurements!.measurementResults).toEqual({
       bmi: 22.86,

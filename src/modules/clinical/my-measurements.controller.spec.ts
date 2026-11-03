@@ -50,15 +50,26 @@ describe('MyMeasurementsController', () => {
   it('getOne() delega en GetMyMeasurementUseCase', async () => {
     getOne.execute.mockResolvedValue({ measurementId: 'm-1' });
 
-    await expect(controller.getOne(claims, 'm-1')).resolves.toEqual({ measurementId: 'm-1' });
-    expect(getOne.execute).toHaveBeenCalledWith({ claims, measurementId: 'm-1' });
+    await expect(controller.getOne(claims, 'm-1')).resolves.toEqual({
+      measurementId: 'm-1',
+    });
+    expect(getOne.execute).toHaveBeenCalledWith({
+      claims,
+      measurementId: 'm-1',
+    });
   });
 
   it('record() delega en RecordMeasurementUseCase con el body', async () => {
-    const body = { level: 'BASIC', weight: 70, height: 172 } as RecordMeasurementDtoImpl;
+    const body = {
+      level: 'BASIC',
+      weight: 70,
+      height: 172,
+    } as RecordMeasurementDtoImpl;
     record.execute.mockResolvedValue({ measurementId: 'm-new' });
 
-    await expect(controller.record(claims, body)).resolves.toEqual({ measurementId: 'm-new' });
+    await expect(controller.record(claims, body)).resolves.toEqual({
+      measurementId: 'm-new',
+    });
     expect(record.execute).toHaveBeenCalledWith({ claims, data: body });
   });
 
@@ -67,6 +78,10 @@ describe('MyMeasurementsController', () => {
 
     await controller.update(claims, 'm-1', { weight: 70 });
 
-    expect(update.execute).toHaveBeenCalledWith({ claims, measurementId: 'm-1', data: { weight: 70 } });
+    expect(update.execute).toHaveBeenCalledWith({
+      claims,
+      measurementId: 'm-1',
+      data: { weight: 70 },
+    });
   });
 });

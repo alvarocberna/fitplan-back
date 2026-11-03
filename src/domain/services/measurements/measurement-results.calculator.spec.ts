@@ -4,13 +4,21 @@ import { calculateMeasurementResults } from './measurement-results.calculator';
 describe('calculateMeasurementResults', () => {
   it('BASIC: solo IMC y su clasificación, redondeado a 2 decimales', () => {
     expect(
-      calculateMeasurementResults({ level: MeasurementLevel.BASIC, weight: 70, height: 175 }),
+      calculateMeasurementResults({
+        level: MeasurementLevel.BASIC,
+        weight: 70,
+        height: 175,
+      }),
     ).toEqual({ bmi: 22.86, bmiClassification: 'NORMAL_WEIGHT' });
   });
 
   it('sin peso o talla no calcula nada', () => {
     expect(
-      calculateMeasurementResults({ level: MeasurementLevel.BASIC, weight: 70, height: null }),
+      calculateMeasurementResults({
+        level: MeasurementLevel.BASIC,
+        weight: 70,
+        height: null,
+      }),
     ).toEqual({});
   });
 

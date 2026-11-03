@@ -12,7 +12,10 @@ import {
   MeasurementResultsInput,
   MeasurementValueInput,
 } from '../../dtos/clinical-domain/measurements/measurement-details.dto';
-import { calculateBmi, getBmiClassification } from '../formulas/indexes/bmi.service';
+import {
+  calculateBmi,
+  getBmiClassification,
+} from '../formulas/indexes/bmi.service';
 import {
   calculateKgFromPercentage,
   calculatePercentageFromKg,
@@ -52,9 +55,14 @@ function componentResults(
     };
   }
   const { value, unit } = component;
-  const kg = unit === 'KG' ? value : calculateKgFromPercentage({ weight, percentage: value });
+  const kg =
+    unit === 'KG'
+      ? value
+      : calculateKgFromPercentage({ weight, percentage: value });
   const percentage =
-    unit === 'PERCENTAGE' ? value : calculatePercentageFromKg({ weight, kg: value });
+    unit === 'PERCENTAGE'
+      ? value
+      : calculatePercentageFromKg({ weight, kg: value });
   return {
     [`${prefix}Kg`]: round2(kg),
     [`${prefix}Percentage`]: round2(percentage),

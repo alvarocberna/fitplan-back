@@ -1,7 +1,6 @@
 // Mapeos compartidos por GET /me/plans (CU-PLN-04) y GET /me/plans/:orderId (CU-PLN-05): de la orden
 // (con product y plan -> nutritionalPlan principal) a los DTOs de "mis planes".
 
-import { NutritionPlanDto } from '../../domain/dtos/nutrition-plan.dto';
 import { NutritionalPlanTreeDto } from '../../domain/dtos/clinical-domain/plan/upsert-plan-with-main-nutritional-plan.dto';
 import {
   PlanMealTimeNoteType,
@@ -43,7 +42,11 @@ export function mainNutritionalPlanOf(
 
 // Nombre visible del plan: el del NutritionalPlan si lo hay (personalizado), si no el del producto.
 export function planNameOf(order: OrderEntity): string {
-  return mainNutritionalPlanOf(order)?.planName ?? order.product?.name ?? 'Plan nutricional';
+  return (
+    mainNutritionalPlanOf(order)?.planName ??
+    order.product?.name ??
+    'Plan nutricional'
+  );
 }
 
 // payment_date es la fecha real de compra; las órdenes anteriores a registrarla caen a creation_date.
@@ -72,7 +75,12 @@ export function summaryOf(order: OrderEntity): MyPlanSummaryInfoDto | null {
 export function productSummaryOf(
   product: Pick<
     ProductEntity,
-    'goal' | 'dietRegimen' | 'calorieIntake' | 'proteinIntake' | 'carbohydrateIntake' | 'lipidIntake'
+    | 'goal'
+    | 'dietRegimen'
+    | 'calorieIntake'
+    | 'proteinIntake'
+    | 'carbohydrateIntake'
+    | 'lipidIntake'
   >,
 ): MyPlanSummaryInfoDto | null {
   const summary = {
@@ -83,7 +91,9 @@ export function productSummaryOf(
     carbohydrateIntake: product.carbohydrateIntake,
     lipidIntake: product.lipidIntake,
   };
-  return Object.values(summary).every((value) => value == null) ? null : summary;
+  return Object.values(summary).every((value) => value == null)
+    ? null
+    : summary;
 }
 
 // Detalle del plan personalizado. Fuente principal: el NutritionalPlan con sus tablas hijas. Los planes
@@ -99,11 +109,21 @@ export function generatedDetailOf(
     return toGeneratedDetail(fromEntity(plan), consultationId);
   }
 
-  const fromJson = treeFromPlanJson(order, plan?.planName ?? order.product?.name ?? null);
+  const fromJson = treeFromPlanJson(
+    order,
+    plan?.planName ?? order.product?.name ?? null,
+  );
   if (fromJson) {
     // Si existe la fila NutritionalPlan, sus fechas/periodo son los reales; el JSON no los trae.
     return toGeneratedDetail(
-      plan ? { ...fromJson, period: plan.period, startDate: plan.startDate, endDate: plan.endDate } : { ...fromJson, startDate: null },
+      plan
+        ? {
+            ...fromJson,
+            period: plan.period,
+            startDate: plan.startDate,
+            endDate: plan.endDate,
+          }
+        : { ...fromJson, startDate: null },
       consultationId,
     );
   }
@@ -184,7 +204,10 @@ function toGeneratedDetail(
         fat: mealTime.fatIntake,
       },
       portions: Object.fromEntries(
-        PORTION_GROUPS.filter((group) => mealTime[group]).map((group) => [group, mealTime[group] as number]),
+        PORTION_GROUPS.filter((group) => mealTime[group]).map((group) => [
+          group,
+          mealTime[group] as number,
+        ]),
       ),
       examples: notesOf(mealTime.notes, PlanMealTimeNoteType.EXAMPLE),
       comments: notesOf(mealTime.notes, PlanMealTimeNoteType.COMMENT),
@@ -202,7 +225,10 @@ function toGeneratedDetail(
         fat: supplement.fatIntake,
       },
       effects: notesOf(supplement.notes, PlanSupplementNoteType.EFFECT),
-      considerations: notesOf(supplement.notes, PlanSupplementNoteType.CONSIDERATION),
+      considerations: notesOf(
+        supplement.notes,
+        PlanSupplementNoteType.CONSIDERATION,
+      ),
     })),
     sportsRecommendations: plan.sportsRecommendations.map((recommendation) => ({
       session: recommendation.session ?? null,

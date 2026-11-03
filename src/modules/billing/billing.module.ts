@@ -5,7 +5,10 @@ import { TransbankPaymentModule } from '../../infrastructure/payments/transbank/
 import { AlertsModule } from '../../infrastructure/alerts/alerts.module';
 import { IdentityModule } from '../identity/identity.module';
 import { OrdersController } from './orders.controller';
-import { DevPaymentsController, PaymentsController } from './payments.controller';
+import {
+  DevPaymentsController,
+  PaymentsController,
+} from './payments.controller';
 import { PaymentSimulationEnabledGuard } from './payment-simulation-enabled.guard';
 import { OrderLifecycleService } from './order-lifecycle.service';
 import { CreateOrderUseCase } from './use-cases/create-order.use-case';

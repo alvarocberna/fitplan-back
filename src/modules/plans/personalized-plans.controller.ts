@@ -6,7 +6,9 @@ import { GetPersonalizedPlanUseCase } from './use-cases/get-personalized-plan.us
 // CognitoAuthGuard), igual que el catálogo estándar: el precio se muestra antes de iniciar sesión.
 @Controller('plans/personalized')
 export class PersonalizedPlansController {
-  constructor(private readonly getPersonalizedPlan: GetPersonalizedPlanUseCase) {}
+  constructor(
+    private readonly getPersonalizedPlan: GetPersonalizedPlanUseCase,
+  ) {}
 
   @Get()
   get(): Promise<PersonalizedProductDto> {

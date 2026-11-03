@@ -27,7 +27,13 @@ const MEAL_TIME_SLOT: Record<MealTimeType, PlanMealTimeSlot> = {
 type MealTimeTree = NutritionalPlanTreeDto['mealTimes'][number];
 type PortionColumn = Exclude<
   keyof MealTimeTree,
-  'time' | 'hour' | 'calorieIntake' | 'proteinIntake' | 'carbohydrateIntake' | 'fatIntake' | 'notes'
+  | 'time'
+  | 'hour'
+  | 'calorieIntake'
+  | 'proteinIntake'
+  | 'carbohydrateIntake'
+  | 'fatIntake'
+  | 'notes'
 >;
 
 // Grupo de alimentos del plan (NumericMealTimePortions / foods) -> columna de plan_meal_time.
@@ -89,7 +95,10 @@ export function mapPlanToNutritionalPlanDto(
       carbohydrateIntake: supplement.intake.carbohydrate,
       fatIntake: supplement.intake.fat,
       notes: [
-        ...supplement.effects.map((note) => ({ note, type: PlanSupplementNoteType.EFFECT })),
+        ...supplement.effects.map((note) => ({
+          note,
+          type: PlanSupplementNoteType.EFFECT,
+        })),
         ...supplement.considerations.map((note) => ({
           note,
           type: PlanSupplementNoteType.CONSIDERATION,
@@ -112,21 +121,31 @@ function mapMealTime(
 ): MealTimeTree {
   const time = MEAL_TIME_SLOT[mealTime.description.time as MealTimeType];
   if (!time) {
-    throw new Error(`Tiempo de comida desconocido: "${mealTime.description.time}"`);
+    throw new Error(
+      `Tiempo de comida desconocido: "${mealTime.description.time}"`,
+    );
   }
 
   // 0 porciones = el grupo no está en este tiempo de comida -> null (columna nullable).
   const portionColumns = Object.fromEntries(
-    (Object.keys(PORTION_COLUMN) as (keyof NumericMealTimePortions)[]).map((group) => [
-      PORTION_COLUMN[group],
-      portions?.[group] ? portions[group] : null,
-    ]),
+    (Object.keys(PORTION_COLUMN) as (keyof NumericMealTimePortions)[]).map(
+      (group) => [
+        PORTION_COLUMN[group],
+        portions?.[group] ? portions[group] : null,
+      ],
+    ),
   ) as Pick<MealTimeTree, PortionColumn>;
 
-  const equivalences = Object.entries(mealTime.foods).flatMap(([group, food]) =>
-    food?.equivalence
-      ? [{ note: `${group}: ${food.equivalence}`, type: PlanMealTimeNoteType.EQUIVALENCE }]
-      : [],
+  const equivalences = Object.entries(mealTime.foods).flatMap(
+    ([group, food]) =>
+      food?.equivalence
+        ? [
+            {
+              note: `${group}: ${food.equivalence}`,
+              type: PlanMealTimeNoteType.EQUIVALENCE,
+            },
+          ]
+        : [],
   );
 
   return {
@@ -138,8 +157,14 @@ function mapMealTime(
     fatIntake: mealTime.intake.fat,
     ...portionColumns,
     notes: [
-      ...mealTime.examples.map((note) => ({ note, type: PlanMealTimeNoteType.EXAMPLE })),
-      ...mealTime.comments.map((note) => ({ note, type: PlanMealTimeNoteType.COMMENT })),
+      ...mealTime.examples.map((note) => ({
+        note,
+        type: PlanMealTimeNoteType.EXAMPLE,
+      })),
+      ...mealTime.comments.map((note) => ({
+        note,
+        type: PlanMealTimeNoteType.COMMENT,
+      })),
       ...equivalences,
     ],
   };

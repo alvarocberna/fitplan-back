@@ -21,7 +21,11 @@ describe('migraciones de Prisma', () => {
       url,
     );
 
-    expect({ status: diff.status, drift: diff.stdout, error: diff.stderr }).toEqual({
+    expect({
+      status: diff.status,
+      drift: diff.stdout,
+      error: diff.stderr,
+    }).toEqual({
       status: 0,
       drift: expect.any(String),
       error: expect.any(String),

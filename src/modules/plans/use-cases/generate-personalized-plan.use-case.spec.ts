@@ -21,7 +21,10 @@ import {
   calculateTotalAdequacy,
   CalculatedMealTime,
 } from '../../../domain/services/alimentos/portion-adequacy.service';
-import { FOOD_FIELD_TO_GROUP, FOOD_GROUP_PORTIONS } from '../../../domain/services/alimentos/food-portions';
+import {
+  FOOD_FIELD_TO_GROUP,
+  FOOD_GROUP_PORTIONS,
+} from '../../../domain/services/alimentos/food-portions';
 import { Meal } from '../../../domain/dtos/consultation.dto';
 import {
   EXTRACT_INFO_SYSTEM_PROMPT,
@@ -35,19 +38,31 @@ import { REPAIR_SYSTEM_PROMPT } from '../generation/prompts/repair-meal-times.pr
 // porciones (peso = porciones requeridas * peso base del alimento). Así el test no depende de
 // tracear a mano el algoritmo de portion-adequacy.service.ts: reutiliza las mismas funciones de
 // dominio que usa GeneratePersonalizedPlanUseCase para saber qué debería devolver una IA que "acertó".
-function buildMatchingGeneratedMealTimes(calculatedMealTimes: CalculatedMealTime[]) {
+function buildMatchingGeneratedMealTimes(
+  calculatedMealTimes: CalculatedMealTime[],
+) {
   return calculatedMealTimes.map((calculated) => {
-    const numericPortions = calculated.numericPortions as unknown as Record<string, number>;
+    const numericPortions = calculated.numericPortions as unknown as Record<
+      string,
+      number
+    >;
     const components: { field: string; food: string; weight: number }[] = [];
-    const equivalenceGroups: { field: string; options: { text: string; food: string; weight: number }[] }[] = [];
+    const equivalenceGroups: {
+      field: string;
+      options: { text: string; food: string; weight: number }[];
+    }[] = [];
 
     for (const [field, required] of Object.entries(numericPortions)) {
       if (!required) continue;
       const groupInfo = FOOD_FIELD_TO_GROUP[field];
       const groupData = FOOD_GROUP_PORTIONS.find(
-        (g) => g.group === groupInfo.group && g.subcategory === groupInfo.subcategory,
+        (g) =>
+          g.group === groupInfo.group &&
+          g.subcategory === groupInfo.subcategory,
       )!;
-      const candidates = groupData.foods.filter((f) => f.weight != null).slice(0, 3);
+      const candidates = groupData.foods
+        .filter((f) => f.weight != null)
+        .slice(0, 3);
 
       components.push({
         field,
@@ -164,7 +179,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         ],
       },
     ],
-    measurements: [{ description: somatotype, basicMeasurements: [{ weight, height }] }],
+    measurements: [
+      { description: somatotype, basicMeasurements: [{ weight, height }] },
+    ],
   } as any;
 
   beforeEach(async () => {
@@ -190,14 +207,26 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         },
         {
           provide: FileStorage,
-          useValue: { uploadPdf: jest.fn(), uploadImage: jest.fn(), getSignedDownloadUrl: jest.fn() },
+          useValue: {
+            uploadPdf: jest.fn(),
+            uploadImage: jest.fn(),
+            getSignedDownloadUrl: jest.fn(),
+          },
         },
         {
           provide: NutritionalConsultationRepository,
-          useValue: { getNutritionalConsultationWithDetailsByOrderId: jest.fn() },
+          useValue: {
+            getNutritionalConsultationWithDetailsByOrderId: jest.fn(),
+          },
         },
-        { provide: PlanRepository, useValue: { upsertPlanWithMainNutritionalPlanByOrderId: jest.fn() } },
-        { provide: MeasurementsRepository, useValue: { listMeasurementsByPatientId: jest.fn() } },
+        {
+          provide: PlanRepository,
+          useValue: { upsertPlanWithMainNutritionalPlanByOrderId: jest.fn() },
+        },
+        {
+          provide: MeasurementsRepository,
+          useValue: { listMeasurementsByPatientId: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -208,17 +237,25 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     alertNotifier = module.get(AlertNotifier);
     documentRenderer = module.get(PlanDocumentRenderer);
     fileStorage = module.get(FileStorage);
-    nutritionalConsultationRepository = module.get(NutritionalConsultationRepository);
+    nutritionalConsultationRepository = module.get(
+      NutritionalConsultationRepository,
+    );
     planRepository = module.get(PlanRepository);
     measurementsRepository = module.get(MeasurementsRepository);
 
-    planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mockResolvedValue({} as any);
+    planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mockResolvedValue(
+      {} as any,
+    );
     measurementsRepository.listMeasurementsByPatientId.mockResolvedValue([]);
     orderLifecycle.tryStartGeneration.mockResolvedValue(true);
     orderLifecycle.findByIdWithUser.mockResolvedValue(orderEntity);
-    nutritionalConsultationRepository.getNutritionalConsultationWithDetailsByOrderId.mockResolvedValue(consultationEntity);
+    nutritionalConsultationRepository.getNutritionalConsultationWithDetailsByOrderId.mockResolvedValue(
+      consultationEntity,
+    );
     documentRenderer.renderPdf.mockResolvedValue(Buffer.from('contenido-pdf'));
-    documentRenderer.renderThumbnail.mockResolvedValue(Buffer.from('contenido-miniatura'));
+    documentRenderer.renderThumbnail.mockResolvedValue(
+      Buffer.from('contenido-miniatura'),
+    );
     fileStorage.uploadPdf.mockResolvedValue(undefined);
     fileStorage.uploadImage.mockResolvedValue(undefined);
   });
@@ -239,7 +276,10 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     });
     const finalMealTimes = determineMealTimes(r24h, classifiedGoal);
     const mealTimeGroups = defineFoodGroups(finalMealTimes);
-    const portionAdequacyResult = calculateFoodsAndIntake(mealTimeGroups, requirements);
+    const portionAdequacyResult = calculateFoodsAndIntake(
+      mealTimeGroups,
+      requirements,
+    );
     const totalIntake = calculateTotalPlanIntake(portionAdequacyResult);
     const adequacy = calculateTotalAdequacy(totalIntake, requirements);
 
@@ -247,7 +287,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       .mockResolvedValueOnce({ physicalActivityLevel, goal: classifiedGoal }) // extractInfoPrompt
       .mockResolvedValueOnce({
         prescription: { regimen: 'Plan personalizado', goal },
-        mealTimes: buildMatchingGeneratedMealTimes(portionAdequacyResult.calculatedMealTimes),
+        mealTimes: buildMatchingGeneratedMealTimes(
+          portionAdequacyResult.calculatedMealTimes,
+        ),
         supplements: [],
         sportsRecommendations: [],
       }); // prompt principal
@@ -265,7 +307,8 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   });
 
   it('éxito en el primer intento: completa la orden y envía el correo con el plan calculado', async () => {
-    const { requirements, portionAdequacyResult, totalIntake, adequacy } = mockMatchingAiResponses();
+    const { requirements, portionAdequacyResult, totalIntake, adequacy } =
+      mockMatchingAiResponses();
 
     await service.execute({ orderId: 'order-1' });
 
@@ -273,10 +316,17 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     // la llamada que genera el plan declara su propio timeout (minutos) y no usa los reintentos del
     // SDK: con el tope por defecto del adaptador (60 s) la generación nunca alcanzaba a responder
     const planCallOptions = llm.chatJson.mock.calls[1][4];
-    expect(planCallOptions).toMatchObject({ timeoutMs: 5 * 60_000, maxRetries: 0 });
-    expect(llm.chatJson.mock.calls[0][4]).toMatchObject({ timeoutMs: 60_000, maxRetries: 0 });
+    expect(planCallOptions).toMatchObject({
+      timeoutMs: 5 * 60_000,
+      maxRetries: 0,
+    });
+    expect(llm.chatJson.mock.calls[0][4]).toMatchObject({
+      timeoutMs: 60_000,
+      maxRetries: 0,
+    });
     expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
-    const [, plan, pdfKey, thumbnailKey] = orderLifecycle.completeGeneration.mock.calls[0];
+    const [, plan, pdfKey, thumbnailKey] =
+      orderLifecycle.completeGeneration.mock.calls[0];
 
     expect(plan.prescription).toMatchObject({
       regimen: 'Plan personalizado',
@@ -288,7 +338,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     });
     expect(plan.planIntake.totalIntake).toEqual(totalIntake);
     expect(plan.planIntake.adequacy).toEqual(adequacy);
-    expect(plan.mealTimes).toHaveLength(portionAdequacyResult.calculatedMealTimes.length);
+    expect(plan.mealTimes).toHaveLength(
+      portionAdequacyResult.calculatedMealTimes.length,
+    );
     expect(plan.personalInfo).toMatchObject({ name: 'Ana', lastName: 'Pérez' });
 
     // el PDF se genera UNA sola vez, se sube a S3 con esa key, y el mismo buffer se reutiliza
@@ -297,11 +349,17 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     const pdfBuffer = await documentRenderer.renderPdf.mock.results[0].value;
     expect(documentRenderer.renderPdf).toHaveBeenCalledWith(plan);
     expect(fileStorage.uploadPdf).toHaveBeenCalledWith(pdfBuffer, pdfKey);
-    expect(emailSender.sendPlanByEmail).toHaveBeenCalledWith('ana@example.com', plan, pdfBuffer);
+    expect(emailSender.sendPlanByEmail).toHaveBeenCalledWith(
+      'ana@example.com',
+      plan,
+      pdfBuffer,
+    );
     expect(orderLifecycle.recordFailedAttempt).not.toHaveBeenCalled();
 
     // la miniatura se rasteriza desde ese mismo buffer, se sube a S3 y su key se persiste en la orden.
-    expect(thumbnailKey).toBe('productos-personalizados/miniaturas/order-1.webp');
+    expect(thumbnailKey).toBe(
+      'productos-personalizados/miniaturas/order-1.webp',
+    );
     expect(documentRenderer.renderThumbnail).toHaveBeenCalledWith(pdfBuffer);
     expect(fileStorage.uploadImage).toHaveBeenCalledWith(
       Buffer.from('contenido-miniatura'),
@@ -330,7 +388,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
     await service.execute({ orderId: 'order-1' });
 
-    expect(measurementsRepository.listMeasurementsByPatientId).toHaveBeenCalledWith('user-1');
+    expect(
+      measurementsRepository.listMeasurementsByPatientId,
+    ).toHaveBeenCalledWith('user-1');
     const [{ nutritionalPlan, projection }] =
       planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock.calls[0];
     // 70 kg / 175 cm, 30% GC, mujer: -2 kg/mes x 3 meses -> 64 kg, IMC 20,9, 23,4% GC
@@ -347,12 +407,17 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   });
 
   it('persiste el Plan (por orderId) con su NutritionalPlan principal y sus tablas hijas, antes de marcar la orden como completada', async () => {
-    const { requirements, totalIntake, portionAdequacyResult } = mockMatchingAiResponses();
+    const { requirements, totalIntake, portionAdequacyResult } =
+      mockMatchingAiResponses();
 
     await service.execute({ orderId: 'order-1' });
 
-    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId).toHaveBeenCalledTimes(1);
-    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId).toHaveBeenCalledWith({
+    expect(
+      planRepository.upsertPlanWithMainNutritionalPlanByOrderId,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      planRepository.upsertPlanWithMainNutritionalPlanByOrderId,
+    ).toHaveBeenCalledWith({
       consultationId: 'consultation-1',
       orderId: 'order-1',
       nutritionalPlan: expect.objectContaining({
@@ -387,15 +452,30 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     nutritionalPlan.mealTimes.forEach((mealTime, index) => {
       const { numericPortions } = calculatedMealTimes[index];
       expect(mealTime.hour).toBe('08:00');
-      expect(mealTime.calorieIntake).toBe(calculatedMealTimes[index].intake.calories);
+      expect(mealTime.calorieIntake).toBe(
+        calculatedMealTimes[index].intake.calories,
+      );
       expect(mealTime.cereal).toBe(numericPortions.cereals || null);
-      expect(mealTime.lowFatProtein).toBe(numericPortions.lowFatProteins || null);
-      expect(mealTime.notes.filter((n) => n.type === 'EXAMPLE')).toHaveLength(3);
-      expect(mealTime.notes.filter((n) => n.type === 'COMMENT')).toHaveLength(1);
-      const groupsWithPortions = Object.values(numericPortions).filter((p) => p > 0).length;
-      expect(mealTime.notes.filter((n) => n.type === 'EQUIVALENCE')).toHaveLength(groupsWithPortions);
+      expect(mealTime.lowFatProtein).toBe(
+        numericPortions.lowFatProteins || null,
+      );
+      expect(mealTime.notes.filter((n) => n.type === 'EXAMPLE')).toHaveLength(
+        3,
+      );
+      expect(mealTime.notes.filter((n) => n.type === 'COMMENT')).toHaveLength(
+        1,
+      );
+      const groupsWithPortions = Object.values(numericPortions).filter(
+        (p) => p > 0,
+      ).length;
+      expect(
+        mealTime.notes.filter((n) => n.type === 'EQUIVALENCE'),
+      ).toHaveLength(groupsWithPortions);
     });
-    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(
+      planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
       orderLifecycle.completeGeneration.mock.invocationCallOrder[0],
     );
   });
@@ -404,13 +484,17 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     jest.useFakeTimers();
     mockMatchingAiResponses(); // 1er intento
     mockMatchingAiResponses(); // 2do intento (encola 2 respuestas más de la IA)
-    planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mockRejectedValueOnce(new Error('DB caída'));
+    planRepository.upsertPlanWithMainNutritionalPlanByOrderId.mockRejectedValueOnce(
+      new Error('DB caída'),
+    );
 
     const resultPromise = service.execute({ orderId: 'order-1' });
     await jest.advanceTimersByTimeAsync(60000);
     await resultPromise;
 
-    expect(planRepository.upsertPlanWithMainNutritionalPlanByOrderId).toHaveBeenCalledTimes(2);
+    expect(
+      planRepository.upsertPlanWithMainNutritionalPlanByOrderId,
+    ).toHaveBeenCalledTimes(2);
     expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
     expect(orderLifecycle.recordFailedAttempt).not.toHaveBeenCalled();
 
@@ -420,11 +504,17 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   it.each([
     [
       'falla la rasterización',
-      () => documentRenderer.renderThumbnail.mockRejectedValue(new Error('pdfjs roto')),
+      () =>
+        documentRenderer.renderThumbnail.mockRejectedValue(
+          new Error('pdfjs roto'),
+        ),
     ],
     [
       'falla la subida de la miniatura a S3',
-      () => fileStorage.uploadImage.mockRejectedValue(new Error('S3 no disponible')),
+      () =>
+        fileStorage.uploadImage.mockRejectedValue(
+          new Error('S3 no disponible'),
+        ),
     ],
   ])(
     'si %s, el plan igual se completa (thumbnailKey null), sin reintentar ni volver a llamar a la IA',
@@ -437,7 +527,8 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       // 2 llamadas = un solo intento (extract + plan): la miniatura no consume reintentos.
       expect(llm.chatJson).toHaveBeenCalledTimes(2);
       expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
-      const [, , pdfKey, thumbnailKey] = orderLifecycle.completeGeneration.mock.calls[0];
+      const [, , pdfKey, thumbnailKey] =
+        orderLifecycle.completeGeneration.mock.calls[0];
       expect(pdfKey).toBe('productos-personalizados/order-1.pdf');
       expect(thumbnailKey).toBeNull();
       expect(emailSender.sendPlanByEmail).toHaveBeenCalledTimes(1);
@@ -454,7 +545,10 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
     process.env.OPENAI_MODEL_PLAN = previous;
     if (previous === undefined) delete process.env.OPENAI_MODEL_PLAN;
-    expect(llm.chatJson.mock.calls.map((call) => call[2])).toEqual(['modelo-de-prueba', 'modelo-de-prueba']);
+    expect(llm.chatJson.mock.calls.map((call) => call[2])).toEqual([
+      'modelo-de-prueba',
+      'modelo-de-prueba',
+    ]);
   });
 
   // Respuestas del modelo según qué prompt de sistema recibe (clasificación, plan o corrección), para
@@ -463,12 +557,17 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     plan: () => unknown;
     repair?: (userPrompt: string) => unknown;
   }) {
-    llm.chatJson.mockImplementation(async (systemPrompt: string, messages: any[]) => {
-      if (systemPrompt === EXTRACT_INFO_SYSTEM_PROMPT) return { physicalActivityLevel, goal } as any;
-      if (systemPrompt === NUTRITIONIST_SYSTEM_PROMPT) return responses.plan() as any;
-      if (systemPrompt === REPAIR_SYSTEM_PROMPT) return responses.repair?.(messages[0].content) as any;
-      throw new Error('prompt de sistema inesperado');
-    });
+    llm.chatJson.mockImplementation(
+      async (systemPrompt: string, messages: any[]) => {
+        if (systemPrompt === EXTRACT_INFO_SYSTEM_PROMPT)
+          return { physicalActivityLevel, goal };
+        if (systemPrompt === NUTRITIONIST_SYSTEM_PROMPT)
+          return responses.plan();
+        if (systemPrompt === REPAIR_SYSTEM_PROMPT)
+          return responses.repair?.(messages[0].content);
+        throw new Error('prompt de sistema inesperado');
+      },
+    );
   }
 
   const callsWith = (systemPrompt: string) =>
@@ -478,7 +577,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   function matchingMealTimes() {
     const { portionAdequacyResult } = mockMatchingAiResponses();
     llm.chatJson.mockReset();
-    return buildMatchingGeneratedMealTimes(portionAdequacyResult.calculatedMealTimes);
+    return buildMatchingGeneratedMealTimes(
+      portionAdequacyResult.calculatedMealTimes,
+    );
   }
 
   const planWith = (mealTimes: unknown[]) => ({
@@ -494,8 +595,12 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
       await service.execute({ orderId: 'order-1' });
 
-      expect(llm.chatJson.mock.calls[0][4]?.schema?.name).toBe('consultation_classification');
-      expect(llm.chatJson.mock.calls[1][4]?.schema?.name).toBe('nutrition_plan');
+      expect(llm.chatJson.mock.calls[0][4]?.schema?.name).toBe(
+        'consultation_classification',
+      );
+      expect(llm.chatJson.mock.calls[1][4]?.schema?.name).toBe(
+        'nutrition_plan',
+      );
     });
   });
 
@@ -520,7 +625,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       // la corrección pide solo el índice 0, con su esquema, y le muestra el error concreto
       const repairPrompt = repairCalls[0][1][0].content;
       expect(repairPrompt).toContain('índices 0)');
-      expect(repairPrompt).toContain('se esperaban 3 ejemplos, se recibieron 0');
+      expect(repairPrompt).toContain(
+        'se esperaban 3 ejemplos, se recibieron 0',
+      );
       expect(repairCalls[0][4]?.schema?.name).toBe('repaired_meal_times');
 
       // el plan se completa con el tiempo corregido y el resto intacto
@@ -535,7 +642,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       const allBad = good.map((mealTime) => ({ ...mealTime, examples: [] }));
       mockLlmByPrompt({
         plan: () => planWith(allBad),
-        repair: () => ({ mealTimes: good.map((mealTime, index) => ({ index, ...mealTime })) }),
+        repair: () => ({
+          mealTimes: good.map((mealTime, index) => ({ index, ...mealTime })),
+        }),
       });
 
       await service.execute({ orderId: 'order-1' });
@@ -554,7 +663,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         plan: () => planWith(withOneBad),
         // la primera corrección sigue mal; la segunda acierta
         repair: () => ({
-          mealTimes: [{ index: 0, ...(++repairs === 1 ? withOneBad[0] : good[0]) }],
+          mealTimes: [
+            { index: 0, ...(++repairs === 1 ? withOneBad[0] : good[0]) },
+          ],
         }),
       });
 
@@ -592,31 +703,43 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     });
 
     it.each([
-      ['un índice que no se pidió', (good: any[]) => [{ index: 1, ...good[1] }]],
-      ['el mismo índice repetido', (good: any[]) => [{ index: 0, ...good[0] }, { index: 0, ...good[0] }]],
+      [
+        'un índice que no se pidió',
+        (good: any[]) => [{ index: 1, ...good[1] }],
+      ],
+      [
+        'el mismo índice repetido',
+        (good: any[]) => [
+          { index: 0, ...good[0] },
+          { index: 0, ...good[0] },
+        ],
+      ],
       ['ningún tiempo de comida', () => []],
-    ])('si la corrección devuelve %s, el intento falla y se regenera el plan', async (_name, build) => {
-      jest.useFakeTimers();
-      const good = matchingMealTimes();
-      const withOneBad = good.map((mealTime, index) =>
-        index === 0 ? { ...mealTime, examples: [] } : mealTime,
-      );
-      let planCalls = 0;
-      mockLlmByPrompt({
-        plan: () => planWith(++planCalls === 1 ? withOneBad : good),
-        repair: () => ({ mealTimes: build(good) }),
-      });
+    ])(
+      'si la corrección devuelve %s, el intento falla y se regenera el plan',
+      async (_name, build) => {
+        jest.useFakeTimers();
+        const good = matchingMealTimes();
+        const withOneBad = good.map((mealTime, index) =>
+          index === 0 ? { ...mealTime, examples: [] } : mealTime,
+        );
+        let planCalls = 0;
+        mockLlmByPrompt({
+          plan: () => planWith(++planCalls === 1 ? withOneBad : good),
+          repair: () => ({ mealTimes: build(good) }),
+        });
 
-      const resultPromise = service.execute({ orderId: 'order-1' });
-      await jest.advanceTimersByTimeAsync(60000);
-      await resultPromise;
+        const resultPromise = service.execute({ orderId: 'order-1' });
+        await jest.advanceTimersByTimeAsync(60000);
+        await resultPromise;
 
-      expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(1);
-      expect(callsWith(NUTRITIONIST_SYSTEM_PROMPT)).toHaveLength(2);
-      expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
+        expect(callsWith(REPAIR_SYSTEM_PROMPT)).toHaveLength(1);
+        expect(callsWith(NUTRITIONIST_SYSTEM_PROMPT)).toHaveLength(2);
+        expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
 
-      jest.useRealTimers();
-    });
+        jest.useRealTimers();
+      },
+    );
 
     it('con otra cantidad de tiempos de comida no intenta corregir: regenera el plan', async () => {
       jest.useFakeTimers();
@@ -653,7 +776,12 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       }));
     mockLlmByPrompt({
       plan: () => planWith(badMealTimes()),
-      repair: () => ({ mealTimes: badMealTimes().map((mealTime, index) => ({ index, ...mealTime })) }),
+      repair: () => ({
+        mealTimes: badMealTimes().map((mealTime, index) => ({
+          index,
+          ...mealTime,
+        })),
+      }),
     });
 
     const resultPromise = service.execute({ orderId: 'order-1' });
@@ -676,7 +804,11 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       expect.objectContaining({
         event: 'plan_generation_failed',
         severity: 'warning',
-        context: expect.objectContaining({ orderId: 'order-1', failedRounds: 1, final: false }),
+        context: expect.objectContaining({
+          orderId: 'order-1',
+          failedRounds: 1,
+          final: false,
+        }),
       }),
     );
 
@@ -686,7 +818,10 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   it('si la ronda que falla era la última (attempts agotados), la alerta es crítica', async () => {
     jest.useFakeTimers();
     // la orden ya lleva 3 rondas fallidas: esta es la cuarta y última
-    orderLifecycle.findByIdWithUser.mockResolvedValue({ ...orderEntity, attempts: 3 });
+    orderLifecycle.findByIdWithUser.mockResolvedValue({
+      ...orderEntity,
+      attempts: 3,
+    });
     llm.chatJson.mockRejectedValue(new Error('OpenAI no respondió'));
 
     const resultPromise = service.execute({ orderId: 'order-1' });
@@ -711,13 +846,18 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     mockMatchingAiResponses();
     emailSender.sendPlanByEmail.mockRejectedValue(new Error('SES caído'));
 
-    await expect(service.execute({ orderId: 'order-1' })).resolves.toBeUndefined();
+    await expect(
+      service.execute({ orderId: 'order-1' }),
+    ).resolves.toBeUndefined();
 
     expect(llm.chatJson).toHaveBeenCalledTimes(2); // una sola generación
     expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
     expect(orderLifecycle.recordFailedAttempt).not.toHaveBeenCalled();
     expect(alertNotifier.notify).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'plan_email_failed', severity: 'warning' }),
+      expect.objectContaining({
+        event: 'plan_email_failed',
+        severity: 'warning',
+      }),
     );
   });
 
@@ -736,9 +876,13 @@ describe('GeneratePersonalizedPlanUseCase', () => {
   });
 
   it('si no se pueden cargar los datos de la orden, la ronda se da por fallida (no queda en GENERATING)', async () => {
-    nutritionalConsultationRepository.getNutritionalConsultationWithDetailsByOrderId.mockResolvedValue(null);
+    nutritionalConsultationRepository.getNutritionalConsultationWithDetailsByOrderId.mockResolvedValue(
+      null,
+    );
 
-    await expect(service.execute({ orderId: 'order-1' })).resolves.toBeUndefined();
+    await expect(
+      service.execute({ orderId: 'order-1' }),
+    ).resolves.toBeUndefined();
 
     expect(llm.chatJson).not.toHaveBeenCalled();
     expect(orderLifecycle.recordFailedAttempt).toHaveBeenCalledWith('order-1');
@@ -751,7 +895,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     orderLifecycle.findByIdWithUser.mockRejectedValue(new Error('db caída'));
     orderLifecycle.recordFailedAttempt.mockRejectedValue(new Error('db caída'));
 
-    await expect(service.execute({ orderId: 'order-1' })).resolves.toBeUndefined();
+    await expect(
+      service.execute({ orderId: 'order-1' }),
+    ).resolves.toBeUndefined();
     expect(alertNotifier.notify).toHaveBeenCalled();
   });
 
@@ -760,7 +906,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
     function structuredLogs(spy: jest.SpyInstance, event: string): any[] {
       return spy.mock.calls
         .map(([message]) => message)
-        .filter((message) => typeof message === 'object' && message?.event === event);
+        .filter(
+          (message) => typeof message === 'object' && message?.event === event,
+        );
     }
 
     let logSpy: jest.SpyInstance;
@@ -768,13 +916,20 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
     beforeEach(() => {
       process.env.PLAN_GENERATION_TIMING_LOGS = 'true';
-      logSpy = jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined);
-      jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
-      jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+      logSpy = jest
+        .spyOn((service as any).logger, 'log')
+        .mockImplementation(() => undefined);
+      jest
+        .spyOn((service as any).logger, 'warn')
+        .mockImplementation(() => undefined);
+      jest
+        .spyOn((service as any).logger, 'error')
+        .mockImplementation(() => undefined);
     });
 
     afterEach(() => {
-      if (previousFlag === undefined) delete process.env.PLAN_GENERATION_TIMING_LOGS;
+      if (previousFlag === undefined)
+        delete process.env.PLAN_GENERATION_TIMING_LOGS;
       else process.env.PLAN_GENERATION_TIMING_LOGS = previousFlag;
     });
 
@@ -787,12 +942,18 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
         await service.execute({ orderId: 'order-1' });
 
-        expect(structuredLogs(logSpy, 'plan_generation_attempt')).toHaveLength(0);
+        expect(structuredLogs(logSpy, 'plan_generation_attempt')).toHaveLength(
+          0,
+        );
         expect(structuredLogs(logSpy, 'plan_generation_round')).toHaveLength(0);
-        const lines = logSpy.mock.calls.map(([message]) => message).filter((m) => typeof m === 'string');
+        const lines = logSpy.mock.calls
+          .map(([message]) => message)
+          .filter((m) => typeof m === 'string');
         expect(lines.some((line) => /\] \w+: \d+ ms/.test(line))).toBe(false);
         // el log de operación de siempre se mantiene, y el plan se genera igual
-        expect(lines.some((line) => line.includes('plan generado con éxito'))).toBe(true);
+        expect(
+          lines.some((line) => line.includes('plan generado con éxito')),
+        ).toBe(true);
         expect(orderLifecycle.completeGeneration).toHaveBeenCalledTimes(1);
       },
     );
@@ -804,7 +965,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         { physicalActivityLevel, goal },
         {
           prescription: { regimen: 'Plan personalizado', goal },
-          mealTimes: buildMatchingGeneratedMealTimes(portionAdequacyResult.calculatedMealTimes),
+          mealTimes: buildMatchingGeneratedMealTimes(
+            portionAdequacyResult.calculatedMealTimes,
+          ),
           supplements: [],
           sportsRecommendations: [],
         },
@@ -820,7 +983,7 @@ describe('GeneratePersonalizedPlanUseCase', () => {
           reasoningTokens: index === 1 ? 4000 : 0,
           totalTokens: index === 1 ? 15000 : 520,
         });
-        return responses[index] as any;
+        return responses[index];
       });
       orderLifecycle.findByIdWithUser.mockResolvedValue({
         ...orderEntity,
@@ -830,7 +993,12 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       await service.execute({ orderId: 'order-1', trigger: 'payment' });
 
       const [attempt] = structuredLogs(logSpy, 'plan_generation_attempt');
-      expect(attempt).toMatchObject({ orderId: 'order-1', attempt: 1, ok: true, repairs: 0 });
+      expect(attempt).toMatchObject({
+        orderId: 'order-1',
+        attempt: 1,
+        ok: true,
+        repairs: 0,
+      });
       expect(attempt.phases.map((phase: any) => phase.phase)).toEqual([
         'llm_classify',
         'calculate',
@@ -846,7 +1014,8 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         'complete_order',
       ]);
       // las métricas del modelo quedan en la fase de su llamada; el prompt y el PDF, con su tamaño
-      const phase = (name: string) => attempt.phases.find((item: any) => item.phase === name);
+      const phase = (name: string) =>
+        attempt.phases.find((item: any) => item.phase === name);
       expect(phase('llm_plan').data).toMatchObject({
         model: 'gpt-5-mini',
         promptTokens: 9000,
@@ -854,7 +1023,9 @@ describe('GeneratePersonalizedPlanUseCase', () => {
         reasoningTokens: 4000,
       });
       expect(phase('build_prompt').data.chars).toBeGreaterThan(0);
-      expect(phase('render_pdf').data).toEqual({ bytes: Buffer.from('contenido-pdf').length });
+      expect(phase('render_pdf').data).toEqual({
+        bytes: Buffer.from('contenido-pdf').length,
+      });
 
       const [round] = structuredLogs(logSpy, 'plan_generation_round');
       expect(round).toMatchObject({
@@ -868,7 +1039,13 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       // la ronda suma además las fases de fuera del intento; la espera en cola va aparte
       const roundPhases = round.phases.map((item: any) => item.phase);
       expect(roundPhases).toEqual(
-        expect.arrayContaining(['start_guard', 'load_data', 'load_baseline', 'llm_plan', 'send_email']),
+        expect.arrayContaining([
+          'start_guard',
+          'load_data',
+          'load_baseline',
+          'llm_plan',
+          'send_email',
+        ]),
       );
       expect(roundPhases).not.toContain('queue_wait');
     });
@@ -886,9 +1063,14 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
     it('intento fallido: el resumen marca ok: false y la fase donde falló; la ronda queda failed', async () => {
       jest.useFakeTimers();
-      llm.chatJson.mockRejectedValue(new Error('OpenAI no respondió: Request timed out.'));
+      llm.chatJson.mockRejectedValue(
+        new Error('OpenAI no respondió: Request timed out.'),
+      );
 
-      const resultPromise = service.execute({ orderId: 'order-1', trigger: 'retry' });
+      const resultPromise = service.execute({
+        orderId: 'order-1',
+        trigger: 'retry',
+      });
       for (let i = 0; i < 5; i++) {
         await jest.advanceTimersByTimeAsync(60000);
       }
@@ -896,15 +1078,25 @@ describe('GeneratePersonalizedPlanUseCase', () => {
 
       const attempts = structuredLogs(logSpy, 'plan_generation_attempt');
       expect(attempts).toHaveLength(4);
-      expect(attempts[0]).toMatchObject({ attempt: 1, ok: false, slowest: 'llm_classify' });
+      expect(attempts[0]).toMatchObject({
+        attempt: 1,
+        ok: false,
+        slowest: 'llm_classify',
+      });
       expect(attempts[0].phases).toEqual([
         expect.objectContaining({ phase: 'llm_classify', ok: false }),
       ]);
 
       const [round] = structuredLogs(logSpy, 'plan_generation_round');
-      expect(round).toMatchObject({ trigger: 'retry', outcome: 'failed', attempts: 4 });
+      expect(round).toMatchObject({
+        trigger: 'retry',
+        outcome: 'failed',
+        attempts: 4,
+      });
       // 3 esperas entre los 4 intentos: 1 s + 2 s + 4 s
-      expect(round.phases.find((item: any) => item.phase === 'backoff')).toMatchObject({
+      expect(
+        round.phases.find((item: any) => item.phase === 'backoff'),
+      ).toMatchObject({
         count: 3,
         durationMs: 7000,
       });
@@ -918,8 +1110,14 @@ describe('GeneratePersonalizedPlanUseCase', () => {
       await service.execute({ orderId: 'order-1' });
 
       const [round] = structuredLogs(logSpy, 'plan_generation_round');
-      expect(round).toMatchObject({ outcome: 'failed', attempts: 0, trigger: 'unknown' });
-      expect(round.phases.find((item: any) => item.phase === 'load_data')).toBeDefined();
+      expect(round).toMatchObject({
+        outcome: 'failed',
+        attempts: 0,
+        trigger: 'unknown',
+      });
+      expect(
+        round.phases.find((item: any) => item.phase === 'load_data'),
+      ).toBeDefined();
     });
   });
 });
