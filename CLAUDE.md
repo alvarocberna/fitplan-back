@@ -8,9 +8,9 @@ NestJS backend for Fitplan: a conversational agent that, backed by OpenAI, colle
 anamnesis via chat, processes payment for the consultation, and asynchronously generates a
 personalized nutrition plan (emailed as PDF, also downloadable from the frontend).
 
-The **README.md is the primary source of truth** for this project — it documents every endpoint,
-the full plan-generation pipeline, the domain formulas, Prisma schema, and known technical debt in
-detail. Read it before making non-trivial changes. `../doc/flows/purchase-flow-personalized-plan.md` walks the
+The README.md is a short entry point (setup, env vars, architecture, endpoint table). The detailed reference —
+each endpoint's behavior, the plan-generation pipeline, the domain formulas, the data model and known technical debt —
+lives in `../doc/doc-back/reference.md`; read it before making non-trivial changes, and put new detail there, not in the README. `../doc/flows/purchase-flow-personalized-plan.md` walks the
 end-to-end sequence of a successful consultation; `../doc/doc-back/error-handling.md` describes how errors
 are handled (single error contract `{ statusCode, code, message, errors?, requestId }`, guards, Prisma,
 LLM errors, jobs/listeners, alerts) — read it before throwing or catching anything; `../doc/security/backend-security.md`
@@ -201,7 +201,7 @@ On edit, the stored **percentage** is the source of truth (a weight change keeps
 Several other formula services exist (skinfolds, muscle mass, body fat % from skinfolds, phantom, IMM,
 corrected perimeters, somatocarta, sports-session expenditure) but are **not yet wired into the
 plan-generation flow** (nor into measurements) — only weight and height (`peso`/`talla`) from `MedicionesDto` are currently
-used. See the README's "Deuda técnica" section and `../doc/backlog/technical-debt.md` before assuming any of
+used. See `../doc/doc-back/reference.md` ("Deuda técnica") and `../doc/backlog/technical-debt.md` before assuming any of
 these are live.
 
 `domain/services/alimentos/porciones-alimentos.ts` defines the food-exchange portion table used by
